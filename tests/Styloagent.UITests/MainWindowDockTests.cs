@@ -1,72 +1,51 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Templates;
 using Avalonia.Threading;
-using Dock.Avalonia.Controls;
-using Dock.Model.Controls;
+using Avalonia.VisualTree;
 using Styloagent.App.ViewModels;
 using Styloagent.App.Views;
-using Styloagent.Core.Abstractions;
 using Styloagent.Core.Model;
-using Styloagent.Core.Sessions;
 
 namespace Styloagent.UITests;
 
 /// <summary>
-/// Verifies that MainWindow's content is a DockControl backed by a non-null RootDock,
-/// proving the application window truly hosts the Dock layout end-to-end.
+/// Verifies MainWindow actually renders the agent pane + terminal (the shell hosts a
+/// working terminal end-to-end), and exposes the agent as a selectable pane.
 /// </summary>
 [Collection("Avalonia")]
 public class MainWindowDockTests
 {
     private readonly HeadlessAvaloniaFixture _fx;
-
     public MainWindowDockTests(HeadlessAvaloniaFixture fx) => _fx = fx;
 
-    private static AgentManifestEntry MakeEntry(string contextPath) => new(
-        Prefix: "test-",
-        Repo: "/repo",
-        Worktree: "/repo/wt-test",
-        LaunchPromptPath: "",
-        RestartPromptPath: "",
-        SavedContextPath: contextPath,
-        Transport: AgentTransport.Local);
-
-    /// <summary>
-    /// MainWindow with a seeded MainWindowViewModel hosts a DockControl
-    /// whose Layout is a non-null RootDock.
-    /// </summary>
     [Fact]
-    public Task MainWindow_Content_Is_DockControl_With_RootDock_Layout()
+    public Task MainWindow_renders_agent_pane_and_terminal()
     {
         return _fx.DispatchAsync(async () =>
         {
-            // Arrange: create a temp channel dir with one saved-context file so
-            // InitializeAsync produces a non-empty layout.
             var tempRoot = Path.Combine(Path.GetTempPath(), $"styloagent-test-{Guid.NewGuid():N}");
             var contextDir = Path.Combine(tempRoot, "saved-context");
             Directory.CreateDirectory(contextDir);
-            await File.WriteAllTextAsync(
-                Path.Combine(contextDir, "test--context.md"),
-                "# test agent context");
+            await File.WriteAllTextAsync(Path.Combine(contextDir, "test--context.md"), "# test agent context");
 
             try
             {
                 var vm = await MainWindowViewModel.InitializeAsync(
-                    tempRoot,
-                    new FakePtyLauncher(),
-                    new FakeFileWatcher());
+                    tempRoot, new FakePtyLauncher(), new FakeFileWatcher());
 
-                var window = new MainWindow { DataContext = vm };
+                var window = new MainWindow { DataContext = vm, Width = 800, Height = 500 };
+                // App.axaml provides these DataTemplates in the real app.
+                window.DataTemplates.Add(new FuncDataTemplate<AgentPaneViewModel>((_, _) => new AgentPaneView(), true));
+                window.DataTemplates.Add(new FuncDataTemplate<BusViewModel>((_, _) => new BusView(), true));
                 window.Show();
-
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
                 await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 
-                // Assert: the window's content is a DockControl
-                var dockControl = window.FindControl<DockControl>("DockControl");
-                Assert.NotNull(dockControl);
-
-                // Assert: the Layout is a non-null RootDock
-                Assert.NotNull(vm.Layout);
-                Assert.IsAssignableFrom<IRootDock>(vm.Layout);
+                var descendants = window.GetVisualDescendants().ToList();
+                Assert.Contains(descendants, d => d.GetType().Name == "AgentPaneView");
+                Assert.Contains(descendants, d => d.GetType().Name == "TerminalControl");
+                Assert.True(vm.Panes.Count >= 1, "the seeded agent should be an open pane");
+                Assert.NotNull(vm.SelectedPane);
 
                 window.Close();
             }

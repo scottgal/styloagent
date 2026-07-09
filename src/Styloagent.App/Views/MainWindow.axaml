@@ -2,13 +2,13 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
         xmlns:views="clr-namespace:Styloagent.App.Views"
-        xmlns:dock="clr-namespace:Dock.Avalonia.Controls;assembly=Dock.Avalonia"
         xmlns:ic="using:FluentIcons.Avalonia.Fluent"
         x:Class="Styloagent.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="Styloagent Cockpit"
         Width="1200"
-        Height="800">
+        Height="800"
+        Background="#0C0C0C">
 
   <DockPanel>
 
@@ -17,9 +17,7 @@
             Background="{StaticResource CockpitAccentBrush}"
             Padding="8,4">
       <StackPanel Orientation="Horizontal" Spacing="8">
-        <Button Command="{Binding AddAgentCommand}"
-                Padding="10,4"
-                FontSize="13">
+        <Button Command="{Binding AddAgentCommand}" Padding="10,4" FontSize="13">
           <StackPanel Orientation="Horizontal" Spacing="6">
             <ic:SymbolIcon Symbol="Add" FontSize="16" />
             <TextBlock Text="Add agent" VerticalAlignment="Center" />
@@ -28,19 +26,35 @@
       </StackPanel>
     </Border>
 
-    <dock:DockControl x:Name="DockControl"
-                      Layout="{Binding Layout}"
-                      InitializeLayout="False"
-                      InitializeFactory="False">
-      <dock:DockControl.DataTemplates>
-        <DataTemplate DataType="vm:AgentPaneViewModel">
-          <views:AgentPaneView />
-        </DataTemplate>
-        <DataTemplate DataType="vm:BusViewModel">
-          <views:BusView />
-        </DataTemplate>
-      </dock:DockControl.DataTemplates>
-    </dock:DockControl>
+    <!-- left bus | terminal tabs | right bus -->
+    <Grid ColumnDefinitions="240,4,*,4,240">
+
+      <views:BusView Grid.Column="0" DataContext="{Binding BusViewModel}" />
+      <GridSplitter Grid.Column="1" Background="#222" />
+
+      <Grid Grid.Column="2" RowDefinitions="Auto,*" Background="#0C0C0C">
+        <!-- Agent tab strip -->
+        <ItemsControl Grid.Row="0" ItemsSource="{Binding Panes}" Background="#161622">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:AgentPaneViewModel">
+              <Button Content="{Binding DisplayName}"
+                      Padding="10,4" Margin="2"
+                      Command="{Binding DataContext.SelectPaneCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      CommandParameter="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <!-- Selected agent's terminal -->
+        <ContentControl Grid.Row="1" Content="{Binding SelectedPane}" />
+      </Grid>
+
+      <GridSplitter Grid.Column="3" Background="#222" />
+      <views:BusView Grid.Column="4" DataContext="{Binding BusViewModel}" />
+
+    </Grid>
 
   </DockPanel>
 

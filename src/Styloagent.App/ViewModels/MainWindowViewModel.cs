@@ -23,6 +23,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private AgentPaneViewModel? _pane;
 
+    /// <summary>All open agent panes — bound by the shell's tab strip.</summary>
+    public System.Collections.ObjectModel.ObservableCollection<AgentPaneViewModel> Panes { get; } = new();
+
+    [ObservableProperty]
+    private AgentPaneViewModel? _selectedPane;
+
     [ObservableProperty]
     private IRootDock? _layout;
 
@@ -121,6 +127,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             first,
             presentation.DisplayName,
             presentation.BorderColorHex);
+        vm.Panes.Add(vm.Pane);
+        vm.SelectedPane = vm.Pane;
 
         var dockFactory = new StyloagentDockFactory(vm.Pane, vm._busViewModel);
         vm._dockFactory = dockFactory;
@@ -194,6 +202,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             entry,
             presentation.DisplayName,
             presentation.BorderColorHex);
+        Panes.Add(paneVm);
+        SelectedPane = paneVm;
 
         var doc = new Document
         {
@@ -210,6 +220,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // Launch claude in the new pane immediately.
         _ = paneVm.SpawnAsync();
     }
+
+    /// <summary>Selects a pane so its terminal is shown.</summary>
+    [RelayCommand]
+    private void SelectPane(AgentPaneViewModel pane) => SelectedPane = pane;
 
     /// <summary>
     /// The default directory to launch agents in when their worktree isn't configured.

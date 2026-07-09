@@ -21,6 +21,10 @@ public partial class App : Application
         {
             var channelRoot = Environment.GetEnvironmentVariable("STYLOAGENT_CHANNEL")
                 ?? "/tmp/agent-channel";
+            // Agents are the git worktrees of this repo. Point Styloagent elsewhere with
+            // STYLOAGENT_REPO; defaults to the directory the app was launched from.
+            var repoRoot = Environment.GetEnvironmentVariable("STYLOAGENT_REPO")
+                ?? Directory.GetCurrentDirectory();
 
             // Show the window immediately so the user sees it right away.
             var window = new MainWindow();
@@ -40,7 +44,9 @@ public partial class App : Application
                     var vm = await MainWindowViewModel.InitializeAsync(
                         channelRoot,
                         new PortaPtyLauncher(),
-                        new FileSystemFileWatcher());
+                        new FileSystemFileWatcher(),
+                        new GitCliReader(),
+                        repoRoot);
 
                     await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
                     {

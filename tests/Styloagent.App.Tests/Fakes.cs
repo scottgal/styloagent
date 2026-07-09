@@ -22,9 +22,11 @@ internal sealed class FakePty : IPtySession
 internal sealed class FakeLauncher : IPtyLauncher
 {
     public List<FakePty> Spawned { get; } = new();
+    public List<PtySpawnOptions> Options { get; } = new();
 
     public Task<IPtySession> SpawnAsync(PtySpawnOptions o, CancellationToken ct = default)
     {
+        Options.Add(o);
         var p = new FakePty();
         Spawned.Add(p);
         return Task.FromResult<IPtySession>(p);

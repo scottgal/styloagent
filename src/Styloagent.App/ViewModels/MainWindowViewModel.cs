@@ -6,6 +6,7 @@ using Dock.Model.Mvvm.Controls;
 using Styloagent.App.Config;
 using Styloagent.App.Dock;
 using Styloagent.Core.Abstractions;
+using Styloagent.Core.Git;
 using Styloagent.Core.Model;
 using Styloagent.Core.Seeding;
 using Styloagent.Core.Sessions;
@@ -48,6 +49,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         string channelRoot,
         IPtyLauncher launcher,
         IFileWatcher watcher,
+        IGitReader? gitReader = null,
+        string? repoRoot = null,
         string? presentationPath = null,
         CancellationToken ct = default)
     {
@@ -55,13 +58,35 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         vm._launcher = launcher;
         vm._watcher = watcher;
 
-        var seeder = new ChannelManifestSeeder();
-        var entries = await seeder.SeedAsync(channelRoot, new Dictionary<string, string>());
+        // Agents ARE the git worktrees under a configured repo (point-at-a-repo, detect
+        // worktrees): each launches claude in that worktree. Falls back to channel-seeded
+        // agents when no git reader is supplied (e.g. in unit tests).
+        IReadOnlyList<AgentManifestEntry> entries;
+        if (gitReader is not null)
+        {
+            var root = repoRoot
+                ?? Environment.GetEnvironmentVariable("STYLOAGENT_REPO")
+                ?? Directory.GetCurrentDirectory();
+            var worktrees = await gitReader.ListWorktreesAsync(root, ct);
+            entries = worktrees.Count > 0
+                ? worktrees.Select(w => WorktreeEntry(w, root)).ToList()
+                : new[] { WorktreeEntry(new GitWorktree(root, Path.GetFileName(root.TrimEnd('/', '\\')), string.Empty), root) };
+        }
+        else
+        {
+            entries = await new ChannelManifestSeeder().SeedAsync(channelRoot, new Dictionary<string, string>());
+        }
         vm._seededEntries = entries;
+
+        // The bus feed is routed/coloured by the CHANNEL's own agent prefixes, which are
+        // independent of the worktree agents shown as terminals.
+        var channelPrefixes = (await new ChannelManifestSeeder()
+                .SeedAsync(channelRoot, new Dictionary<string, string>()))
+            .Select(e => e.Prefix).ToList();
+        vm._busViewModel = new BusViewModel(channelRoot, channelPrefixes);
 
         if (entries.Count == 0)
         {
-            vm._busViewModel = new BusViewModel(channelRoot, Array.Empty<string>());
             var emptyFactory = new StyloagentDockFactory(null, vm._busViewModel);
             vm._dockFactory = emptyFactory;
             var emptyLayout = emptyFactory.CreateLayout();
@@ -96,9 +121,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             first,
             presentation.DisplayName,
             presentation.BorderColorHex);
-
-        var knownPrefixes = entries.Select(e => e.Prefix).ToList();
-        vm._busViewModel = new BusViewModel(channelRoot, knownPrefixes);
 
         var dockFactory = new StyloagentDockFactory(vm.Pane, vm._busViewModel);
         vm._dockFactory = dockFactory;
@@ -208,6 +230,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     private static AgentManifestEntry WithWorkingDir(AgentManifestEntry e)
         => e with { Worktree = WorkingDirectoryResolver.Resolve(e.Worktree, DefaultWorkingDirectory()) };
+
+    /// <summary>Builds an agent manifest entry from a detected git worktree.</summary>
+    private static AgentManifestEntry WorktreeEntry(GitWorktree w, string repoRoot)
+        => new(
+            Prefix: w.Name + "-",
+            Repo: repoRoot,
+            Worktree: w.Path,
+            LaunchPromptPath: string.Empty,
+            RestartPromptPath: string.Empty,
+            SavedContextPath: string.Empty,
+            Transport: AgentTransport.Local);
 
     /// <summary>Exposes the center DocumentDock for direct inspection (e.g. tests).</summary>
     public DocumentDock? DocumentDock => _dockFactory?.DocumentDock;

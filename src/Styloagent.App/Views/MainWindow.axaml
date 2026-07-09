@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
         xmlns:views="clr-namespace:Styloagent.App.Views"
+        xmlns:dock="clr-namespace:Dock.Avalonia.Controls;assembly=Dock.Avalonia"
         xmlns:ic="using:FluentIcons.Avalonia.Fluent"
         x:Class="Styloagent.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -32,7 +33,13 @@
       <views:AgentsView Grid.Column="0" />
       <GridSplitter Grid.Column="1" Background="#222" />
 
-      <ContentControl Grid.Column="2" Content="{Binding SelectedPane}" Background="#0C0C0C" />
+      <!-- Centre: agent terminals as dockable documents (tabs, float, split).
+           DataTemplates (AgentPaneViewModel→AgentPaneView) come from App.axaml. -->
+      <dock:DockControl Grid.Column="2"
+                        Layout="{Binding Layout}"
+                        InitializeLayout="False"
+                        InitializeFactory="False"
+                        Background="#0C0C0C" />
 
       <GridSplitter Grid.Column="3" Background="#222" />
       <views:BusView Grid.Column="4" DataContext="{Binding BusViewModel}" />

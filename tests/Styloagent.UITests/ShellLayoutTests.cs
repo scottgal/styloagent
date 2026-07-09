@@ -59,58 +59,49 @@ public class ShellLayoutTests
         var layout = factory.CreateLayout();
         factory.InitLayout(layout);
 
-        // Walk the tree: RootDock → ProportionalDock → DocumentDock
+        // Centre is a document-only layout: RootDock → DocumentDock (roster + bus are Grid panels).
         var rootDock = Assert.IsType<RootDock>(layout);
-        var proportional = Assert.IsType<ProportionalDock>(
-            rootDock.VisibleDockables?.OfType<ProportionalDock>().FirstOrDefault());
-        var documentDock = proportional.VisibleDockables?
-            .OfType<DocumentDock>().FirstOrDefault();
+        var documentDock = rootDock.VisibleDockables?.OfType<DocumentDock>().FirstOrDefault();
         Assert.NotNull(documentDock);
 
         var doc = documentDock!.VisibleDockables?.OfType<Document>().FirstOrDefault();
         Assert.NotNull(doc);
         Assert.Same(paneVm, doc!.Context);
+        Assert.IsType<AgentPaneViewModel>(doc.Context);
     }
 
     /// <summary>
-    /// The factory creates a layout with one left-aligned and one right-aligned ToolDock.
+    /// The first agent document is active + floatable, so it can be torn out to its own window.
     /// </summary>
     [Fact]
-    public void DockLayout_Has_LeftAndRight_ToolDocks()
-    {
-        var factory = new StyloagentDockFactory();
-        var layout = factory.CreateLayout();
-        factory.InitLayout(layout);
-
-        var rootDock = Assert.IsType<RootDock>(layout);
-        var proportional = Assert.IsType<ProportionalDock>(
-            rootDock.VisibleDockables?.OfType<ProportionalDock>().FirstOrDefault());
-        var toolDocks = proportional.VisibleDockables?.OfType<ToolDock>().ToList();
-        Assert.NotNull(toolDocks);
-        Assert.Equal(2, toolDocks!.Count);
-
-        Assert.Contains(toolDocks, t => t.Alignment == Alignment.Left);
-        Assert.Contains(toolDocks, t => t.Alignment == Alignment.Right);
-    }
-
-    /// <summary>
-    /// The Document's Context is an AgentPaneViewModel when one is provided to the factory.
-    /// </summary>
-    [Fact]
-    public void DockLayout_AgentDocument_Context_Is_AgentPaneViewModel()
+    public void DockLayout_FirstAgentDocument_IsActive_AndFloatable()
     {
         var paneVm = MakeVm();
         var factory = new StyloagentDockFactory(paneVm);
         var layout = factory.CreateLayout();
         factory.InitLayout(layout);
 
+        var documentDock = factory.DocumentDock;
+        Assert.NotNull(documentDock);
+        var doc = Assert.IsType<Document>(documentDock!.ActiveDockable);
+        Assert.Same(paneVm, doc.Context);
+        Assert.True(doc.CanFloat);
+    }
+
+    /// <summary>
+    /// With no agent pane (empty channel), the DocumentDock exists but holds no documents.
+    /// </summary>
+    [Fact]
+    public void DockLayout_WithNoAgent_HasEmptyDocumentDock()
+    {
+        var factory = new StyloagentDockFactory();
+        var layout = factory.CreateLayout();
+        factory.InitLayout(layout);
+
         var rootDock = Assert.IsType<RootDock>(layout);
-        var proportional = Assert.IsType<ProportionalDock>(
-            rootDock.VisibleDockables?.OfType<ProportionalDock>().FirstOrDefault());
-        var documentDock = proportional.VisibleDockables?
-            .OfType<DocumentDock>().First();
-        var doc = documentDock!.VisibleDockables?.OfType<Document>().First();
-        Assert.IsType<AgentPaneViewModel>(doc!.Context);
+        var documentDock = rootDock.VisibleDockables?.OfType<DocumentDock>().FirstOrDefault();
+        Assert.NotNull(documentDock);
+        Assert.Empty(documentDock!.VisibleDockables!.OfType<Document>());
     }
 
     // ── AgentPaneView ─────────────────────────────────────────────────────────

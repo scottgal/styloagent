@@ -59,12 +59,11 @@ public class DockChromeRenderTests
                 var names = window.GetVisualDescendants().Select(d => d.GetType().Name).ToHashSet();
 
                 // The dock chrome must materialize — this was ALL missing when the theme was absent.
+                // (Document-only layout: RootDock → DocumentDock; roster + bus are Grid panels.)
                 Assert.Contains("DockControl", names);
                 Assert.Contains("RootDockControl", names);
-                Assert.Contains("ProportionalDockControl", names);
                 Assert.Contains("DocumentControl", names);
                 Assert.Contains("DocumentTabStrip", names);
-                Assert.Contains("ToolDockControl", names);
 
                 window.Close();
             }

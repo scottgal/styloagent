@@ -156,6 +156,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var dockFactory = new StyloagentDockFactory(vm.Pane, vm._busViewModel);
         vm._dockFactory = dockFactory;
         vm._factory = dockFactory;
+        dockFactory.ActiveDockableChanged += vm.OnActiveDockableChanged;
         var layout = dockFactory.CreateLayout();
         vm.Layout = layout;
         if (layout is not null)
@@ -246,9 +247,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _ = paneVm.SpawnAsync();
     }
 
-    /// <summary>Selects a pane so its terminal is shown.</summary>
+    /// <summary>Selects a pane so its terminal document is brought to front in the centre dock.</summary>
     [RelayCommand]
-    private void SelectPane(AgentPaneViewModel pane) => SelectedPane = pane;
+    private void SelectPane(AgentPaneViewModel pane)
+    {
+        SelectedPane = pane;
+        ActivateDocumentFor(pane);
+    }
 
     /// <summary>Keeps each pane's <see cref="AgentPaneViewModel.IsSelected"/> in sync so the roster
     /// outlines only the active agent.</summary>
@@ -256,6 +261,24 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (oldValue is not null) oldValue.IsSelected = false;
         if (newValue is not null) newValue.IsSelected = true;
+    }
+
+    /// <summary>Brings the dock document whose context is <paramref name="pane"/> to the front.</summary>
+    private void ActivateDocumentFor(AgentPaneViewModel pane)
+    {
+        if (_dockFactory?.DocumentDock is not { } dock) return;
+        var doc = dock.VisibleDockables?
+            .OfType<Document>()
+            .FirstOrDefault(d => ReferenceEquals(d.Context, pane));
+        if (doc is not null)
+            _dockFactory.SetActiveDockable(doc);
+    }
+
+    /// <summary>Reverse sync: activating a dock tab updates the roster selection/highlight.</summary>
+    private void OnActiveDockableChanged(object? sender, global::Dock.Model.Core.Events.ActiveDockableChangedEventArgs e)
+    {
+        if (e.Dockable is Document { Context: AgentPaneViewModel pane } && !ReferenceEquals(SelectedPane, pane))
+            SelectedPane = pane;
     }
 
     // ── Hook state channel (§4.4) ─────────────────────────────────────────────
@@ -332,6 +355,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     public void Dispose()
     {
+        if (_dockFactory is not null)
+            _dockFactory.ActiveDockableChanged -= OnActiveDockableChanged;
+
         _busViewModel?.Dispose();
 
         if (_hookChannel is not null)

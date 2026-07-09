@@ -26,30 +26,13 @@
       </StackPanel>
     </Border>
 
-    <!-- left bus | terminal tabs | right bus -->
-    <Grid ColumnDefinitions="240,4,*,4,240">
+    <!-- Agents roster | selected terminal | signal bus -->
+    <Grid ColumnDefinitions="230,4,*,4,300">
 
-      <views:BusView Grid.Column="0" DataContext="{Binding BusViewModel}" />
+      <views:AgentsView Grid.Column="0" />
       <GridSplitter Grid.Column="1" Background="#222" />
 
-      <Grid Grid.Column="2" RowDefinitions="Auto,*" Background="#0C0C0C">
-        <!-- Agent tab strip -->
-        <ItemsControl Grid.Row="0" ItemsSource="{Binding Panes}" Background="#161622">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:AgentPaneViewModel">
-              <Button Content="{Binding DisplayName}"
-                      Padding="10,4" Margin="2"
-                      Command="{Binding DataContext.SelectPaneCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                      CommandParameter="{Binding}" />
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-        <!-- Selected agent's terminal -->
-        <ContentControl Grid.Row="1" Content="{Binding SelectedPane}" />
-      </Grid>
+      <ContentControl Grid.Column="2" Content="{Binding SelectedPane}" Background="#0C0C0C" />
 
       <GridSplitter Grid.Column="3" Background="#222" />
       <views:BusView Grid.Column="4" DataContext="{Binding BusViewModel}" />

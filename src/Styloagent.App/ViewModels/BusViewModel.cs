@@ -59,6 +59,14 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private ObservableCollection<BusMessageItem> _messages = new();
 
+    /// <summary>Active (non-archived) messages — inbox/outbox.</summary>
+    [ObservableProperty]
+    private ObservableCollection<BusMessageItem> _currentMessages = new();
+
+    /// <summary>Archived messages.</summary>
+    [ObservableProperty]
+    private ObservableCollection<BusMessageItem> _archivedMessages = new();
+
     [ObservableProperty]
     private bool _isLoading;
 
@@ -130,8 +138,14 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                     void UpdateMessages()
                     {
                         Messages.Clear();
+                        CurrentMessages.Clear();
+                        ArchivedMessages.Clear();
                         foreach (var item in items)
+                        {
                             Messages.Add(item);
+                            if (item.State == "Archived") ArchivedMessages.Add(item);
+                            else CurrentMessages.Add(item);
+                        }
                         IsLoading = false;
                     }
 

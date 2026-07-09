@@ -71,20 +71,13 @@ public class TerminalControlTests
             // Fix 2: assert on the REAL binding pipeline — NOT on control.RenderedText (which only
             // reads the internal _rows list without proving the XAML ItemsSource binding is live).
 
-            // Part A: verify the XAML ItemsSource binding is live by finding RowList in the
-            // visual tree and checking ItemsSource is the same reference as control.Rows.
-            // If the "ItemsSource={Binding Rows, ...}" were missing, ItemsSource would be null
-            // and this assertion would detect the broken binding even if Rows had correct data.
+            // Part A: verify the REAL render surface — find the SelectableTextBlock "ScreenText"
+            // in the visual tree and check it actually shows the output. If RebuildRows failed to
+            // update the rendered control, this catches it (not just the internal _rows list).
             var allDescendants = control.GetVisualDescendants().ToList();
-            var rowList = allDescendants.OfType<ItemsControl>().FirstOrDefault(ic => ic.Name == "RowList");
-            Assert.NotNull(rowList);
-            // Assert that ItemsSource is exactly control.Rows (reference equality, not just equal).
-            // If the XAML ItemsSource binding is broken, ItemsSource would be null/different.
-            Assert.True(
-                ReferenceEquals(control.Rows, rowList.ItemsSource),
-                $"Expected RowList.ItemsSource to be the same reference as control.Rows (XAML binding is live). " +
-                $"If this fails, the 'ItemsSource={{Binding Rows, ...}}' in TerminalControl.axaml is broken. " +
-                $"RowList.ItemsSource={rowList.ItemsSource?.GetType().Name ?? "null"}");
+            var screen = allDescendants.OfType<SelectableTextBlock>().FirstOrDefault(t => t.Name == "ScreenText");
+            Assert.NotNull(screen);
+            Assert.Contains("HELLO_TERMINAL", screen!.Text ?? string.Empty);
 
             // Part B: verify the data model (which the ItemsSource binding exposes to the template)
             // contains the expected output text.

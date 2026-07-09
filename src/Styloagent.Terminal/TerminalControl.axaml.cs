@@ -262,14 +262,14 @@ public sealed partial class TerminalControl : UserControl
     {
         string[] lines = _terminal.GetVisibleLines();
 
-        // Sync the observable list to the new line count.
+        // Sync the observable list to the new line count (kept for RenderedText / assertions).
         while (_rows.Count < lines.Length) _rows.Add(string.Empty);
         while (_rows.Count > lines.Length) _rows.RemoveAt(_rows.Count - 1);
-
         for (int i = 0; i < lines.Length; i++)
-        {
             _rows[i] = lines[i];
-        }
+
+        // Render the whole screen into the single SelectableTextBlock.
+        ScreenText.Text = string.Join("\n", lines);
     }
 
     // ── Key translation ──────────────────────────────────────────────────────

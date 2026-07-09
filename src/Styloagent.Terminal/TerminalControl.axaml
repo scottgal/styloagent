@@ -1,26 +1,25 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Styloagent.Terminal.TerminalControl"
-             Background="Black"
-             Foreground="#CCCCCC"
-             Focusable="True">
+             Background="#0C0C0C"
+             Focusable="True"
+             Cursor="Ibeam">
 
+  <!-- Single monospace text block for the whole screen buffer. One control renders
+       reliably (an ItemsControl-of-rows silently failed to materialize), and it gives
+       correct monospace grid alignment plus selection. -->
   <ScrollViewer Name="ScrollArea"
+                Background="#0C0C0C"
+                Padding="6,4"
                 HorizontalScrollBarVisibility="Auto"
                 VerticalScrollBarVisibility="Auto">
-    <ItemsControl Name="RowList"
-                  ItemsSource="{Binding Rows, RelativeSource={RelativeSource AncestorType=UserControl}}">
-      <ItemsControl.ItemTemplate>
-        <DataTemplate>
-          <TextBlock Text="{Binding}"
-                     FontFamily="Cascadia Mono, Consolas, Courier New, monospace"
-                     FontSize="13"
-                     Foreground="#CCCCCC"
-                     Background="Transparent"
-                     TextWrapping="NoWrap" />
-        </DataTemplate>
-      </ItemsControl.ItemTemplate>
-    </ItemsControl>
+    <SelectableTextBlock Name="ScreenText"
+                         FontFamily="Menlo, Monaco, Cascadia Mono, Consolas, monospace"
+                         FontSize="13"
+                         LineHeight="16"
+                         Foreground="#EDEDED"
+                         Background="#0C0C0C"
+                         TextWrapping="NoWrap" />
   </ScrollViewer>
 
 </UserControl>

@@ -54,7 +54,8 @@ public sealed class TestApp : Application
         catch { /* already loaded */ }
 
         return AppBuilder.Configure<TestApp>()
-            .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = true })
+            .UseSkia()
+            .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
             .ConfigureFonts(fm =>
             {
                 fm.AddFontCollection(new Avalonia.Media.Fonts.EmbeddedFontCollection(

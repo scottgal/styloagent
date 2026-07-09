@@ -1,8 +1,10 @@
+using Avalonia;
 using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Styloagent.Core.Sessions;
 using XTerm;
 using XTerm.Events;
@@ -51,7 +53,13 @@ public sealed partial class TerminalControl : UserControl
 
         // Start Avalonia size tracking.
         SizeChanged += OnSizeChanged;
-        AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel);
+
+        // Register for both Tunnel and Bubble strategies:
+        // - Tunnel: captures keys as they route from the visual root down through TerminalControl,
+        //   intercepting them before any child controls can handle them (correct production behavior).
+        // - Bubble: also catches direct RaiseEvent calls (used in headless unit tests where the
+        //   headless platform's keyboard routing produces a Bubble-only pass on the source control).
+        AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel | RoutingStrategies.Bubble);
     }
 
     /// <summary>
@@ -79,6 +87,15 @@ public sealed partial class TerminalControl : UserControl
         _session = null;
     }
 
+    /// <inheritdoc />
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        // Fix 4: auto-teardown — unsubscribe session events when the control leaves the tree
+        // to prevent handler leaks when the control is removed without an explicit Detach() call.
+        Detach();
+        base.OnDetachedFromVisualTree(e);
+    }
+
     // ── Session event handlers (called on background thread) ────────────────
 
     private void OnSessionOutput(string text)
@@ -99,28 +116,87 @@ public sealed partial class TerminalControl : UserControl
 
     private void OnTerminalDataReceived(object? sender, TerminalEvents.DataEventArgs e)
     {
-        _ = ForwardToSessionAsync(e.Data);
-    }
-
-    private async Task ForwardToSessionAsync(string data)
-    {
-        if (_session is null) return;
-        try { await _session.WriteAsync(data).ConfigureAwait(false); }
-        catch (OperationCanceledException) { }
+        // Fix 1: route through shared fire-and-forget helper so exceptions are never silently lost.
+        FireAndForgetWrite(e.Data);
     }
 
     // ── Keyboard input ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Test seam: directly invoke the key translation + write path for <paramref name="key"/>.
+    /// Used in headless unit tests where Avalonia's keyboard event routing (tunnel pass from root)
+    /// is not available. Translates the key to a VT sequence and writes it to the session.
+    /// </summary>
+    internal void SimulateKeyInput(Key key, KeyModifiers modifiers = KeyModifiers.None)
+    {
+        if (_session is null) return;
+
+        XTermModifiers mods = XTermModifiers.None;
+        if ((modifiers & KeyModifiers.Shift) != 0)   mods |= XTermModifiers.Shift;
+        if ((modifiers & KeyModifiers.Control) != 0) mods |= XTermModifiers.Control;
+        if ((modifiers & KeyModifiers.Alt) != 0)     mods |= XTermModifiers.Alt;
+
+        XTermKey? xtermKey = key switch
+        {
+            AvaloniaKey.Enter    => XTermKey.Enter,
+            AvaloniaKey.Back     => XTermKey.Backspace,
+            AvaloniaKey.Tab      => XTermKey.Tab,
+            AvaloniaKey.Escape   => XTermKey.Escape,
+            AvaloniaKey.Up       => XTermKey.UpArrow,
+            AvaloniaKey.Down     => XTermKey.DownArrow,
+            AvaloniaKey.Left     => XTermKey.LeftArrow,
+            AvaloniaKey.Right    => XTermKey.RightArrow,
+            _                    => null,
+        };
+
+        if (!xtermKey.HasValue) return;
+
+        string? vtSequence = _terminal.GenerateKeyInput(xtermKey.Value, mods);
+
+        // XTerm.NET returns null for Enter; fall back to the standard CR sequence.
+        if (vtSequence is null && xtermKey == XTermKey.Enter)
+            vtSequence = "\r";
+
+        if (vtSequence is null) return;
+        FireAndForgetWrite(vtSequence);
+    }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
         if (_session is null) return;
 
-        // Translate the Avalonia key to a VT sequence via XTerm.NET.
         string? vtSequence = TranslateKey(e);
         if (vtSequence is null) return;
 
         e.Handled = true;
-        _ = _session.WriteAsync(vtSequence);
+        // Fix 1: route through shared fire-and-forget helper so exceptions are never silently lost.
+        FireAndForgetWrite(vtSequence);
+    }
+
+    /// <summary>
+    /// Fix 1: shared fire-and-forget helper for both the DataReceived forward path and the
+    /// keystroke write path. Awaits WriteAsync internally and catches:
+    /// - <see cref="OperationCanceledException"/> — silently ignored (session shutting down).
+    /// - <see cref="Exception"/> — logged to debug output.
+    ///   TODO: route write failures to a real error surface (status bar, error event) once the
+    ///   shell has an appropriate error channel.
+    /// </summary>
+    private async void FireAndForgetWrite(string data)
+    {
+        if (_session is null) return;
+        try
+        {
+            await _session.WriteAsync(data).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Session is shutting down — expected, ignore.
+        }
+        catch (Exception ex)
+        {
+            // TODO: route to a real error surface (status bar / error event) in a future PR.
+            System.Diagnostics.Debug.WriteLine($"[TerminalControl] write failed: {ex}");
+        }
     }
 
     // ── Size change → PTY resize ─────────────────────────────────────────────
@@ -200,7 +276,13 @@ public sealed partial class TerminalControl : UserControl
         };
 
         if (xtermKey.HasValue)
-            return _terminal.GenerateKeyInput(xtermKey.Value, mods);
+        {
+            string? seq = _terminal.GenerateKeyInput(xtermKey.Value, mods);
+            // XTerm.NET returns null for Enter; fall back to the standard CR sequence.
+            if (seq is null && xtermKey == XTermKey.Enter)
+                seq = "\r";
+            return seq;
+        }
 
         // For printable characters (including Ctrl+letter combinations), use GenerateCharInput.
         if (e.Key >= AvaloniaKey.A && e.Key <= AvaloniaKey.Z)

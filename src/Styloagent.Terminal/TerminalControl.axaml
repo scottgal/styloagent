@@ -8,7 +8,8 @@
   <ScrollViewer Name="ScrollArea"
                 HorizontalScrollBarVisibility="Auto"
                 VerticalScrollBarVisibility="Auto">
-    <ItemsControl Name="RowList">
+    <ItemsControl Name="RowList"
+                  ItemsSource="{Binding Rows, RelativeSource={RelativeSource AncestorType=UserControl}}">
       <ItemsControl.ItemTemplate>
         <DataTemplate>
           <TextBlock Text="{Binding}"

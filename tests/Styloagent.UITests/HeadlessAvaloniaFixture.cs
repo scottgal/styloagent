@@ -27,7 +27,7 @@ public sealed class HeadlessAvaloniaFixture : IDisposable
         _session.Dispatch(work, CancellationToken.None);
 
     public Task DispatchAsync(Func<Task> work) =>
-        _session.Dispatch(work, CancellationToken.None);
+        _session.Dispatch<bool>(async () => { await work(); return true; }, CancellationToken.None);
 
     public void Dispose() => _session.Dispose();
 }

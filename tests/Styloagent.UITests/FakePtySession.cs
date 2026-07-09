@@ -19,6 +19,9 @@ public sealed class FakePtySession : IPtySession
 
     public IReadOnlyList<string> Writes => _writes.AsReadOnly();
 
+    /// <summary>Clears the recorded writes list. Useful for isolating test assertions.</summary>
+    public void ClearWrites() => _writes.Clear();
+
     public (int Cols, int Rows)? LastResize { get; private set; }
 
     /// <summary>
@@ -29,9 +32,13 @@ public sealed class FakePtySession : IPtySession
     /// <summary>Raises <see cref="Exited"/>.</summary>
     public void FireExited() => Exited?.Invoke();
 
+    /// <summary>Optional callback invoked synchronously on every WriteAsync call.</summary>
+    public Action<string>? OnWrite { get; set; }
+
     public ValueTask WriteAsync(string text, CancellationToken ct = default)
     {
         _writes.Add(text);
+        OnWrite?.Invoke(text);
         return ValueTask.CompletedTask;
     }
 

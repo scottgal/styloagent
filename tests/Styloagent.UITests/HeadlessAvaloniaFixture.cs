@@ -1,8 +1,11 @@
 using Avalonia;
+using Avalonia.Controls.Templates;
 using Avalonia.Headless;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
+using Styloagent.App.ViewModels;
+using Styloagent.App.Views;
 
 namespace Styloagent.UITests;
 
@@ -76,6 +79,11 @@ public sealed class TestApp : Application
         {
             Source = new Uri("avares://Dock.Avalonia.Themes.Fluent/DockFluentTheme.axaml"),
         });
+
+        // Application-level DataTemplates, exactly as App.axaml declares them, so dock-hosted
+        // content resolves its view the same way it does in the real app.
+        DataTemplates.Add(new FuncDataTemplate<AgentPaneViewModel>((_, _) => new AgentPaneView(), true));
+        DataTemplates.Add(new FuncDataTemplate<BusViewModel>((_, _) => new BusView(), true));
 
         // Suppress rendering exceptions caused by the CFF-format Seagull Fluent Icons
         // font failing to load in the headless Skia software renderer (a known limitation).

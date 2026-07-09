@@ -12,11 +12,12 @@ public class ItemsControlProbeTests
     private readonly HeadlessAvaloniaFixture _fx;
     public ItemsControlProbeTests(HeadlessAvaloniaFixture fx) => _fx = fx;
 
-    // DOCUMENTED LIMITATION: ItemsControl does NOT materialize its item containers in the
-    // headless render (this test fails with 0 of 3). So headless screenshots can't verify
-    // ItemsControl-based views (Agents roster, bus feed) — they DO render in the real app.
-    // Kept as a skipped record so we don't chase this again.
-    [Fact(Skip = "Headless ItemsControl does not materialize item containers; verify these views in the running app.")]
+    // RESOLVED: a headless ItemsControl DOES materialize its item containers — the earlier
+    // "0 of 3" was because the test App loaded no FluentTheme, so ItemsControl/ItemsPresenter had
+    // no control template and generated no containers (the SAME missing-theme root cause as the old
+    // "Dock renders nothing"). With FluentTheme loaded in TestApp, all items materialize. This test
+    // now guards that the roster/bus/tab ItemsControls really render headlessly.
+    [Fact]
     public async Task ItemsControl_materializes_items()
     {
         int textBlocks = 0;

@@ -13,6 +13,7 @@ namespace Styloagent.App.Dock;
 public sealed class StyloagentDockFactory : Factory
 {
     private readonly AgentPaneViewModel? _agentPane;
+    private readonly BusViewModel? _busViewModel;
 
     /// <summary>The center DocumentDock; populated after <see cref="CreateLayout"/> is called.</summary>
     public DocumentDock? DocumentDock { get; private set; }
@@ -20,9 +21,10 @@ public sealed class StyloagentDockFactory : Factory
     /// <summary>The root dock; populated after <see cref="CreateLayout"/> is called.</summary>
     public IRootDock? RootDock { get; private set; }
 
-    public StyloagentDockFactory(AgentPaneViewModel? agentPane = null)
+    public StyloagentDockFactory(AgentPaneViewModel? agentPane = null, BusViewModel? busViewModel = null)
     {
         _agentPane = agentPane;
+        _busViewModel = busViewModel;
     }
 
     public override IRootDock CreateLayout()
@@ -31,14 +33,16 @@ public sealed class StyloagentDockFactory : Factory
         var leftBusTool = new Tool
         {
             Id = "LeftBus",
-            Title = "Bus (Left)",
+            Title = "Signal Bus",
+            Context = _busViewModel,
         };
 
         // Right bus tool
         var rightBusTool = new Tool
         {
             Id = "RightBus",
-            Title = "Bus (Right)",
+            Title = "Bus Threads",
+            Context = _busViewModel,
         };
 
         // Agent pane document

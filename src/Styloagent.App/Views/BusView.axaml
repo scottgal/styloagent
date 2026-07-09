@@ -1,0 +1,87 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
+             x:Class="Styloagent.App.Views.BusView"
+             x:DataType="vm:BusViewModel">
+
+  <Border Background="#0D0D1A"
+          CornerRadius="4"
+          Padding="0">
+
+    <Grid RowDefinitions="Auto,*">
+
+      <!-- Header -->
+      <Border Grid.Row="0"
+              Background="#1A1A2E"
+              Padding="8,6">
+        <TextBlock Text="Signal Bus"
+                   FontWeight="Bold"
+                   FontSize="13"
+                   Foreground="#9D7FE0"
+                   LetterSpacing="1" />
+      </Border>
+
+      <!-- Message list -->
+      <ScrollViewer Grid.Row="1"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto">
+        <ItemsControl ItemsSource="{Binding Messages}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="vm:BusMessageItem">
+              <Border Margin="0,1,0,0"
+                      Background="#111122"
+                      BoxShadow="0 1 3 0 #33000000">
+                <Grid ColumnDefinitions="4,*">
+
+                  <!-- Color swatch / left accent bar -->
+                  <Border Grid.Column="0"
+                          Background="{Binding ColorHex}"
+                          Width="4" />
+
+                  <!-- Content -->
+                  <StackPanel Grid.Column="1"
+                              Margin="8,5,8,5"
+                              Spacing="2">
+
+                    <!-- Row 1: prefix (bold) + slug -->
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <TextBlock Text="{Binding RoutingPrefix}"
+                                 FontWeight="Bold"
+                                 FontSize="11"
+                                 Foreground="{Binding ColorHex}" />
+                      <TextBlock Text="{Binding Slug}"
+                                 FontSize="11"
+                                 Foreground="#CCCCDD"
+                                 TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+
+                    <!-- Row 2: kind/state badge + relative time -->
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <Border Background="#2A2A44"
+                              CornerRadius="3"
+                              Padding="4,1">
+                        <TextBlock FontSize="9"
+                                   Foreground="#8888AA">
+                          <Run Text="{Binding Kind}" />
+                          <Run Text=" · " />
+                          <Run Text="{Binding State}" />
+                        </TextBlock>
+                      </Border>
+                      <TextBlock Text="{Binding RelativeTime}"
+                                 FontSize="9"
+                                 Foreground="#555566"
+                                 VerticalAlignment="Center" />
+                    </StackPanel>
+
+                  </StackPanel>
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+
+    </Grid>
+  </Border>
+
+</UserControl>

@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Headless;
+using Avalonia.Threading;
 
 namespace Styloagent.UITests;
 
@@ -32,10 +33,58 @@ public sealed class HeadlessAvaloniaFixture : IDisposable
     public void Dispose() => _session.Dispose();
 }
 
-/// <summary>Minimal Avalonia application used to bootstrap the headless platform.</summary>
+/// <summary>
+/// Minimal Avalonia application used to bootstrap the headless platform.
+/// <para>
+/// BuildAvaloniaApp is discovered by HeadlessUnitTestSession.StartNew and used to
+/// configure the AppBuilder.
+/// </para>
+/// </summary>
 public sealed class TestApp : Application
 {
-    public override void Initialize() { }
+    public static AppBuilder BuildAvaloniaApp()
+    {
+        // Pre-load FluentIcons assemblies so their avares:// resources are accessible.
+        _ = typeof(FluentIcons.Avalonia.Fluent.SymbolIcon).Assembly;
+        try
+        {
+            System.Runtime.Loader.AssemblyLoadContext.Default.LoadFromAssemblyName(
+                new System.Reflection.AssemblyName("FluentIcons.Resources.Avalonia"));
+        }
+        catch { /* already loaded */ }
+
+        return AppBuilder.Configure<TestApp>()
+            .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = true })
+            .ConfigureFonts(fm =>
+            {
+                fm.AddFontCollection(new Avalonia.Media.Fonts.EmbeddedFontCollection(
+                    new Uri("fonts:Seagull Fluent Icons"),
+                    new Uri("avares://FluentIcons.Resources.Avalonia/Assets")));
+            });
+    }
+
+    public override void Initialize()
+    {
+        // Suppress rendering exceptions caused by the CFF-format Seagull Fluent Icons
+        // font failing to load in the headless Skia software renderer (a known limitation).
+        // Tests check logical/binding structure, not visual font rendering.
+        Dispatcher.UIThread.UnhandledExceptionFilter += (_, args) =>
+        {
+            if (args.Exception is InvalidOperationException ex
+                && ex.Message.Contains("glyphTypeface", StringComparison.OrdinalIgnoreCase))
+            {
+                args.RequestCatch = true;
+            }
+        };
+        Dispatcher.UIThread.UnhandledException += (_, args) =>
+        {
+            if (args.Exception is InvalidOperationException ex
+                && ex.Message.Contains("glyphTypeface", StringComparison.OrdinalIgnoreCase))
+            {
+                args.Handled = true;
+            }
+        };
+    }
 }
 
 /// <summary>Marker so all Avalonia tests share one headless session.</summary>

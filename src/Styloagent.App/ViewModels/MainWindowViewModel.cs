@@ -27,6 +27,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private IFactory? _factory;
     private StyloagentDockFactory? _dockFactory;
+    private BusViewModel? _busViewModel;
 
     // Runtime state for AddAgent
     private IReadOnlyList<AgentManifestEntry> _seededEntries = Array.Empty<AgentManifestEntry>();
@@ -60,7 +61,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         if (entries.Count == 0)
         {
-            var emptyFactory = new StyloagentDockFactory(null);
+            vm._busViewModel = new BusViewModel(channelRoot, Array.Empty<string>());
+            var emptyFactory = new StyloagentDockFactory(null, vm._busViewModel);
             vm._dockFactory = emptyFactory;
             var emptyLayout = emptyFactory.CreateLayout();
             vm.Layout = emptyLayout;
@@ -95,7 +97,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
             presentation.DisplayName,
             presentation.BorderColorHex);
 
-        var dockFactory = new StyloagentDockFactory(vm.Pane);
+        var knownPrefixes = entries.Select(e => e.Prefix).ToList();
+        vm._busViewModel = new BusViewModel(channelRoot, knownPrefixes);
+
+        var dockFactory = new StyloagentDockFactory(vm.Pane, vm._busViewModel);
         vm._dockFactory = dockFactory;
         vm._factory = dockFactory;
         var layout = dockFactory.CreateLayout();
@@ -178,4 +183,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     /// <summary>Exposes the center DocumentDock for direct inspection (e.g. tests).</summary>
     public DocumentDock? DocumentDock => _dockFactory?.DocumentDock;
+
+    /// <summary>Exposes the live bus feed view-model (e.g. tests).</summary>
+    public BusViewModel? BusViewModel => _busViewModel;
 }

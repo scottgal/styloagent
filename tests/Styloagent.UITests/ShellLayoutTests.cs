@@ -196,7 +196,7 @@ public class ShellLayoutTests
 
     /// <summary>
     /// AgentPaneView applies the border colour from BorderColorHex on the DataContext.
-    /// After DataContext is set, PaneBorder.BorderBrush should be a SolidColorBrush.
+    /// After DataContext is set, the AccentStripe Border.Background should be a SolidColorBrush.
     /// </summary>
     [Fact]
     public Task AgentPaneView_Applies_BorderColorHex()
@@ -213,9 +213,13 @@ public class ShellLayoutTests
 
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 
+            // PaneBorder still exists; the accent stripe is now a named inner border.
             var border = view.FindControl<Border>("PaneBorder");
             Assert.NotNull(border);
-            Assert.IsType<Avalonia.Media.SolidColorBrush>(border!.BorderBrush);
+
+            var accentStripe = view.FindControl<Border>("AccentStripe");
+            Assert.NotNull(accentStripe);
+            Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(accentStripe!.Background);
 
             window.Close();
         });

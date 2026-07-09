@@ -5,7 +5,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.4" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.4" />
     <PackageReference Include="Porta.Pty" Version="1.0.7" />
+    <PackageReference Include="XTerm.NET" Version="1.0.15" />
   </ItemGroup>
 
   <PropertyGroup>

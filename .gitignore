@@ -1,0 +1,16 @@
+# .NET
+bin/
+obj/
+*.user
+artifacts/
+publish/
+
+# Rider / IDE
+.idea/
+.vs/
+
+# macOS
+.DS_Store
+
+# SDD scratch (briefs, reports, ledger)
+.superpowers/

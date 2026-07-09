@@ -18,6 +18,7 @@
     <PackageReference Include="Dock.Avalonia.Themes.Fluent" Version="11.3.12.1" />
     <PackageReference Include="Dock.Model.Mvvm" Version="11.3.12.1" />
     <PackageReference Include="VYaml" Version="1.4.0" />
+    <PackageReference Include="FluentIcons.Avalonia.Fluent" Version="2.0.326" />
   </ItemGroup>
 
   <ItemGroup>

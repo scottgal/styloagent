@@ -2,43 +2,76 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
              xmlns:terminal="clr-namespace:Styloagent.Terminal;assembly=Styloagent.Terminal"
+             xmlns:ic="using:FluentIcons.Avalonia.Fluent"
              x:Class="Styloagent.App.Views.AgentPaneView"
              x:DataType="vm:AgentPaneViewModel">
 
   <Border Name="PaneBorder"
-          BorderThickness="2"
-          CornerRadius="4">
-    <Grid RowDefinitions="Auto,*">
+          BorderThickness="0,0,0,0"
+          CornerRadius="4"
+          BoxShadow="0 2 8 0 #44000000">
+    <Grid ColumnDefinitions="3,*">
 
-      <!-- Toolbar -->
-      <StackPanel Grid.Row="0"
-                  Orientation="Horizontal"
-                  Spacing="4"
-                  Margin="4">
-        <TextBlock Name="AgentDisplayName"
-                   Text="{Binding DisplayName}"
-                   VerticalAlignment="Center"
-                   Margin="4,0,8,0"
-                   FontWeight="SemiBold" />
-        <Button Name="SpawnButton"
-                Content="Spawn"
-                Command="{Binding SpawnCommand}" />
-        <Button Name="DehydrateButton"
-                Content="Dehydrate"
-                Command="{Binding DehydrateCommand}" />
-        <Button Name="RehydrateButton"
-                Content="Rehydrate"
-                Command="{Binding RehydrateCommand}" />
-        <Button Name="RenameButton"
-                Content="Rename"
-                Command="{Binding RenameCommand}"
-                CommandParameter="New Name" />
-      </StackPanel>
+      <!-- Left accent stripe -->
+      <Border Name="AccentStripe"
+              Grid.Column="0"
+              Background="{Binding BorderColorHex}"
+              CornerRadius="4,0,0,4" />
 
-      <!-- Terminal area -->
-      <terminal:TerminalControl Name="Terminal"
-                                Grid.Row="1" />
+      <Grid Grid.Column="1" RowDefinitions="Auto,*">
 
+        <!-- Toolbar -->
+        <StackPanel Grid.Row="0"
+                    Orientation="Horizontal"
+                    Spacing="4"
+                    Margin="4"
+                    Background="#1A1A2E">
+          <TextBlock Name="AgentDisplayName"
+                     Text="{Binding DisplayName}"
+                     VerticalAlignment="Center"
+                     Margin="4,0,8,0"
+                     FontWeight="SemiBold"
+                     Foreground="#E0E0FF" />
+          <Button Name="SpawnButton"
+                  Command="{Binding SpawnCommand}"
+                  ToolTip.Tip="Spawn agent">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <ic:SymbolIcon Symbol="Play" FontSize="14" />
+              <TextBlock Text="Spawn" />
+            </StackPanel>
+          </Button>
+          <Button Name="DehydrateButton"
+                  Command="{Binding DehydrateCommand}"
+                  ToolTip.Tip="Dehydrate (suspend) agent">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <ic:SymbolIcon Symbol="Pause" FontSize="14" />
+              <TextBlock Text="Dehydrate" />
+            </StackPanel>
+          </Button>
+          <Button Name="RehydrateButton"
+                  Command="{Binding RehydrateCommand}"
+                  ToolTip.Tip="Rehydrate (resume) agent">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <ic:SymbolIcon Symbol="PlayCircle" FontSize="14" />
+              <TextBlock Text="Rehydrate" />
+            </StackPanel>
+          </Button>
+          <Button Name="RenameButton"
+                  Command="{Binding RenameCommand}"
+                  CommandParameter="New Name"
+                  ToolTip.Tip="Rename agent">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <ic:SymbolIcon Symbol="Rename" FontSize="14" />
+              <TextBlock Text="Rename" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+
+        <!-- Terminal area -->
+        <terminal:TerminalControl Name="Terminal"
+                                  Grid.Row="1" />
+
+      </Grid>
     </Grid>
   </Border>
 

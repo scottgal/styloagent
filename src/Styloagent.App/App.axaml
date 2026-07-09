@@ -2,7 +2,12 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
              xmlns:views="clr-namespace:Styloagent.App.Views"
-             x:Class="Styloagent.App.App">
+             x:Class="Styloagent.App.App"
+             RequestedThemeVariant="Dark">
+
+  <Application.Resources>
+    <SolidColorBrush x:Key="CockpitAccentBrush" Color="#7C5CBF"/>
+  </Application.Resources>
 
   <Application.Styles>
     <FluentTheme />
@@ -12,6 +17,9 @@
   <Application.DataTemplates>
     <DataTemplate DataType="vm:AgentPaneViewModel">
       <views:AgentPaneView />
+    </DataTemplate>
+    <DataTemplate DataType="vm:BusViewModel">
+      <views:BusView />
     </DataTemplate>
   </Application.DataTemplates>
 

@@ -54,6 +54,29 @@ public class AgentSessionTests
     }
 
     [Fact]
+    public async Task Spawn_passes_launch_args_to_the_launcher()
+    {
+        var launcher = new FakeLauncher();
+        var args = new[] { "--settings", "{\"hooks\":{}}" };
+        var s = new AgentSession(Entry(), launcher, new FakeWatcher(), args);
+
+        await s.SpawnAsync("hi");
+
+        Assert.Equal(args, launcher.Last!.Args);
+    }
+
+    [Fact]
+    public async Task Spawn_defaults_to_no_extra_args()
+    {
+        var launcher = new FakeLauncher();
+        var s = new AgentSession(Entry(), launcher, new FakeWatcher());
+
+        await s.SpawnAsync("hi");
+
+        Assert.Empty(launcher.Last!.Args);
+    }
+
+    [Fact]
     public async Task Dehydrate_with_ack_disposes_pty_and_sets_state()
     {
         var launcher = new FakeLauncher();

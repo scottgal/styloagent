@@ -1,4 +1,5 @@
 using Styloagent.App.ViewModels;
+using Styloagent.Core.Hooks;
 using Styloagent.Core.Model;
 using Styloagent.Core.Sessions;
 
@@ -141,5 +142,52 @@ public class AgentPaneViewModelTests
         var vm = MakeVm(displayName: "FOSS Agent", borderColor: "#ABCDEF");
         Assert.Equal("FOSS Agent", vm.DisplayName);
         Assert.Equal("#ABCDEF", vm.BorderColorHex);
+    }
+
+    // ── Hook state badge (§4.4) ───────────────────────────────────────────────
+
+    [Fact]
+    public void InitialHookState_Is_Unknown()
+    {
+        var vm = MakeVm();
+        Assert.Equal(AgentHookState.Unknown, vm.HookState);
+        Assert.False(vm.NeedsYou);
+    }
+
+    [Fact]
+    public void ApplyHookEvent_PermissionNotification_Sets_NeedsYou_Badge()
+    {
+        var vm = MakeVm();
+        var changed = new List<string>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName!);
+
+        vm.ApplyHookEvent(new HookEvent("foss", "Notification", "permission_prompt", "Allow?", null, null));
+
+        Assert.Equal(AgentHookState.WaitingForHuman, vm.HookState);
+        Assert.True(vm.NeedsYou);
+        Assert.Equal("needs you", vm.HookStateText);
+        Assert.Equal("⚠", vm.HookStateGlyph);
+        Assert.Equal("#FFCC33", vm.HookStateColorHex);
+        Assert.Equal("#3A2E00", vm.RowHighlightHex);
+        // The dependent badge properties must raise change notifications so the roster updates.
+        Assert.Contains(nameof(vm.NeedsYou), changed);
+        Assert.Contains(nameof(vm.HookStateText), changed);
+        Assert.Contains(nameof(vm.HookStateColorHex), changed);
+    }
+
+    [Fact]
+    public void ApplyHookEvent_WorkingThenIdle_Tracks_State()
+    {
+        var vm = MakeVm();
+
+        vm.ApplyHookEvent(new HookEvent("foss", "PreToolUse", null, null, null, null));
+        Assert.Equal(AgentHookState.Working, vm.HookState);
+        Assert.Equal("working", vm.HookStateText);
+        Assert.False(vm.NeedsYou);
+
+        vm.ApplyHookEvent(new HookEvent("foss", "Notification", "idle_prompt", null, null, null));
+        Assert.Equal(AgentHookState.Idle, vm.HookState);
+        Assert.Equal("idle", vm.HookStateText);
+        Assert.Equal("#111122", vm.RowHighlightHex);
     }
 }

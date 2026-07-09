@@ -4,6 +4,42 @@
              x:Class="Styloagent.App.Views.AgentsView"
              x:DataType="vm:MainWindowViewModel">
 
+  <UserControl.Resources>
+    <!-- One roster row. Extracted to a resource so it can be rendered on a single control in a
+         screenshot test (a headless ItemsControl doesn't materialize its item containers). -->
+    <DataTemplate x:Key="AgentRowTemplate" DataType="vm:AgentPaneViewModel">
+      <Button HorizontalAlignment="Stretch"
+              HorizontalContentAlignment="Stretch"
+              Background="Transparent"
+              BorderThickness="0"
+              Padding="0"
+              Margin="0,1,0,0"
+              Command="{Binding DataContext.SelectPaneCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+              CommandParameter="{Binding}">
+        <Border Background="{Binding RowHighlightHex}">
+          <Grid ColumnDefinitions="4,*,Auto">
+            <!-- Per-agent identity colour (same as its terminal accent) -->
+            <Border Grid.Column="0" Background="{Binding BorderColorHex}" Width="4" />
+            <StackPanel Grid.Column="1" Margin="8,6" Spacing="2">
+              <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="12"
+                         Foreground="{Binding BorderColorHex}" />
+              <!-- Live hook state (§4.4): glyph + label, coloured by state -->
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <TextBlock Text="{Binding HookStateGlyph}" FontSize="11"
+                           Foreground="{Binding HookStateColorHex}" />
+                <TextBlock Text="{Binding HookStateText}" FontSize="10"
+                           Foreground="{Binding HookStateColorHex}" />
+              </StackPanel>
+            </StackPanel>
+            <!-- Identity dot; amber when the agent needs you -->
+            <Ellipse Grid.Column="2" Width="8" Height="8" Margin="0,0,10,0"
+                     VerticalAlignment="Center" Fill="{Binding HookStateColorHex}" />
+          </Grid>
+        </Border>
+      </Button>
+    </DataTemplate>
+  </UserControl.Resources>
+
   <Border Background="#0D0D1A" CornerRadius="4">
     <Grid RowDefinitions="Auto,*">
 
@@ -13,34 +49,8 @@
       </Border>
 
       <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-        <ItemsControl ItemsSource="{Binding Panes}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate DataType="vm:AgentPaneViewModel">
-              <Button HorizontalAlignment="Stretch"
-                      HorizontalContentAlignment="Stretch"
-                      Background="Transparent"
-                      BorderThickness="0"
-                      Padding="0"
-                      Margin="0,1,0,0"
-                      Command="{Binding DataContext.SelectPaneCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                      CommandParameter="{Binding}">
-                <Border Background="#111122">
-                  <Grid ColumnDefinitions="4,*,Auto">
-                    <!-- Per-agent identity colour (same as its terminal accent) -->
-                    <Border Grid.Column="0" Background="{Binding BorderColorHex}" Width="4" />
-                    <StackPanel Grid.Column="1" Margin="8,6" Spacing="2">
-                      <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="12"
-                                 Foreground="{Binding BorderColorHex}" />
-                      <TextBlock Text="{Binding State}" FontSize="10" Foreground="#8888AA" />
-                    </StackPanel>
-                    <Ellipse Grid.Column="2" Width="8" Height="8" Margin="0,0,10,0"
-                             VerticalAlignment="Center" Fill="{Binding BorderColorHex}" />
-                  </Grid>
-                </Border>
-              </Button>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
+        <ItemsControl ItemsSource="{Binding Panes}"
+                      ItemTemplate="{StaticResource AgentRowTemplate}" />
       </ScrollViewer>
 
     </Grid>

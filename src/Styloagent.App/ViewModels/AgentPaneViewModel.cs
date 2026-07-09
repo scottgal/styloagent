@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Styloagent.Core.Hooks;
 using Styloagent.Core.Model;
 using Styloagent.Core.Sessions;
 
@@ -25,6 +26,57 @@ public sealed partial class AgentPaneViewModel : ObservableObject
 
     [ObservableProperty]
     private SessionState _state;
+
+    /// <summary>
+    /// Live state derived from the agent's Claude Code hook stream (§4.4).
+    /// Drives the roster badge — most importantly the ⚠ "waiting-for-human" highlight.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HookStateText))]
+    [NotifyPropertyChangedFor(nameof(HookStateGlyph))]
+    [NotifyPropertyChangedFor(nameof(HookStateColorHex))]
+    [NotifyPropertyChangedFor(nameof(RowHighlightHex))]
+    [NotifyPropertyChangedFor(nameof(NeedsYou))]
+    private AgentHookState _hookState = AgentHookState.Unknown;
+
+    /// <summary>Short human label for the current hook state, shown in the roster.</summary>
+    public string HookStateText => HookState switch
+    {
+        AgentHookState.Working         => "working",
+        AgentHookState.Idle            => "idle",
+        AgentHookState.WaitingForHuman => "needs you",
+        AgentHookState.Exited          => "exited",
+        _                              => "—",
+    };
+
+    /// <summary>Glyph badge for the current hook state.</summary>
+    public string HookStateGlyph => HookState switch
+    {
+        AgentHookState.Working         => "●",
+        AgentHookState.Idle            => "○",
+        AgentHookState.WaitingForHuman => "⚠",
+        AgentHookState.Exited          => "✕",
+        _                              => "·",
+    };
+
+    /// <summary>Colour for the state badge text/glyph, keyed by state.</summary>
+    public string HookStateColorHex => HookState switch
+    {
+        AgentHookState.Working         => "#57A64A", // green
+        AgentHookState.Idle            => "#8888AA", // gray
+        AgentHookState.WaitingForHuman => "#FFCC33", // amber — needs you
+        AgentHookState.Exited          => "#C05555", // red
+        _                              => "#555577", // unknown
+    };
+
+    /// <summary>Row background — subtly highlighted amber when the agent needs you.</summary>
+    public string RowHighlightHex => NeedsYou ? "#3A2E00" : "#111122";
+
+    /// <summary>True when the agent is blocked on a human — the glanceable "who needs me".</summary>
+    public bool NeedsYou => HookState == AgentHookState.WaitingForHuman;
+
+    /// <summary>Applies a hook event, advancing this pane's <see cref="HookState"/>.</summary>
+    public void ApplyHookEvent(HookEvent e) => HookState = HookStateMachine.Next(HookState, e);
 
     /// <summary>
     /// Raised when the underlying session starts a new PTY.

@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Dock.Model.Controls;
@@ -7,6 +8,7 @@ using Styloagent.App.Config;
 using Styloagent.App.Dock;
 using Styloagent.Core.Abstractions;
 using Styloagent.Core.Git;
+using Styloagent.Core.Hooks;
 using Styloagent.Core.Model;
 using Styloagent.Core.Seeding;
 using Styloagent.Core.Sessions;
@@ -43,6 +45,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private IFileWatcher? _watcher;
     private int _genericAgentCounter;
 
+    // Hook state channel (§4.4): each spawned claude reports lifecycle events into a shared
+    // drop-dir; we route them to the owning pane by a per-pane hook id.
+    private HookChannel? _hookChannel;
+    private readonly Dictionary<string, AgentPaneViewModel> _panesByHookId = new();
+
     // private ctor — callers must use InitializeAsync.
     private MainWindowViewModel() { }
 
@@ -63,6 +70,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var vm = new MainWindowViewModel();
         vm._launcher = launcher;
         vm._watcher = watcher;
+
+        // Hook state channel (§4.4): drop-dir under temp, one per app run. Failure to set it up
+        // must never stop agents launching — hooks are observe-only, so degrade gracefully.
+        try
+        {
+            var hooksDir = Path.Combine(Path.GetTempPath(), "styloagent-hooks", Guid.NewGuid().ToString("N"));
+            vm._hookChannel = new HookChannel(hooksDir);
+            vm._hookChannel.EventReceived += vm.OnHookEvent;
+            vm._hookChannel.Start();
+        }
+        catch
+        {
+            vm._hookChannel = null; // agents still launch, just without state badges
+        }
 
         // Agents ARE the git worktrees under a configured repo (point-at-a-repo, detect
         // worktrees): each launches claude in that worktree. Falls back to channel-seeded
@@ -120,7 +141,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             DisplayName: first.Prefix.TrimEnd('-'),
             BorderColorHex: PresentationStore.DefaultColorFor(first.Prefix));
 
-        var session = new AgentSession(first, launcher, watcher);
+        string firstHookId = vm.ReserveHookId(first.Prefix);
+        var session = new AgentSession(first, launcher, watcher, vm.HookArgs(firstHookId));
 
         vm.Pane = new AgentPaneViewModel(
             session,
@@ -129,6 +151,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             presentation.BorderColorHex);
         vm.Panes.Add(vm.Pane);
         vm.SelectedPane = vm.Pane;
+        vm._panesByHookId[firstHookId] = vm.Pane;
 
         var dockFactory = new StyloagentDockFactory(vm.Pane, vm._busViewModel);
         vm._dockFactory = dockFactory;
@@ -196,7 +219,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         entry = WithWorkingDir(entry);
-        var session = new AgentSession(entry, _launcher, _watcher);
+        string hookId = ReserveHookId(entry.Prefix);
+        var session = new AgentSession(entry, _launcher, _watcher, HookArgs(hookId));
         var paneVm = new AgentPaneViewModel(
             session,
             entry,
@@ -204,6 +228,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             presentation.BorderColorHex);
         Panes.Add(paneVm);
         SelectedPane = paneVm;
+        _panesByHookId[hookId] = paneVm;
 
         var doc = new Document
         {
@@ -224,6 +249,37 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>Selects a pane so its terminal is shown.</summary>
     [RelayCommand]
     private void SelectPane(AgentPaneViewModel pane) => SelectedPane = pane;
+
+    // ── Hook state channel (§4.4) ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Reserves a unique, filename-safe hook id for a pane, derived from its prefix.
+    /// De-duplicates so two agents whose prefixes sanitize to the same token stay distinct.
+    /// </summary>
+    private string ReserveHookId(string prefix)
+    {
+        string baseId = HookSettings.SanitizeAgentId(prefix);
+        string id = baseId;
+        int n = 1;
+        while (_panesByHookId.ContainsKey(id))
+            id = $"{baseId}-{n++}";
+        _panesByHookId[id] = null!; // reserve the slot; the real pane is set by the caller
+        return id;
+    }
+
+    /// <summary>The <c>--settings</c> hook args for a hook id, or none if the channel is unavailable.</summary>
+    private IReadOnlyList<string> HookArgs(string hookId)
+        => _hookChannel?.SettingsArgsFor(hookId) ?? Array.Empty<string>();
+
+    /// <summary>Routes a hook event (raised on a background thread) to the owning pane on the UI thread.</summary>
+    private void OnHookEvent(HookEvent e)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_panesByHookId.TryGetValue(e.AgentId, out var pane) && pane is not null)
+                pane.ApplyHookEvent(e);
+        });
+    }
 
     /// <summary>
     /// The default directory to launch agents in when their worktree isn't configured.
@@ -269,5 +325,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _busViewModel?.Dispose();
+
+        if (_hookChannel is not null)
+        {
+            _hookChannel.EventReceived -= OnHookEvent;
+            string dir = _hookChannel.HooksDirectory;
+            // Fire-and-forget: stop polling, then best-effort remove the temp drop-dir.
+            _ = _hookChannel.DisposeAsync().AsTask().ContinueWith(_ =>
+            {
+                try { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); }
+                catch { /* temp dir cleanup is best-effort */ }
+            });
+            _hookChannel = null;
+        }
     }
 }

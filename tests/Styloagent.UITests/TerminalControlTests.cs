@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -77,7 +78,11 @@ public class TerminalControlTests
             var allDescendants = control.GetVisualDescendants().ToList();
             var screen = allDescendants.OfType<SelectableTextBlock>().FirstOrDefault(t => t.Name == "ScreenText");
             Assert.NotNull(screen);
-            Assert.Contains("HELLO_TERMINAL", screen!.Text ?? string.Empty);
+            // The screen is now rendered as coloured inline Runs (not a flat Text string), so
+            // concatenate the run text to verify the output actually reached the render surface.
+            var shownText = string.Concat(
+                screen!.Inlines?.OfType<Run>().Select(r => r.Text) ?? Enumerable.Empty<string>());
+            Assert.Contains("HELLO_TERMINAL", shownText);
 
             // Part B: verify the data model (which the ItemsSource binding exposes to the template)
             // contains the expected output text.

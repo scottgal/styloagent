@@ -1,12 +1,17 @@
+using System.Collections.Generic;
+using System.Text;
 using Avalonia;
 using Avalonia.Collections;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Styloagent.Core.Sessions;
 using XTerm;
+using XTerm.Buffer;
 using XTerm.Events;
 using XTerm.Options;
 using AvaloniaKey = Avalonia.Input.Key;
@@ -24,6 +29,15 @@ public sealed partial class TerminalControl : UserControl
     private readonly XTerm.Terminal _terminal;
     private readonly AvaloniaList<string> _rows = new();
     private IPtySession? _session;
+
+    /// <summary>Default foreground when a cell uses the terminal's default fg (colour index 256).</summary>
+    private const uint DefaultFgArgb = 0xFFEDEDED;
+
+    /// <summary>Standard 256-colour ANSI palette (indices 0-255), built once.</summary>
+    private static readonly uint[] Palette256 = BuildPalette();
+
+    /// <summary>Cache of colour → brush so we don't allocate a brush per cell per repaint.</summary>
+    private readonly Dictionary<uint, IBrush> _brushCache = new();
 
     /// <summary>Observable row strings bound by the ItemsControl in XAML.</summary>
     public AvaloniaList<string> Rows => _rows;
@@ -255,21 +269,156 @@ public sealed partial class TerminalControl : UserControl
     // ── Buffer render ────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Reads the XTerm.NET buffer via GetVisibleLines() and rebuilds the <see cref="Rows"/> list.
+    /// Rebuilds the rendered screen. Keeps the plain-text <see cref="Rows"/> (for RenderedText /
+    /// assertions) and rebuilds the coloured inline runs shown in the SelectableTextBlock.
     /// Must be called on the UI thread.
     /// </summary>
     private void RebuildRows()
     {
+        // Plain-text rows — kept for RenderedText and test assertions.
         string[] lines = _terminal.GetVisibleLines();
-
-        // Sync the observable list to the new line count (kept for RenderedText / assertions).
         while (_rows.Count < lines.Length) _rows.Add(string.Empty);
         while (_rows.Count > lines.Length) _rows.RemoveAt(_rows.Count - 1);
         for (int i = 0; i < lines.Length; i++)
             _rows[i] = lines[i];
 
-        // Render the whole screen into the single SelectableTextBlock.
-        ScreenText.Text = string.Join("\n", lines);
+        // Coloured render: walk the XTerm cell grid and emit one Run per contiguous
+        // same-colour span. A single control with inline runs renders reliably (an
+        // ItemsControl-of-rows silently failed to materialize).
+        BuildColoredInlines();
+    }
+
+    /// <summary>
+    /// Walks the visible XTerm cell grid and rebuilds <c>ScreenText.Inlines</c> as coloured
+    /// <see cref="Run"/> spans — consecutive cells sharing a foreground colour become one Run.
+    /// Falls back gracefully (default colour) if the buffer can't be read.
+    /// </summary>
+    private void BuildColoredInlines()
+    {
+        var inlines = ScreenText.Inlines;
+        if (inlines is null)
+        {
+            inlines = new InlineCollection();
+            ScreenText.Inlines = inlines;
+        }
+        inlines.Clear();
+
+        TerminalBuffer buffer = _terminal.Buffer;
+        int rows = _terminal.Rows;
+        int yDisp = buffer.YDisp;
+
+        var runText = new StringBuilder();
+
+        for (int row = 0; row < rows; row++)
+        {
+            BufferLine? line = SafeLine(buffer, yDisp + row);
+            int cols = line?.Length ?? 0;
+
+            // Trim trailing blank cells so we don't emit a full-width run of spaces per line.
+            int lastNonBlank = -1;
+            for (int col = cols - 1; col >= 0; col--)
+            {
+                string c = line![col].Content;
+                if (!string.IsNullOrEmpty(c) && c != " ") { lastNonBlank = col; break; }
+            }
+
+            runText.Clear();
+            uint runColor = DefaultFgArgb;
+            bool runOpen = false;
+
+            for (int col = 0; col <= lastNonBlank; col++)
+            {
+                BufferCell cell = line![col];
+                if (cell.Width == 0) continue; // wide-char continuation cell — skip
+
+                string content = string.IsNullOrEmpty(cell.Content) ? " " : cell.Content;
+                uint color = ResolveFgColor(cell.Attributes);
+
+                if (!runOpen) { runColor = color; runOpen = true; }
+                else if (color != runColor) { FlushRun(inlines, runText, runColor); runColor = color; }
+
+                runText.Append(content);
+            }
+
+            if (runOpen) FlushRun(inlines, runText, runColor);
+
+            // Newline separator between rows (not after the final row).
+            if (row < rows - 1)
+                inlines.Add(new Run("\n"));
+        }
+    }
+
+    private void FlushRun(InlineCollection inlines, StringBuilder text, uint color)
+    {
+        if (text.Length == 0) return;
+        inlines.Add(new Run(text.ToString()) { Foreground = BrushFor(color) });
+        text.Clear();
+    }
+
+    private static BufferLine? SafeLine(TerminalBuffer buffer, int index)
+    {
+        try { return buffer.Lines[index]; }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// Resolves an XTerm cell's foreground to a packed 0xAARRGGBB colour.
+    /// Colour mode 1 = 24-bit truecolor (packed RGB); mode 0 with index 0-255 = palette;
+    /// index 256 (default fg) / 257 (default bg) fall back to the default foreground.
+    /// </summary>
+    private static uint ResolveFgColor(AttributeData attr)
+    {
+        int mode = attr.GetFgColorMode();
+        int c = attr.GetFgColor();
+
+        if (mode == 1) // RGB truecolor — c is packed 0xRRGGBB
+            return 0xFF000000u | (uint)(c & 0xFFFFFF);
+        if (c >= 0 && c <= 255)
+            return Palette256[c];
+        return DefaultFgArgb; // 256 = default fg (and any other sentinel)
+    }
+
+    private IBrush BrushFor(uint argb)
+    {
+        if (_brushCache.TryGetValue(argb, out IBrush? brush)) return brush;
+        brush = new SolidColorBrush(Color.FromUInt32(argb));
+        _brushCache[argb] = brush;
+        return brush;
+    }
+
+    /// <summary>Builds the standard xterm 256-colour palette as packed 0xAARRGGBB values.</summary>
+    private static uint[] BuildPalette()
+    {
+        var p = new uint[256];
+
+        // 0-15: standard + bright ANSI colours.
+        uint[] basic =
+        {
+            0xFF000000, 0xFFCD0000, 0xFF00CD00, 0xFFCDCD00,
+            0xFF0000EE, 0xFFCD00CD, 0xFF00CDCD, 0xFFE5E5E5,
+            0xFF7F7F7F, 0xFFFF0000, 0xFF00FF00, 0xFFFFFF00,
+            0xFF5C5CFF, 0xFFFF00FF, 0xFF00FFFF, 0xFFFFFFFF,
+        };
+        for (int i = 0; i < 16; i++) p[i] = basic[i];
+
+        // 16-231: 6×6×6 colour cube.
+        int[] steps = { 0, 95, 135, 175, 215, 255 };
+        for (int i = 0; i < 216; i++)
+        {
+            int r = steps[(i / 36) % 6];
+            int g = steps[(i / 6) % 6];
+            int b = steps[i % 6];
+            p[16 + i] = 0xFF000000u | (uint)((r << 16) | (g << 8) | b);
+        }
+
+        // 232-255: 24-step grayscale ramp.
+        for (int i = 0; i < 24; i++)
+        {
+            int v = 8 + 10 * i;
+            p[232 + i] = 0xFF000000u | (uint)((v << 16) | (v << 8) | v);
+        }
+
+        return p;
     }
 
     // ── Key translation ──────────────────────────────────────────────────────

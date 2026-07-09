@@ -38,6 +38,9 @@ public sealed partial class TerminalControl : UserControl
     {
         InitializeComponent();
 
+        // A terminal must be focusable to receive keyboard input at all.
+        Focusable = true;
+
         _terminal = new XTerm.Terminal(new TerminalOptions
         {
             Cols = 80,
@@ -85,6 +88,15 @@ public sealed partial class TerminalControl : UserControl
         _session.Output -= OnSessionOutput;
         _session.Exited -= OnSessionExited;
         _session = null;
+    }
+
+    /// <inheritdoc />
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        // Focus the terminal as soon as it appears so it's immediately typeable
+        // (no need to click first). Clicking another pane moves focus to it.
+        Focus();
     }
 
     /// <inheritdoc />
@@ -171,6 +183,28 @@ public sealed partial class TerminalControl : UserControl
         e.Handled = true;
         // Fix 1: route through shared fire-and-forget helper so exceptions are never silently lost.
         FireAndForgetWrite(vtSequence);
+    }
+
+    /// <summary>Clicking the terminal focuses it so it receives keyboard input.</summary>
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        Focus();
+        base.OnPointerPressed(e);
+    }
+
+    /// <summary>
+    /// Printable text input — letters, DIGITS, symbols, respecting keyboard layout and shift —
+    /// is forwarded straight to the PTY. Control/navigation keys go through OnKeyDown instead,
+    /// so nothing is double-sent. This is what makes ordinary typing (e.g. answering "1") work.
+    /// </summary>
+    protected override void OnTextInput(TextInputEventArgs e)
+    {
+        if (_session is not null && !string.IsNullOrEmpty(e.Text))
+        {
+            FireAndForgetWrite(e.Text);
+            e.Handled = true;
+        }
+        base.OnTextInput(e);
     }
 
     /// <summary>
@@ -284,18 +318,15 @@ public sealed partial class TerminalControl : UserControl
             return seq;
         }
 
-        // For printable characters (including Ctrl+letter combinations), use GenerateCharInput.
-        if (e.Key >= AvaloniaKey.A && e.Key <= AvaloniaKey.Z)
+        // Ctrl/Alt + letter -> control/meta sequence (e.g. Ctrl+C). Plain printable characters
+        // (letters, digits, symbols, space) are delivered via OnTextInput — NOT here — so they
+        // are not double-sent and respect the keyboard layout.
+        if (e.Key >= AvaloniaKey.A && e.Key <= AvaloniaKey.Z
+            && (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Alt)) != 0)
         {
-            char ch = (e.KeyModifiers & KeyModifiers.Shift) != 0
-                ? (char)('A' + (e.Key - AvaloniaKey.A))
-                : (char)('a' + (e.Key - AvaloniaKey.A));
+            char ch = (char)('a' + (e.Key - AvaloniaKey.A));
             return _terminal.GenerateCharInput(ch, mods);
         }
-
-        // Space
-        if (e.Key == AvaloniaKey.Space)
-            return _terminal.GenerateCharInput(' ', mods);
 
         return null;
     }

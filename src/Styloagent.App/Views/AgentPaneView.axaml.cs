@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Styloagent.App.ViewModels;
@@ -24,9 +25,8 @@ public partial class AgentPaneView : UserControl
 
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
-        // Unsubscribe from the old VM.
-        if (_vm is not null)
-            _vm.PtyStarted -= OnPtyStarted;
+        // Unsubscribe from the old VM (same as Unloaded path — both are safe/idempotent).
+        UnsubscribeVm();
 
         _vm = DataContext as AgentPaneViewModel;
 
@@ -46,16 +46,50 @@ public partial class AgentPaneView : UserControl
             AttachTerminal(existing);
     }
 
+    /// <summary>
+    /// Fix 4: unsubscribe + detach when the view is removed from the logical tree
+    /// (window closed / pane removed) without a DataContext change, preventing handler leaks.
+    /// </summary>
+    protected override void OnDetachedFromLogicalTree(LogicalTreeAttachmentEventArgs e)
+    {
+        UnsubscribeVm();
+        Terminal.Detach();
+        base.OnDetachedFromLogicalTree(e);
+    }
+
+    /// <summary>
+    /// Shared unsubscribe helper used by both the DataContext-change and Unload paths.
+    /// Safe to call multiple times (idempotent).
+    /// </summary>
+    private void UnsubscribeVm()
+    {
+        if (_vm is not null)
+            _vm.PtyStarted -= OnPtyStarted;
+    }
+
     private void OnPtyStarted(IPtySession pty)
     {
         // PtyStarted fires on whatever thread SpawnAsync completes on.
         // Marshal to the UI thread before touching Avalonia controls.
-        Dispatcher.UIThread.Post(() => AttachTerminal(pty), DispatcherPriority.Normal);
+        Dispatcher.UIThread.Post(() =>
+        {
+            // Fix 3: wrap in try/catch so an attach failure is never a silent black-hole.
+            try
+            {
+                AttachTerminal(pty);
+            }
+            catch (Exception ex)
+            {
+                // TODO: route to a real error surface (status bar / error event) in a future PR.
+                System.Diagnostics.Debug.WriteLine($"[AgentPaneView] attach failed: {ex}");
+            }
+        }, DispatcherPriority.Normal);
     }
 
     private void AttachTerminal(IPtySession pty)
     {
-        // Detach any previous session before attaching the new one.
+        // Fix 2: Detach() is idempotent (no-op when nothing is attached) — safe to call here
+        // unconditionally so the first attach and subsequent re-attaches both work correctly.
         Terminal.Detach();
         Terminal.Attach(pty);
     }

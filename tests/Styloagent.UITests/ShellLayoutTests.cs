@@ -155,7 +155,9 @@ public class ShellLayoutTests
 
     /// <summary>
     /// AgentPaneView wires TerminalControl when PtyStarted fires via the VM.
-    /// After SpawnAsync the TerminalControl's Rows collection exists (the session is attached).
+    /// Exercises the full pipeline: SpawnCommand → PtyStarted → Attach → Output → render-rows.
+    /// Asserts on TerminalControl.Rows (data model) rather than realized TextBlocks because
+    /// headless Avalonia without Skia cannot realize DataTemplate children.
     /// </summary>
     [Fact]
     public Task AgentPaneView_Attaches_Terminal_When_PtyStarted()
@@ -175,18 +177,29 @@ public class ShellLayoutTests
             var terminal = view.FindControl<Styloagent.Terminal.TerminalControl>("Terminal");
             Assert.NotNull(terminal);
 
-            // Spawn the session (fires PtyStarted which should attach terminal).
+            // Spawn the session — fires PtyStarted, which posts AttachTerminal to the UI thread.
             await paneVm.SpawnAsync();
 
-            // Give the UI-thread Post in OnPtyStarted time to execute.
+            // Drain the UI thread so the Post(AttachTerminal) callback has executed.
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Normal);
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 
-            // The TerminalControl has Rows (it's live after initialization).
-            Assert.NotNull(terminal!.Rows);
-
             // The launcher produced exactly one PTY session.
             Assert.Single(launcher.Spawned);
+            var fakePty = launcher.Spawned[0];
+
+            // Emit output through the attached PTY — proves Attach wired the Output event.
+            // FireOutput raises IPtySession.Output synchronously on this thread (background-thread
+            // simulation); the handler posts RebuildRows to the UI thread via Dispatcher.Post(Render).
+            fakePty.FireOutput("HELLO_ATTACH");
+
+            // Drain the Render-priority post so RebuildRows has updated terminal.Rows.
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            // Assert the rendered text contains the emitted string — proves the full
+            // PtyStarted → Attach → Output → render-rows pipeline is wired end to end.
+            Assert.Contains("HELLO_ATTACH", terminal!.RenderedText);
 
             window.Close();
         });

@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Headless;
+using Avalonia.Markup.Xaml.Styling;
+using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
 
 namespace Styloagent.UITests;
@@ -66,6 +68,15 @@ public sealed class TestApp : Application
 
     public override void Initialize()
     {
+        // Load the SAME themes the real App.axaml uses, so headless tests render with real control
+        // templates. Without DockFluentTheme, DockControl has no dock-model→control templates and
+        // renders nothing — which previously got misdiagnosed as "Dock.Avalonia is broken".
+        Styles.Add(new FluentTheme());
+        Styles.Add(new StyleInclude(new Uri("avares://Styloagent.App/App.axaml"))
+        {
+            Source = new Uri("avares://Dock.Avalonia.Themes.Fluent/DockFluentTheme.axaml"),
+        });
+
         // Suppress rendering exceptions caused by the CFF-format Seagull Fluent Icons
         // font failing to load in the headless Skia software renderer (a known limitation).
         // Tests check logical/binding structure, not visual font rendering.

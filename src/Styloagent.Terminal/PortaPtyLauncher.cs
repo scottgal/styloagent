@@ -14,7 +14,9 @@ public sealed class PortaPtyLauncher : IPtyLauncher
         {
             App = options.Command,
             CommandLine = options.Args.ToArray(),
-            Cwd = options.WorkingDirectory,
+            // Defense in depth: Porta.Pty throws ArgumentNullException on an empty Cwd,
+            // so never pass one through — resolve to a real, existing directory.
+            Cwd = WorkingDirectoryResolver.Resolve(options.WorkingDirectory),
             Cols = options.Cols,
             Rows = options.Rows,
         };

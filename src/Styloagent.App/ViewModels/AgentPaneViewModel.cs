@@ -63,9 +63,19 @@ public sealed partial class AgentPaneViewModel : ObservableObject
     [RelayCommand]
     public async Task SpawnAsync(CancellationToken ct = default)
     {
-        var prompt = await ReadPromptOrDefaultAsync(_manifest.LaunchPromptPath,
-            $"You are agent '{_manifest.Prefix}'. Begin your work.", ct);
-        await _session.SpawnAsync(prompt, ct);
+        try
+        {
+            var prompt = await ReadPromptOrDefaultAsync(_manifest.LaunchPromptPath,
+                $"You are agent '{_manifest.Prefix}'. Begin your work.", ct);
+            await _session.SpawnAsync(prompt, ct);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            // No silent failures: a spawn failure must be observable, not swallowed.
+            System.Diagnostics.Trace.WriteLine(
+                $"[AgentPaneViewModel] spawn failed for '{_manifest.Prefix}': {ex}");
+        }
         State = _session.State;
     }
 

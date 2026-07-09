@@ -71,7 +71,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             return vm;
         }
 
-        var first = entries[0];
+        var first = WithWorkingDir(entries[0]);
         vm._openedPrefixes.Add(first.Prefix);
 
         // Load or derive the presentation.
@@ -107,6 +107,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         vm.Layout = layout;
         if (layout is not null)
             dockFactory.InitLayout(layout);
+
+        // A pane IS a claude terminal: launch the agent immediately so the pane comes
+        // up running claude. The view attaches to CurrentPty when it renders.
+        _ = vm.Pane.SpawnAsync();
 
         return vm;
     }
@@ -161,6 +165,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 BorderColorHex: PresentationStore.DefaultColorFor(prefix));
         }
 
+        entry = WithWorkingDir(entry);
         var session = new AgentSession(entry, _launcher, _watcher);
         var paneVm = new AgentPaneViewModel(
             session,
@@ -179,7 +184,30 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _dockFactory.AddDockable(documentDock, doc);
         _dockFactory.SetActiveDockable(doc);
         _dockFactory.SetFocusedDockable(rootDock, doc);
+
+        // Launch claude in the new pane immediately.
+        _ = paneVm.SpawnAsync();
     }
+
+    /// <summary>
+    /// The default directory to launch agents in when their worktree isn't configured.
+    /// Overridable via the STYLOAGENT_WORKDIR environment variable; defaults to the
+    /// user's home directory.
+    /// </summary>
+    private static string DefaultWorkingDirectory()
+    {
+        var env = Environment.GetEnvironmentVariable("STYLOAGENT_WORKDIR");
+        if (!string.IsNullOrWhiteSpace(env) && Directory.Exists(env))
+            return env;
+        return Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    }
+
+    /// <summary>
+    /// Returns the entry with a valid working directory — its worktree if that exists,
+    /// otherwise the app default — so the spawn is never handed an empty Cwd.
+    /// </summary>
+    private static AgentManifestEntry WithWorkingDir(AgentManifestEntry e)
+        => e with { Worktree = WorkingDirectoryResolver.Resolve(e.Worktree, DefaultWorkingDirectory()) };
 
     /// <summary>Exposes the center DocumentDock for direct inspection (e.g. tests).</summary>
     public DocumentDock? DocumentDock => _dockFactory?.DocumentDock;

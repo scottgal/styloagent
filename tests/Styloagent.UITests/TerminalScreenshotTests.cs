@@ -97,4 +97,46 @@ public class TerminalScreenshotTests
         Assert.True(redPixels > 50, $"Expected red-dominant pixels from \\e[31m text, found {redPixels}.");
         Assert.True(greenPixels > 50, $"Expected green-dominant pixels from \\e[32m text, found {greenPixels}.");
     }
+
+    // Feeds a coloured BACKGROUND and INVERSE-video output and asserts filled colour blocks render
+    // (not just coloured glyphs) — so per-cell background + inverse can't silently regress.
+    [Fact]
+    public async Task Terminal_renders_background_and_inverse()
+    {
+        const string path = "/tmp/styloagent-terminal-bg.png";
+        if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+
+        await _fx.DispatchAsync(async () =>
+        {
+            var control = new TerminalControl { Width = 620, Height = 200 };
+            var fake = new FakePtySession();
+            var window = new Window { Width = 640, Height = 220, Content = control };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            control.Attach(fake);
+            // 44m = blue background; 7m = inverse video over default fg/bg (light block).
+            fake.FireOutput("\u001b[44m        \u001b[0m\r\n\u001b[7m        \u001b[0m\r\n");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            await ScreenshotCapture.CaptureControlAsync(window, control, path);
+            window.Close();
+        });
+
+        using var bmp = SKBitmap.Decode(path);
+        Assert.NotNull(bmp);
+        int blueBlock = 0, lightBlock = 0;
+        for (int y = 0; y < bmp!.Height; y++)
+        for (int x = 0; x < bmp.Width; x++)
+        {
+            var p = bmp.GetPixel(x, y);
+            // Blue background block (ANSI 4 = ~#0000EE): strong blue, low red/green.
+            if (p.Blue > 120 && p.Red < 90 && p.Green < 90) blueBlock++;
+            // Inverse of default (light-on-dark) fills the cell with the light default fg (#EDEDED).
+            if (p.Red > 180 && p.Green > 180 && p.Blue > 180) lightBlock++;
+        }
+        Assert.True(blueBlock > 200, $"Expected a filled blue background block from \\e[44m, found {blueBlock}.");
+        Assert.True(lightBlock > 200, $"Expected a filled light block from inverse-video \\e[7m, found {lightBlock}.");
+    }
 }

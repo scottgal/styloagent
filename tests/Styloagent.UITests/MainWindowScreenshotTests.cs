@@ -59,21 +59,28 @@ public class MainWindowScreenshotTests
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 
-            await ScreenshotCapture.CaptureWindowAsync(window, path);
+            // settle:true drives the render loop (HeadlessRender.SettleAsync, framework v1.5.0) so
+            // deferred/virtualized content realizes before the shot — the roster/bus items and the
+            // dock tab strip now materialize.
+            await ScreenshotCapture.CaptureWindowAsync(window, path, settle: true);
 
-            // Assert the shell composes: centre DockControl renders its chrome + the roster/bus panels.
-            // (The terminal itself is behind Dock's deferred content presenter, which the headless
-            // platform can't drive — its rendering + typing are covered in TerminalInputTests /
-            // TerminalScreenshotTests. Here we verify the DOCK shell renders, which is what the old
-            // "Dock renders nothing" bug broke.)
-            var names = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window)
-                .Select(d => d.GetType().Name).ToHashSet();
+            // Assert the shell composes: centre DockControl chrome + roster/bus panels, and the
+            // roster actually materializes its agent row (an ItemsControl item).
+            var descendants = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).ToList();
+            var names = descendants.Select(d => d.GetType().Name).ToHashSet();
             Assert.Contains("DockControl", names);
             Assert.Contains("DocumentControl", names);
+            Assert.Contains("DocumentTabStrip", names);
             Assert.Contains("AgentsView", names);
             Assert.Contains("BusView", names);
+            // The roster row for the seeded agent is materialized (settle realized the ItemsControl).
+            Assert.Contains(descendants.OfType<TextBlock>(),
+                t => t.Text == vm.SelectedPane!.DisplayName);
             Assert.True(vm.Panes.Count >= 1);
-            Assert.NotNull(vm.SelectedPane);
+
+            // NOTE: the terminal (AgentPaneView) is hosted in Dock's document content, gated behind a
+            // deep Dock virtualization path that does not realize headless even with settle — verified
+            // standalone (TerminalInputTests / TerminalScreenshotTests) and in a real GUI.
 
             window.Close();
         });

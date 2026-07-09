@@ -250,6 +250,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void SelectPane(AgentPaneViewModel pane) => SelectedPane = pane;
 
+    /// <summary>Keeps each pane's <see cref="AgentPaneViewModel.IsSelected"/> in sync so the roster
+    /// outlines only the active agent.</summary>
+    partial void OnSelectedPaneChanged(AgentPaneViewModel? oldValue, AgentPaneViewModel? newValue)
+    {
+        if (oldValue is not null) oldValue.IsSelected = false;
+        if (newValue is not null) newValue.IsSelected = true;
+    }
+
     // ── Hook state channel (§4.4) ─────────────────────────────────────────────
 
     /// <summary>

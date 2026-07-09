@@ -53,6 +53,7 @@ public class AgentRosterBadgeTests
         {
             var pane = MakePane();
             pane.ApplyHookEvent(new HookEvent("foss", "Notification", "permission_prompt", "Allow Bash?", null, null));
+            pane.IsSelected = true; // also exercises the selection-outline binding in a real render
             Assert.True(pane.NeedsYou);
 
             var template = (IDataTemplate)new AgentsView().Resources["AgentRowTemplate"]!;

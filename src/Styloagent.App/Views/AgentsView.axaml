@@ -16,7 +16,10 @@
               Margin="0,1,0,0"
               Command="{Binding DataContext.SelectPaneCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
               CommandParameter="{Binding}">
-        <Border Background="{Binding RowHighlightHex}">
+        <Border Background="{Binding RowHighlightHex}"
+                BorderBrush="{Binding SelectionBrushHex}"
+                BorderThickness="1"
+                CornerRadius="2">
           <Grid ColumnDefinitions="4,*,Auto">
             <!-- Per-agent identity colour (same as its terminal accent) -->
             <Border Grid.Column="0" Background="{Binding BorderColorHex}" Width="4" />

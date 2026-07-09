@@ -155,6 +155,34 @@ public class MainWindowViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task SelectPane_MarksOnlyTheSelectedPaneAsSelected()
+    {
+        var root = MakeTwoAgentChannel();
+        try
+        {
+            var vm = await MainWindowViewModel.InitializeAsync(
+                root, new FakeLauncher(), new FakeWatcher());
+
+            // The first pane is selected on init.
+            var first = vm.Panes[0];
+            Assert.True(first.IsSelected);
+
+            vm.AddAgentCommand.Execute(null);
+            var second = vm.Panes[1];
+
+            // Adding a pane selects it and deselects the first.
+            Assert.True(second.IsSelected);
+            Assert.False(first.IsSelected);
+
+            // Selecting back flips it again — only one pane is ever selected.
+            vm.SelectPaneCommand.Execute(first);
+            Assert.True(first.IsSelected);
+            Assert.False(second.IsSelected);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
     public async Task AddAgentCommand_ThirdCall_FallsBackToGenericAgent()
     {
         var root = MakeTwoAgentChannel();

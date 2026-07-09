@@ -22,10 +22,22 @@ public sealed partial class AgentPaneViewModel : ObservableObject
     private string _displayName;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectionBrushHex))]
     private string _borderColorHex;
 
     [ObservableProperty]
     private SessionState _state;
+
+    /// <summary>
+    /// True when this pane is the one whose terminal is currently shown. Managed by
+    /// <see cref="MainWindowViewModel"/> so the roster can outline the active agent.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectionBrushHex))]
+    private bool _isSelected;
+
+    /// <summary>Outline colour for the roster row: the agent's identity colour when selected, else transparent.</summary>
+    public string SelectionBrushHex => IsSelected ? BorderColorHex : "#00000000";
 
     /// <summary>
     /// Live state derived from the agent's Claude Code hook stream (§4.4).

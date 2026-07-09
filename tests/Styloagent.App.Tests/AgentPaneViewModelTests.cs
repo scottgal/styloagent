@@ -176,6 +176,22 @@ public class AgentPaneViewModelTests
     }
 
     [Fact]
+    public void SelectionBrushHex_IsIdentityColorWhenSelected_TransparentOtherwise()
+    {
+        var vm = MakeVm(borderColor: "#ABCDEF");
+        Assert.False(vm.IsSelected);
+        Assert.Equal("#00000000", vm.SelectionBrushHex);
+
+        var changed = new List<string>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName!);
+
+        vm.IsSelected = true;
+
+        Assert.Equal("#ABCDEF", vm.SelectionBrushHex);
+        Assert.Contains(nameof(vm.SelectionBrushHex), changed);
+    }
+
+    [Fact]
     public void ApplyHookEvent_WorkingThenIdle_Tracks_State()
     {
         var vm = MakeVm();

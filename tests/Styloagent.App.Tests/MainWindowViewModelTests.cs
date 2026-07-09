@@ -1,3 +1,4 @@
+using Dock.Model.Mvvm.Controls;
 using Styloagent.App.ViewModels;
 
 namespace Styloagent.App.Tests;
@@ -8,7 +9,7 @@ public class MainWindowViewModelTests : IDisposable
 
     public MainWindowViewModelTests()
     {
-        // Set up a minimal channel directory with one agent context file.
+        // Set up a minimal channel directory with ONE agent context file.
         _channelRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         var savedContext = Path.Combine(_channelRoot, "saved-context");
         Directory.CreateDirectory(savedContext);
@@ -97,5 +98,86 @@ public class MainWindowViewModelTests : IDisposable
             if (Directory.Exists(emptyRoot))
                 Directory.Delete(emptyRoot, recursive: true);
         }
+    }
+
+    // ── Multi-pane / AddAgent tests ───────────────────────────────────────────
+
+    /// <summary>
+    /// Sets up a channel with TWO saved-context files so we can test seeded-entry promotion.
+    /// </summary>
+    private static string MakeTwoAgentChannel()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var ctx = Path.Combine(root, "saved-context");
+        Directory.CreateDirectory(ctx);
+        File.WriteAllText(Path.Combine(ctx, "alpha-context.md"), "# alpha");
+        File.WriteAllText(Path.Combine(ctx, "beta-context.md"), "# beta");
+        return root;
+    }
+
+    [Fact]
+    public async Task Initialize_WithTwoContextFiles_DocumentDockStartsWithOneDocument()
+    {
+        var root = MakeTwoAgentChannel();
+        try
+        {
+            var vm = await MainWindowViewModel.InitializeAsync(
+                root, new FakeLauncher(), new FakeWatcher());
+
+            var dock = vm.DocumentDock;
+            Assert.NotNull(dock);
+            Assert.Equal(1, dock!.VisibleDockables?.Count);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task AddAgentCommand_AddsSecondSeededEntryToDocumentDock()
+    {
+        var root = MakeTwoAgentChannel();
+        try
+        {
+            var vm = await MainWindowViewModel.InitializeAsync(
+                root, new FakeLauncher(), new FakeWatcher());
+
+            vm.AddAgentCommand.Execute(null);
+
+            var dock = vm.DocumentDock;
+            Assert.NotNull(dock);
+            Assert.Equal(2, dock!.VisibleDockables?.Count);
+
+            var secondDoc = dock.VisibleDockables!
+                .OfType<Document>()
+                .ElementAt(1);
+            Assert.IsType<AgentPaneViewModel>(secondDoc.Context);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task AddAgentCommand_ThirdCall_FallsBackToGenericAgent()
+    {
+        var root = MakeTwoAgentChannel();
+        try
+        {
+            var vm = await MainWindowViewModel.InitializeAsync(
+                root, new FakeLauncher(), new FakeWatcher());
+
+            // Add second seeded entry
+            vm.AddAgentCommand.Execute(null);
+            // All seeded entries now open — next call synthesizes a generic entry
+            vm.AddAgentCommand.Execute(null);
+
+            var dock = vm.DocumentDock;
+            Assert.NotNull(dock);
+            Assert.Equal(3, dock!.VisibleDockables?.Count);
+
+            var thirdDoc = dock.VisibleDockables!
+                .OfType<Document>()
+                .ElementAt(2);
+            var thirdPaneVm = Assert.IsType<AgentPaneViewModel>(thirdDoc.Context);
+            Assert.StartsWith("agent-", thirdPaneVm.DisplayName);
+        }
+        finally { Directory.Delete(root, recursive: true); }
     }
 }

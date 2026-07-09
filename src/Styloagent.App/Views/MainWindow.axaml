@@ -9,15 +9,31 @@
         Width="1200"
         Height="800">
 
-  <dock:DockControl x:Name="DockControl"
-                    Layout="{Binding Layout}"
-                    InitializeLayout="False"
-                    InitializeFactory="False">
-    <dock:DockControl.DataTemplates>
-      <DataTemplate DataType="vm:AgentPaneViewModel">
-        <views:AgentPaneView />
-      </DataTemplate>
-    </dock:DockControl.DataTemplates>
-  </dock:DockControl>
+  <DockPanel>
+
+    <!-- Top cockpit bar — minimal chrome; extend here for future agent-detection dropdown -->
+    <Border DockPanel.Dock="Top"
+            Background="#1E1E2E"
+            Padding="8,4">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Content="➕ Add agent"
+                Command="{Binding AddAgentCommand}"
+                Padding="10,4"
+                FontSize="13" />
+      </StackPanel>
+    </Border>
+
+    <dock:DockControl x:Name="DockControl"
+                      Layout="{Binding Layout}"
+                      InitializeLayout="False"
+                      InitializeFactory="False">
+      <dock:DockControl.DataTemplates>
+        <DataTemplate DataType="vm:AgentPaneViewModel">
+          <views:AgentPaneView />
+        </DataTemplate>
+      </dock:DockControl.DataTemplates>
+    </dock:DockControl>
+
+  </DockPanel>
 
 </Window>

@@ -14,6 +14,12 @@ public sealed class StyloagentDockFactory : Factory
 {
     private readonly AgentPaneViewModel? _agentPane;
 
+    /// <summary>The center DocumentDock; populated after <see cref="CreateLayout"/> is called.</summary>
+    public DocumentDock? DocumentDock { get; private set; }
+
+    /// <summary>The root dock; populated after <see cref="CreateLayout"/> is called.</summary>
+    public IRootDock? RootDock { get; private set; }
+
     public StyloagentDockFactory(AgentPaneViewModel? agentPane = null)
     {
         _agentPane = agentPane;
@@ -102,6 +108,10 @@ public sealed class StyloagentDockFactory : Factory
         rootDock.ActiveDockable = rootLayout;
         rootDock.DefaultDockable = rootLayout;
         rootDock.IsFocusableRoot = true;
+
+        // Expose for runtime document addition
+        DocumentDock = documentDock;
+        RootDock = rootDock;
 
         return rootDock;
     }

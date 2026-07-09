@@ -47,8 +47,13 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
     private readonly ChannelProjection _projection;
 
     private FileSystemWatcher? _watcher;
-    private Timer? _debounceTimer;
-    private bool _disposed;
+    // Single long-lived timer; changed on each FSW event to coalesce rapid bursts.
+    private readonly Timer _debounceTimer;
+    private readonly object _timerLock = new();
+    // Ensures only one LoadAsync body runs at a time; coalesces queued reloads.
+    private readonly SemaphoreSlim _reloadGate = new(1, 1);
+    private volatile bool _reloadRequested;
+    private volatile bool _disposed;
     private const int DebounceMs = 200;
 
     [ObservableProperty]
@@ -66,68 +71,102 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
         _knownPrefixes = knownPrefixes;
         _projection = projection ?? new ChannelProjection();
 
+        // One timer instance, started as "disabled" (Timeout.Infinite).
+        _debounceTimer = new Timer(_ => _ = LoadAsync(), null, Timeout.Infinite, Timeout.Infinite);
+
         _ = LoadAsync();
         StartWatcher();
     }
 
     /// <summary>
     /// Load (or reload) the bus feed.  Safe to call from any thread.
+    /// Single-flighted: if a reload is already running a second one is coalesced
+    /// so that exactly one more runs after the current one completes.
     /// </summary>
     public async Task LoadAsync(CancellationToken ct = default)
     {
+        if (_disposed) return;
         if (!Directory.Exists(_channelRoot))
             return;
 
+        // If we can't enter immediately, mark that another reload is wanted.
+        if (!await _reloadGate.WaitAsync(0, ct))
+        {
+            _reloadRequested = true;
+            return;
+        }
+
         try
         {
-            IsLoading = true;
-            var threads = await _projection.ReadAsync(_channelRoot, _knownPrefixes, ct);
-
-            // Flatten: all messages across all threads, ordered most-recent first
-            var items = threads
-                .SelectMany(t => t.Messages)
-                .OrderByDescending(m => m.Timestamp ?? DateTimeOffset.MinValue)
-                .Select(m => new BusMessageItem
-                {
-                    RoutingPrefix = m.RoutingPrefix,
-                    Slug          = m.Slug,
-                    Kind          = m.Kind.ToString(),
-                    State         = m.State.ToString(),
-                    From          = m.From,
-                    Timestamp     = m.Timestamp,
-                    ColorHex      = PresentationStore.DefaultColorFor(m.RoutingPrefix),
-                    DisplayLine   = BuildDisplayLine(m),
-                })
-                .ToList();
-
-            // Update Messages - handle both UI thread and headless/test contexts
-            void UpdateMessages()
+            // Loop so that a coalesced request triggers one more run.
+            do
             {
-                Messages.Clear();
-                foreach (var item in items)
-                    Messages.Add(item);
-                IsLoading = false;
-            }
+                _reloadRequested = false;
+                if (_disposed) return;
 
-            try
-            {
-                if (Dispatcher.UIThread.CheckAccess())
+                try
                 {
-                    UpdateMessages();
+                    IsLoading = true;
+                    var threads = await _projection.ReadAsync(_channelRoot, _knownPrefixes, ct);
+
+                    // Flatten: all messages across all threads, ordered most-recent first
+                    var items = threads
+                        .SelectMany(t => t.Messages)
+                        .OrderByDescending(m => m.Timestamp ?? DateTimeOffset.MinValue)
+                        .Select(m => new BusMessageItem
+                        {
+                            RoutingPrefix = m.RoutingPrefix,
+                            Slug          = m.Slug,
+                            Kind          = m.Kind.ToString(),
+                            State         = m.State.ToString(),
+                            From          = m.From,
+                            Timestamp     = m.Timestamp,
+                            ColorHex      = PresentationStore.DefaultColorFor(m.RoutingPrefix),
+                            DisplayLine   = BuildDisplayLine(m),
+                        })
+                        .ToList();
+
+                    // Update Messages — handle both UI-thread and headless/test contexts.
+                    void UpdateMessages()
+                    {
+                        Messages.Clear();
+                        foreach (var item in items)
+                            Messages.Add(item);
+                        IsLoading = false;
+                    }
+
+                    try
+                    {
+                        if (Dispatcher.UIThread.CheckAccess())
+                        {
+                            UpdateMessages();
+                        }
+                        else
+                        {
+                            Dispatcher.UIThread.Post(UpdateMessages);
+                        }
+                    }
+                    catch
+                    {
+                        // No UI thread (headless test context): update directly.
+                        UpdateMessages();
+                    }
                 }
-                else
+                catch (OperationCanceledException) { }
+                catch (Exception ex)
                 {
-                    Dispatcher.UIThread.Post(UpdateMessages);
+                    System.Diagnostics.Trace.WriteLine($"[BusViewModel] bus refresh failed: {ex}");
+                    IsLoading = false;
                 }
             }
-            catch
-            {
-                // No UI thread (headless test context): update directly
-                UpdateMessages();
-            }
+            while (_reloadRequested && !_disposed);
         }
-        catch (OperationCanceledException) { /* swallow */ }
-        catch { /* degrade gracefully */ IsLoading = false; }
+        finally
+        {
+            // Guard against Dispose() having been called while we held the gate.
+            if (!_disposed)
+                _reloadGate.Release();
+        }
     }
 
     private static string BuildDisplayLine(BusMessage m)
@@ -164,16 +203,28 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
 
     private void OnFileChanged(object sender, FileSystemEventArgs e)
     {
-        // Debounce: reset the timer on each event; fire once after DebounceMs quiet.
-        _debounceTimer?.Dispose();
-        _debounceTimer = new Timer(_ => _ = LoadAsync(), null, DebounceMs, Timeout.Infinite);
+        if (_disposed) return;
+        // Debounce: reschedule the single timer on each event; fires once after quiet.
+        lock (_timerLock)
+        {
+            if (_disposed) return;
+            _debounceTimer.Change(DebounceMs, Timeout.Infinite);
+        }
     }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        _debounceTimer?.Dispose();
+
+        // Disable the timer before disposing so in-flight callbacks see _disposed == true.
+        lock (_timerLock)
+        {
+            _debounceTimer.Change(Timeout.Infinite, Timeout.Infinite);
+        }
+
+        _debounceTimer.Dispose();
         _watcher?.Dispose();
+        _reloadGate.Dispose();
     }
 }

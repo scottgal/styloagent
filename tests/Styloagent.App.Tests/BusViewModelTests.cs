@@ -92,4 +92,42 @@ public class BusViewModelTests : IDisposable
         var ex = Record.Exception(() => vm.Dispose());
         Assert.Null(ex);
     }
+
+    [Fact]
+    public async Task LoadAsync_IsSingleFlighted_ConcurrentCallsDoNotOverlap()
+    {
+        // Fire many concurrent LoadAsync calls; the gate must not throw and the
+        // final Messages collection must be valid (non-empty, well-formed items).
+        var prefixes = new[] { "alpha-", "beta-" };
+        var vm = new BusViewModel(_channelRoot, prefixes, new ChannelProjection());
+
+        var tasks = Enumerable.Range(0, 10)
+            .Select(_ => vm.LoadAsync())
+            .ToArray();
+
+        await Task.WhenAll(tasks);
+        await Task.Delay(50);
+
+        // All tasks completed without exception and collection is consistent.
+        Assert.NotEmpty(vm.Messages);
+        Assert.All(vm.Messages, item => Assert.NotEmpty(item.Slug));
+    }
+
+    [Fact]
+    public async Task Dispose_AfterTriggeredReload_DoesNotThrow()
+    {
+        // Trigger a reload, then dispose immediately — the in-flight callback must no-op.
+        var prefixes = new[] { "alpha-", "beta-" };
+        var vm = new BusViewModel(_channelRoot, prefixes, new ChannelProjection());
+
+        var loadTask = vm.LoadAsync();
+
+        // Dispose while the load is potentially in flight.
+        var ex = Record.Exception(() => vm.Dispose());
+        Assert.Null(ex);
+
+        // Awaiting the load after dispose must also not throw.
+        var loadEx = await Record.ExceptionAsync(async () => await loadTask);
+        Assert.Null(loadEx);
+    }
 }

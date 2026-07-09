@@ -27,6 +27,10 @@ public partial class App : Application
             desktop.MainWindow = window;
             window.Show();
 
+            // Dispose the VM (and its BusViewModel/FileSystemWatcher) on clean shutdown.
+            desktop.ShutdownRequested += (_, _) =>
+                (desktop.MainWindow?.DataContext as IDisposable)?.Dispose();
+
             // Initialise the view-model asynchronously; if seeding fails or finds
             // nothing the factory still produces an empty shell (handled in InitializeAsync).
             _ = Task.Run(async () =>

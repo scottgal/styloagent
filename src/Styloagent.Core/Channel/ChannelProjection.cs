@@ -57,7 +57,11 @@ public sealed class ChannelProjection
                     : m)
             .ToList();
 
-        // Group by slug into threads
+        // Group by slug into threads.
+        // NOTE: threads are keyed on SLUG alone (cross-prefix), which assumes slugs are
+        // unique per topic across all routing prefixes.  This is intentional — the
+        // file-drop protocol guarantees slug uniqueness per topic so that inbox, outbox,
+        // and reply files for the same conversation always collapse into one thread.
         var threads = allMessages
             .GroupBy(m => m.Slug, StringComparer.OrdinalIgnoreCase)
             .Select(g =>

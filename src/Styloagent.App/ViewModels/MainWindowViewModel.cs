@@ -17,7 +17,7 @@ namespace Styloagent.App.ViewModels;
 /// loads presentation data, and exposes the first agent as <see cref="Pane"/>.
 /// Supports adding additional agent panes at runtime via <see cref="AddAgentCommand"/>.
 /// </summary>
-public sealed partial class MainWindowViewModel : ObservableObject
+public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 {
     [ObservableProperty]
     private AgentPaneViewModel? _pane;
@@ -186,4 +186,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     /// <summary>Exposes the live bus feed view-model (e.g. tests).</summary>
     public BusViewModel? BusViewModel => _busViewModel;
+
+    /// <summary>
+    /// Disposes managed resources, including the <see cref="BusViewModel"/> (which
+    /// stops the FileSystemWatcher and cleans up the debounce timer).
+    /// </summary>
+    public void Dispose()
+    {
+        _busViewModel?.Dispose();
+    }
 }

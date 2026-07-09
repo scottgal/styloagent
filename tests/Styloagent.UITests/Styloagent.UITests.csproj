@@ -25,6 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Styloagent.App\Styloagent.App.csproj" />
     <ProjectReference Include="..\..\src\Styloagent.Terminal\Styloagent.Terminal.csproj" />
     <ProjectReference Include="..\..\src\Styloagent.Core\Styloagent.Core.csproj" />
   </ItemGroup>

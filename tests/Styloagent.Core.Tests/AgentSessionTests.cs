@@ -95,4 +95,65 @@ public class AgentSessionTests
         Assert.Equal(2, launcher.Spawned.Count);
         Assert.Contains(launcher.Spawned[1].Writes, w => w.Contains("RESTART PROMPT"));
     }
+
+    [Fact]
+    public async Task Spawn_sets_CurrentPty_and_raises_PtyStarted()
+    {
+        var launcher = new FakeLauncher();
+        var s = new AgentSession(Entry(), launcher, new FakeWatcher());
+
+        IPtySession? raised = null;
+        s.PtyStarted += pty => raised = pty;
+
+        await s.SpawnAsync("LP");
+
+        Assert.NotNull(s.CurrentPty);
+        Assert.Same(launcher.Spawned[0], s.CurrentPty);
+        Assert.Same(s.CurrentPty, raised);
+    }
+
+    [Fact]
+    public async Task Dehydrate_clears_CurrentPty()
+    {
+        var launcher = new FakeLauncher();
+        var s = new AgentSession(Entry(), launcher, new FakeWatcher { WillChange = true });
+        await s.SpawnAsync("LP");
+        Assert.NotNull(s.CurrentPty);
+
+        await s.DehydrateAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Null(s.CurrentPty);
+    }
+
+    [Fact]
+    public async Task Rehydrate_sets_CurrentPty_and_raises_PtyStarted()
+    {
+        var launcher = new FakeLauncher();
+        var s = new AgentSession(Entry(), launcher, new FakeWatcher { WillChange = true });
+        await s.SpawnAsync("LP");
+        await s.DehydrateAsync(TimeSpan.FromSeconds(1));
+
+        IPtySession? raised = null;
+        s.PtyStarted += pty => raised = pty;
+
+        await s.RehydrateAsync("RESTART PROMPT");
+
+        Assert.NotNull(s.CurrentPty);
+        Assert.Same(launcher.Spawned[1], s.CurrentPty);
+        Assert.Same(s.CurrentPty, raised);
+    }
+
+    [Fact]
+    public async Task Dehydrate_without_ack_does_not_clear_CurrentPty()
+    {
+        var launcher = new FakeLauncher();
+        var s = new AgentSession(Entry(), launcher, new FakeWatcher { WillChange = false });
+        await s.SpawnAsync("LP");
+        var originalPty = s.CurrentPty;
+
+        await s.DehydrateAsync(TimeSpan.FromMilliseconds(50));
+
+        Assert.NotNull(s.CurrentPty);
+        Assert.Same(originalPty, s.CurrentPty);
+    }
 }

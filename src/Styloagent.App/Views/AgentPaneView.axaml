@@ -1,0 +1,45 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
+             xmlns:terminal="clr-namespace:Styloagent.Terminal;assembly=Styloagent.Terminal"
+             x:Class="Styloagent.App.Views.AgentPaneView"
+             x:DataType="vm:AgentPaneViewModel">
+
+  <Border Name="PaneBorder"
+          BorderThickness="2"
+          CornerRadius="4">
+    <Grid RowDefinitions="Auto,*">
+
+      <!-- Toolbar -->
+      <StackPanel Grid.Row="0"
+                  Orientation="Horizontal"
+                  Spacing="4"
+                  Margin="4">
+        <TextBlock Name="AgentDisplayName"
+                   Text="{Binding DisplayName}"
+                   VerticalAlignment="Center"
+                   Margin="4,0,8,0"
+                   FontWeight="SemiBold" />
+        <Button Name="SpawnButton"
+                Content="Spawn"
+                Command="{Binding SpawnCommand}" />
+        <Button Name="DehydrateButton"
+                Content="Dehydrate"
+                Command="{Binding DehydrateCommand}" />
+        <Button Name="RehydrateButton"
+                Content="Rehydrate"
+                Command="{Binding RehydrateCommand}" />
+        <Button Name="RenameButton"
+                Content="Rename"
+                Command="{Binding RenameCommand}"
+                CommandParameter="New Name" />
+      </StackPanel>
+
+      <!-- Terminal area -->
+      <terminal:TerminalControl Name="Terminal"
+                                Grid.Row="1" />
+
+    </Grid>
+  </Border>
+
+</UserControl>

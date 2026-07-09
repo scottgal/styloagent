@@ -14,7 +14,14 @@ public sealed class AgentSession
         => (_manifest, _launcher, _watcher) = (manifest, launcher, watcher);
 
     public SessionState State { get; private set; } = SessionState.Unspawned;
+
+    /// <summary>The active PTY session, or null when dehydrated or unspawned.</summary>
+    public IPtySession? CurrentPty { get; private set; }
+
     public event Action<string>? Output;
+
+    /// <summary>Raised after <see cref="CurrentPty"/> is set, passing the new session.</summary>
+    public event Action<IPtySession>? PtyStarted;
 
     public async Task SpawnAsync(string launchPrompt, CancellationToken ct = default)
     {
@@ -23,7 +30,9 @@ public sealed class AgentSession
             WorkingDirectory: _manifest.Worktree, Env: null, Cols: 120, Rows: 30), ct);
         _pty.Output += OnOutput;
         await _pty.WriteAsync(launchPrompt + "\n", ct);
+        CurrentPty = _pty;
         State = SessionState.Live;
+        PtyStarted?.Invoke(_pty);
     }
 
     public async Task<bool> DehydrateAsync(TimeSpan ackTimeout, CancellationToken ct = default)
@@ -36,6 +45,7 @@ public sealed class AgentSession
         _pty.Output -= OnOutput;
         await _pty.DisposeAsync();
         _pty = null;
+        CurrentPty = null;
         State = SessionState.Dehydrated;
         return true;
     }
@@ -47,7 +57,9 @@ public sealed class AgentSession
             "claude", Array.Empty<string>(), _manifest.Worktree, null, 120, 30), ct);
         _pty.Output += OnOutput;
         await _pty.WriteAsync(restartPrompt + "\n", ct);
+        CurrentPty = _pty;
         State = SessionState.Live;
+        PtyStarted?.Invoke(_pty);
     }
 
     private void OnOutput(string chunk) => Output?.Invoke(chunk);

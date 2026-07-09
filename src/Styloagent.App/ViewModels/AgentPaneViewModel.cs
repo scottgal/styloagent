@@ -26,6 +26,22 @@ public sealed partial class AgentPaneViewModel : ObservableObject
     [ObservableProperty]
     private SessionState _state;
 
+    /// <summary>
+    /// Raised when the underlying session starts a new PTY.
+    /// The view subscribes to wire the TerminalControl.
+    /// </summary>
+    public event Action<IPtySession>? PtyStarted
+    {
+        add    => _session.PtyStarted += value;
+        remove => _session.PtyStarted -= value;
+    }
+
+    /// <summary>
+    /// The active PTY session, or null when the session is unspawned / dehydrated.
+    /// Useful for initial wiring when the view is created after a session is already live.
+    /// </summary>
+    public IPtySession? CurrentPty => _session.CurrentPty;
+
     public AgentPaneViewModel(
         AgentSession session,
         AgentManifestEntry manifest,

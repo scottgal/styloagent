@@ -221,6 +221,32 @@ Security-sensitive (credentials + remote exec) and substantial, so the transport
 abstraction and `IRouter` seam are seeded now, but implementation is a **later slice**
 (may warrant its own spec).
 
+### 4.4 Agent state via Claude Code hooks (the "needs-you" signal)
+
+Styloagent owns the spawn, so — exactly as it injects the MCP config (§4.1) — it
+launches each `claude` with `--settings '{…}'` carrying a **hooks** config (no repo
+pollution; combinable with `mcpServers` in the same settings blob). The hooks stream
+lifecycle events to Styloagent over a local socket, giving each pane a reliable state
+machine **{working · idle · ⚠ waiting-for-human · exited}**:
+
+- **`Notification` → waiting-for-human** — the key signal. Its `notification_type`
+  distinguishes *permission-prompt* (needs approval), *idle* (waiting for the next
+  prompt), *needs-input* (background agent), and *elicitation* (an MCP input form).
+  This is the "a human question is pending" state the operator asked for.
+- **`UserPromptSubmit` / `PreToolUse` / `PostToolUse` → working.**
+- **`Stop`** — a turn ended. *Gotcha:* `Stop` fires on **every** turn, not at
+  task-completion, so true-idle comes from `Notification(idle)`, never from `Stop` alone.
+- **`SessionStart` / `SessionEnd` → lifecycle** (corroborates spawn/exit alongside the
+  PTY's own `Exited`).
+
+Hook payloads carry `session_id`, `cwd`, `transcript_path`, `permission_mode`,
+`notification_type`, and a human-readable `message` — enough to correlate the event to
+the right pane and show *what* it is waiting on. `Notification` hooks are observe-only
+(they cannot block), which is exactly right here. The net effect: **"who needs me"
+becomes a glanceable property of the whole fleet** (§5.1), not something you find by
+scrolling terminals. (Exact `notification_type` values are version-dependent — pin
+them at implementation time.)
+
 ---
 
 ## 5. UI
@@ -236,6 +262,9 @@ Each terminal is a first-class dockable **document**:
 - **Set border color** — per-agent identity (propagates everywhere, §3.3).
 - **Split** (side-by-side / stacked), **float** to its own OS window, drag between
   regions, group into tabs.
+- **State badge** — each pane shows its live state from the hook channel (§4.4):
+  working · idle · **⚠ waiting-for-human** · exited. The roster and System Map
+  highlight any agent that needs you, so "who's blocked on me" is a glance, not a scroll.
 - Layout serialized to the presentation sidecar; the live PTY is never serialized.
 
 Lifecycle, as UI actions:

@@ -2,50 +2,22 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
         xmlns:views="clr-namespace:Styloagent.App.Views"
+        xmlns:dock="clr-namespace:Dock.Avalonia.Controls;assembly=Dock.Avalonia"
         x:Class="Styloagent.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="Styloagent Dock"
         Width="1200"
         Height="800">
 
-  <!-- 3-column dock shell: left bus | agent pane | right bus -->
-  <Grid Name="ShellGrid" ColumnDefinitions="250,*,250">
-
-    <!-- Left bus placeholder -->
-    <Border Name="LeftBus"
-            Grid.Column="0"
-            Background="#1E1E1E"
-            BorderBrush="#333333"
-            BorderThickness="0,0,1,0">
-      <TextBlock Text="Left Bus"
-                 HorizontalAlignment="Center"
-                 VerticalAlignment="Center"
-                 Foreground="#666666" />
-    </Border>
-
-    <!-- Centre: agent pane (DataTemplate wires AgentPaneView) -->
-    <ContentControl Name="AgentPaneHost"
-                    Grid.Column="1"
-                    Content="{Binding Pane}">
-      <ContentControl.DataTemplates>
-        <DataTemplate DataType="vm:AgentPaneViewModel">
-          <views:AgentPaneView />
-        </DataTemplate>
-      </ContentControl.DataTemplates>
-    </ContentControl>
-
-    <!-- Right bus placeholder -->
-    <Border Name="RightBus"
-            Grid.Column="2"
-            Background="#1E1E1E"
-            BorderBrush="#333333"
-            BorderThickness="1,0,0,0">
-      <TextBlock Text="Right Bus"
-                 HorizontalAlignment="Center"
-                 VerticalAlignment="Center"
-                 Foreground="#666666" />
-    </Border>
-
-  </Grid>
+  <dock:DockControl x:Name="DockControl"
+                    Layout="{Binding Layout}"
+                    InitializeLayout="False"
+                    InitializeFactory="False">
+    <dock:DockControl.DataTemplates>
+      <DataTemplate DataType="vm:AgentPaneViewModel">
+        <views:AgentPaneView />
+      </DataTemplate>
+    </dock:DockControl.DataTemplates>
+  </dock:DockControl>
 
 </Window>

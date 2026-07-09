@@ -1,5 +1,9 @@
 using Avalonia.Controls;
 using Avalonia.Threading;
+using Dock.Model.Controls;
+using Dock.Model.Core;
+using Dock.Model.Mvvm.Controls;
+using Styloagent.App.Dock;
 using Styloagent.App.Views;
 using Styloagent.App.ViewModels;
 using Styloagent.Core.Abstractions;
@@ -9,10 +13,11 @@ using Styloagent.Core.Sessions;
 namespace Styloagent.UITests;
 
 /// <summary>
-/// Tests for the 3-column shell layout and AgentPaneView wiring.
+/// Tests for the Dock shell layout and AgentPaneView wiring.
 ///
-/// NOTE: Headless Avalonia cannot realize DataTemplate children, so these tests
-/// assert on logical/data-model structure rather than rendered text or visual descendants.
+/// NOTE: Headless Avalonia cannot realize DataTemplate children, so the
+/// MainWindow/AgentPaneView tests assert on logical/data-model structure.
+/// The new Dock-model tests are pure model tests and don't need the headless session.
 /// </summary>
 [Collection("Avalonia")]
 public class ShellLayoutTests
@@ -40,88 +45,72 @@ public class ShellLayoutTests
         return new AgentPaneViewModel(session, entry, "Test Agent", "#E57373");
     }
 
-    // ── MainWindow shell ──────────────────────────────────────────────────────
+    // ── Dock model tests (no headless Avalonia needed) ────────────────────────
 
     /// <summary>
-    /// The MainWindow XAML contains a Grid named "ShellGrid" with 3 column definitions.
-    /// We verify the Grid is present and correctly structured at the data-model / logical level.
+    /// The factory creates a layout with a DocumentDock that holds the AgentPaneViewModel
+    /// as the context of the first Document dockable.
     /// </summary>
     [Fact]
-    public Task MainWindow_Has_3Column_ShellGrid()
+    public void DockLayout_Has_DocumentDock_With_AgentPane()
     {
-        return _fx.DispatchAsync(async () =>
-        {
-            var window = new MainWindow();
-            window.Show();
+        var paneVm = MakeVm();
+        var factory = new StyloagentDockFactory(paneVm);
+        var layout = factory.CreateLayout();
+        factory.InitLayout(layout);
 
-            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+        // Walk the tree: RootDock → ProportionalDock → DocumentDock
+        var rootDock = Assert.IsType<RootDock>(layout);
+        var proportional = Assert.IsType<ProportionalDock>(
+            rootDock.VisibleDockables?.OfType<ProportionalDock>().FirstOrDefault());
+        var documentDock = proportional.VisibleDockables?
+            .OfType<DocumentDock>().FirstOrDefault();
+        Assert.NotNull(documentDock);
 
-            // Find ShellGrid by name in the logical tree.
-            var shellGrid = window.FindControl<Grid>("ShellGrid");
-            Assert.NotNull(shellGrid);
-            Assert.Equal(3, shellGrid!.ColumnDefinitions.Count);
-
-            window.Close();
-        });
+        var doc = documentDock!.VisibleDockables?.OfType<Document>().FirstOrDefault();
+        Assert.NotNull(doc);
+        Assert.Same(paneVm, doc!.Context);
     }
 
     /// <summary>
-    /// The MainWindow has named left/right bus borders and a centre AgentPaneHost ContentControl.
+    /// The factory creates a layout with one left-aligned and one right-aligned ToolDock.
     /// </summary>
     [Fact]
-    public Task MainWindow_Has_LeftBus_RightBus_AgentPaneHost()
+    public void DockLayout_Has_LeftAndRight_ToolDocks()
     {
-        return _fx.DispatchAsync(async () =>
-        {
-            var window = new MainWindow();
-            window.Show();
+        var factory = new StyloagentDockFactory();
+        var layout = factory.CreateLayout();
+        factory.InitLayout(layout);
 
-            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+        var rootDock = Assert.IsType<RootDock>(layout);
+        var proportional = Assert.IsType<ProportionalDock>(
+            rootDock.VisibleDockables?.OfType<ProportionalDock>().FirstOrDefault());
+        var toolDocks = proportional.VisibleDockables?.OfType<ToolDock>().ToList();
+        Assert.NotNull(toolDocks);
+        Assert.Equal(2, toolDocks!.Count);
 
-            Assert.NotNull(window.FindControl<Border>("LeftBus"));
-            Assert.NotNull(window.FindControl<Border>("RightBus"));
-            Assert.NotNull(window.FindControl<ContentControl>("AgentPaneHost"));
-
-            window.Close();
-        });
+        Assert.Contains(toolDocks, t => t.Alignment == Alignment.Left);
+        Assert.Contains(toolDocks, t => t.Alignment == Alignment.Right);
     }
 
     /// <summary>
-    /// MainWindowViewModel.InitializeAsync returns a VM whose Pane binds to AgentPaneHost.
-    /// We verify the ContentControl wiring using a temp dir so SeedAsync doesn't need real files.
-    /// (No channel root agents → Pane is null; the binding still proves Content tracks Pane.)
+    /// The Document's Context is an AgentPaneViewModel when one is provided to the factory.
     /// </summary>
     [Fact]
-    public async Task MainWindow_Pane_BindsTo_AgentPaneHost_Content()
+    public void DockLayout_AgentDocument_Context_Is_AgentPaneViewModel()
     {
-        // Use an empty temp dir so InitializeAsync returns without a Pane (that's fine).
-        var tmp = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-        Directory.CreateDirectory(tmp);
-        try
-        {
-            var vm = await MainWindowViewModel.InitializeAsync(
-                tmp, new FakePtyLauncher(), new FakeFileWatcher());
+        var paneVm = MakeVm();
+        var factory = new StyloagentDockFactory(paneVm);
+        var layout = factory.CreateLayout();
+        factory.InitLayout(layout);
 
-            await _fx.DispatchAsync(async () =>
-            {
-                var window = new MainWindow { DataContext = vm };
-                window.Show();
-
-                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
-
-                var host = window.FindControl<ContentControl>("AgentPaneHost");
-                Assert.NotNull(host);
-                // Pane is null (no agents seeded) → Content is null.
-                // This still proves the binding chain exists (Content == Pane).
-                Assert.Equal(vm.Pane, host!.Content);
-
-                window.Close();
-            });
-        }
-        finally
-        {
-            Directory.Delete(tmp, recursive: true);
-        }
+        var rootDock = Assert.IsType<RootDock>(layout);
+        var proportional = Assert.IsType<ProportionalDock>(
+            rootDock.VisibleDockables?.OfType<ProportionalDock>().FirstOrDefault());
+        var documentDock = proportional.VisibleDockables?
+            .OfType<DocumentDock>().First();
+        var doc = documentDock!.VisibleDockables?.OfType<Document>().First();
+        Assert.IsType<AgentPaneViewModel>(doc!.Context);
     }
 
     // ── AgentPaneView ─────────────────────────────────────────────────────────

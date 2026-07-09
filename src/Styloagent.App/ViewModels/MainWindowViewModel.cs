@@ -1,5 +1,8 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Dock.Model.Controls;
+using Dock.Model.Core;
 using Styloagent.App.Config;
+using Styloagent.App.Dock;
 using Styloagent.Core.Abstractions;
 using Styloagent.Core.Seeding;
 using Styloagent.Core.Sessions;
@@ -14,6 +17,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
 {
     [ObservableProperty]
     private AgentPaneViewModel? _pane;
+
+    [ObservableProperty]
+    private IRootDock? _layout;
+
+    private IFactory? _factory;
 
     // private ctor — callers must use InitializeAsync.
     private MainWindowViewModel() { }
@@ -36,7 +44,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var entries = await seeder.SeedAsync(channelRoot, new Dictionary<string, string>());
 
         if (entries.Count == 0)
+        {
+            var emptyFactory = new StyloagentDockFactory(null);
+            var emptyLayout = emptyFactory.CreateLayout();
+            vm.Layout = emptyLayout;
+            emptyFactory.InitLayout(emptyLayout);
             return vm;
+        }
 
         var first = entries[0];
 
@@ -62,6 +76,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
             first,
             presentation.DisplayName,
             presentation.BorderColorHex);
+
+        vm._factory = new StyloagentDockFactory(vm.Pane);
+        var layout = vm._factory.CreateLayout();
+        vm.Layout = layout;
+        if (layout is not null)
+            vm._factory.InitLayout(layout);
 
         return vm;
     }

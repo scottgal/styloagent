@@ -42,6 +42,28 @@ public class PresentationStoreTests
         Assert.Equal(c1, c2);
     }
 
+    [Theory]
+    [InlineData("foss-", "foss")]
+    [InlineData("foss-", "FOSS")]
+    [InlineData("foss-", "wt-foss")]
+    [InlineData("foss-", "wt-foss-")]
+    [InlineData("foss-", "worktree-foss")]
+    public void DefaultColorFor_AlignsEquivalentIdentities(string a, string b)
+    {
+        // A worktree agent and its channel routing prefix must colour alike so an agent's
+        // terminal/roster colour matches its bus messages.
+        Assert.Equal(PresentationStore.DefaultColorFor(a), PresentationStore.DefaultColorFor(b));
+    }
+
+    [Fact]
+    public void DefaultColorFor_KeepsDistinctIdentitiesDistinguishable()
+    {
+        // Different logical agents should not collapse to the same key.
+        Assert.NotEqual(
+            PresentationStore.NormalizeColorKey("foss-"),
+            PresentationStore.NormalizeColorKey("dash-"));
+    }
+
     [Fact]
     public void DefaultColorFor_IsStable_AcrossMultiplePrefixes()
     {

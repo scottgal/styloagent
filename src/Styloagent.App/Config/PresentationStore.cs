@@ -38,20 +38,46 @@ public sealed class PresentationStore
     ];
 
     /// <summary>
-    /// Deterministically derives a stable border colour from the agent prefix by hashing
-    /// the prefix bytes and picking from the fixed palette.  Same prefix → same colour,
-    /// every run.
+    /// Deterministically derives a stable border colour from the agent prefix by hashing a
+    /// NORMALIZED form of the prefix and picking from the fixed palette. Normalizing (see
+    /// <see cref="NormalizeColorKey"/>) is what aligns an agent's terminal/roster colour with its
+    /// bus messages: a worktree agent (<c>"wt-foss-"</c> / <c>"foss-"</c>) and its channel routing
+    /// prefix (<c>"foss-"</c>) collapse to the same key → the same colour. Same logical agent →
+    /// same colour, everywhere, every run.
     /// </summary>
     public static string DefaultColorFor(string prefix)
     {
-        // Simple but stable FNV-1a 32-bit hash over the UTF-8 bytes.
+        string key = NormalizeColorKey(prefix);
+
+        // Simple but stable FNV-1a 32-bit hash over the normalized key.
         uint hash = 2166136261u;
-        foreach (var c in prefix)
+        foreach (var c in key)
         {
             hash ^= (byte)c;
             hash *= 16777619u;
         }
         return Palette[hash % (uint)Palette.Length];
+    }
+
+    /// <summary>
+    /// Normalizes an agent/routing prefix to a shared colour key so equivalent identities colour
+    /// alike: lower-cased, trailing separators dropped, and a leading worktree marker removed.
+    /// Examples: <c>"foss-"</c>, <c>"FOSS"</c>, <c>"wt-foss"</c> → <c>"foss"</c>.
+    /// </summary>
+    public static string NormalizeColorKey(string prefix)
+    {
+        if (string.IsNullOrWhiteSpace(prefix)) return string.Empty;
+
+        string key = prefix.Trim().ToLowerInvariant().Trim('-', '_', '/', ' ');
+        foreach (string marker in new[] { "wt-", "worktree-", "wt/", "worktrees/" })
+        {
+            if (key.StartsWith(marker, StringComparison.Ordinal))
+            {
+                key = key[marker.Length..].Trim('-', '_', '/', ' ');
+                break;
+            }
+        }
+        return key;
     }
 
     public async Task SaveAsync(string path, IReadOnlyList<AgentPresentation> presentations)

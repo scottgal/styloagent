@@ -59,6 +59,8 @@ public sealed class FleetTools
     {
         var ctx = _http.HttpContext;
         if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        var caller = McpAuth.CallerPrefix(ctx);
+        if (caller is null) return "unauthorized: missing caller identity";
         return JsonSerializer.Serialize(_controller.Snapshot(), Json);
     }
 #pragma warning restore CA1707

@@ -66,4 +66,19 @@ public class FleetToolsTests
         Assert.Contains("overview-", json);
         Assert.Contains("\"maxFleet\"", json);
     }
+
+    [Fact]
+    public void list_fleet_refuses_a_bad_token_or_missing_identity()
+    {
+        // (a) a wrong bearer token → result contains "unauthorized" and does NOT contain a member prefix
+        var toolsWithBadToken = new FleetTools(AccessorWith("overview-", "Bearer WRONG"), new FakeController(), new McpAuth("secret"));
+        var resultBadToken = toolsWithBadToken.list_fleet();
+        Assert.Contains("unauthorized", resultBadToken);
+        Assert.DoesNotContain("overview-", resultBadToken);
+
+        // (b) a valid token but NO X-Styloagent-Agent header → result contains "unauthorized"
+        var toolsWithoutIdentity = new FleetTools(AccessorWith(null, "Bearer secret"), new FakeController(), new McpAuth("secret"));
+        var resultNoIdentity = toolsWithoutIdentity.list_fleet();
+        Assert.Contains("unauthorized", resultNoIdentity);
+    }
 }

@@ -55,7 +55,7 @@
             <TextBlock Text="{Binding FleetHudText}" FontSize="10" Foreground="#7A7AA0" />
           </StackPanel>
           <ToggleButton Grid.Column="1" VerticalAlignment="Center" FontSize="10" Padding="6,2"
-                        IsChecked="{Binding FleetPaused}" Command="{Binding PauseFleetCommand}"
+                        IsChecked="{Binding FleetPaused, Mode=OneWay}" Command="{Binding PauseFleetCommand}"
                         Content="⏸ Pause" />
         </Grid>
       </Border>

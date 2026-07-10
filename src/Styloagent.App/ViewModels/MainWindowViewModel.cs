@@ -102,6 +102,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // ── Fleet management ─────────────────────────────────────────────────────
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FleetHudText))]
     private bool _fleetPaused;
 
     /// <summary>Guardrail limits for this session (read from fleet.yaml on project attach).</summary>
@@ -116,7 +117,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>Passthrough for XAML binding (FleetPolicy is not observable).</summary>
     public int MaxDepth => FleetPolicy.MaxDepth;
 
-    /// <summary>Formatted HUD line for the Agents header: "fleet N/max · depth max max".</summary>
+    /// <summary>Formatted HUD line for the Agents header: "fleet &lt;count&gt;/&lt;maxFleet&gt; · depth &lt;maxDepth&gt; max".</summary>
     public string FleetHudText => $"fleet {FleetCount}/{FleetPolicy.MaxFleet} · depth {FleetPolicy.MaxDepth} max";
 
     /// <summary>Toggles the fleet-paused flag, blocking all governor-checked spawns when true.</summary>
@@ -124,7 +125,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private void PauseFleet() => FleetPaused = !FleetPaused;
 
     // private ctor — callers must use InitializeAsync.
-    private MainWindowViewModel() { }
+    private MainWindowViewModel()
+    {
+        Panes.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(FleetCount));
+            OnPropertyChanged(nameof(FleetHudText));
+        };
+    }
 
     /// <summary>
     /// Factory method: seeds the channel from <paramref name="channelRoot"/>, loads
@@ -356,6 +364,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         _project = project;
         FleetPolicy = FleetPolicyReader.Read(project.FleetPolicyPath);
+        OnPropertyChanged(nameof(MaxFleet));
+        OnPropertyChanged(nameof(MaxDepth));
+        OnPropertyChanged(nameof(FleetHudText));
         ProposedTeam?.Dispose();
         ProposedTeam = new ProposedTeamViewModel(project.ProposedAgentsPath, SpawnProposed);
     }

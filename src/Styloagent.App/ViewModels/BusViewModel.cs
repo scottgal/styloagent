@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Styloagent.App.Config;
 using Styloagent.Core.Channel;
 
@@ -51,6 +52,9 @@ public sealed partial class BusThreadItem : ObservableObject
 
     [ObservableProperty]
     private bool _isExpanded;
+
+    [RelayCommand]
+    private void ToggleExpand() => IsExpanded = !IsExpanded;
 }
 
 /// <summary>
@@ -77,14 +81,6 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private ObservableCollection<BusMessageItem> _messages = new();
-
-    /// <summary>Active (non-archived) messages — inbox/outbox.</summary>
-    [ObservableProperty]
-    private ObservableCollection<BusMessageItem> _currentMessages = new();
-
-    /// <summary>Archived messages.</summary>
-    [ObservableProperty]
-    private ObservableCollection<BusMessageItem> _archivedMessages = new();
 
     [ObservableProperty]
     private ObservableCollection<BusThreadItem> _attentionThreads = new();
@@ -179,13 +175,9 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                     void UpdateMessages()
                     {
                         Messages.Clear();
-                        CurrentMessages.Clear();
-                        ArchivedMessages.Clear();
                         foreach (var item in items)
                         {
                             Messages.Add(item);
-                            if (item.State == "Archived") ArchivedMessages.Add(item);
-                            else CurrentMessages.Add(item);
                         }
                         AttentionThreads.Clear();
                         RecentThreads.Clear();

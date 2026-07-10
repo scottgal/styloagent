@@ -5,29 +5,44 @@
              x:DataType="vm:BusViewModel">
 
   <UserControl.Resources>
-    <!-- Shared message-row template, used by both Current and Archive lists. -->
+    <!-- One message row, shown when a thread is expanded. -->
     <DataTemplate x:Key="MsgTemplate" DataType="vm:BusMessageItem">
-      <Border Margin="0,1,0,0" Background="#111122" BoxShadow="0 1 3 0 #33000000">
-        <Grid ColumnDefinitions="4,*">
-          <Border Grid.Column="0" Background="{Binding ColorHex}" Width="4" />
-          <StackPanel Grid.Column="1" Margin="8,5,8,5" Spacing="2">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="{Binding RoutingPrefix}" FontWeight="Bold" FontSize="11"
+      <Border Margin="18,1,0,0" Background="#0F0F1E">
+        <StackPanel Orientation="Horizontal" Spacing="6" Margin="6,3">
+          <TextBlock Text="{Binding RoutingPrefix}" FontSize="10" FontWeight="Bold"
+                     Foreground="{Binding ColorHex}" />
+          <TextBlock Text="{Binding DisplayLine}" FontSize="10" Foreground="#AAAACC"
+                     TextTrimming="CharacterEllipsis" />
+          <TextBlock Text="{Binding RelativeTime}" FontSize="9" Foreground="#555566" />
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+
+    <!-- One thread row: glyph + colour stripe + subject + participants + time; click expands. -->
+    <DataTemplate x:Key="ThreadTemplate" DataType="vm:BusThreadItem">
+      <Border Margin="0,1,0,0" Background="#111122">
+        <StackPanel>
+          <Button Background="Transparent" BorderThickness="0" Padding="0"
+                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                  Command="{Binding ToggleExpandCommand}">
+            <Grid ColumnDefinitions="4,Auto,*,Auto">
+              <Border Grid.Column="0" Background="{Binding ColorHex}" Width="4" />
+              <TextBlock Grid.Column="1" Text="{Binding Glyph}" FontSize="12"
+                         Margin="6,0,4,0" VerticalAlignment="Center"
                          Foreground="{Binding ColorHex}" />
-              <TextBlock Text="{Binding Slug}" FontSize="11" Foreground="#CCCCDD"
-                         TextTrimming="CharacterEllipsis" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <Border Background="#2A2A44" CornerRadius="3" Padding="4,1">
-                <TextBlock FontSize="9" Foreground="#8888AA">
-                  <Run Text="{Binding Kind}" /><Run Text=" · " /><Run Text="{Binding State}" />
-                </TextBlock>
-              </Border>
-              <TextBlock Text="{Binding RelativeTime}" FontSize="9" Foreground="#555566"
-                         VerticalAlignment="Center" />
-            </StackPanel>
-          </StackPanel>
-        </Grid>
+              <StackPanel Grid.Column="2" Margin="0,5,8,5" Spacing="1">
+                <TextBlock Text="{Binding Subject}" FontSize="11" Foreground="#DDDDEE"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding ParticipantsDisplay}" FontSize="9"
+                           Foreground="{Binding ColorHex}" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+              <TextBlock Grid.Column="3" Text="{Binding RelativeTime}" FontSize="9"
+                         Foreground="#555566" VerticalAlignment="Center" Margin="0,0,8,0" />
+            </Grid>
+          </Button>
+          <ItemsControl ItemsSource="{Binding Messages}" ItemTemplate="{StaticResource MsgTemplate}"
+                        IsVisible="{Binding IsExpanded}" />
+        </StackPanel>
       </Border>
     </DataTemplate>
   </UserControl.Resources>
@@ -43,21 +58,34 @@
       <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
         <StackPanel>
 
-          <!-- Current -->
-          <Border Background="#15152A" Padding="8,4">
-            <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="#7A7AA0" LetterSpacing="1">
-              <Run Text="CURRENT" /><Run Text=" · " /><Run Text="{Binding CurrentMessages.Count}" />
-            </TextBlock>
+          <!-- Section headers use plain-Text TextBlocks (NOT Runs): a TextBlock with inline Runs
+               exposes null .Text, which would defeat the headless .Text assertions in the UITest. -->
+          <Border Background="#2A1A1A" Padding="8,4">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="NEEDS ATTENTION" FontSize="10" FontWeight="SemiBold"
+                         Foreground="#E5A05A" LetterSpacing="1" />
+              <TextBlock Text="{Binding AttentionThreads.Count}" FontSize="10" Foreground="#E5A05A" />
+            </StackPanel>
           </Border>
-          <ItemsControl ItemsSource="{Binding CurrentMessages}" ItemTemplate="{StaticResource MsgTemplate}" />
+          <ItemsControl ItemsSource="{Binding AttentionThreads}" ItemTemplate="{StaticResource ThreadTemplate}" />
 
-          <!-- Archive -->
           <Border Background="#15152A" Padding="8,4" Margin="0,6,0,0">
-            <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="#55556E" LetterSpacing="1">
-              <Run Text="ARCHIVE" /><Run Text=" · " /><Run Text="{Binding ArchivedMessages.Count}" />
-            </TextBlock>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="RECENT" FontSize="10" FontWeight="SemiBold"
+                         Foreground="#7A7AA0" LetterSpacing="1" />
+              <TextBlock Text="{Binding RecentThreads.Count}" FontSize="10" Foreground="#7A7AA0" />
+            </StackPanel>
           </Border>
-          <ItemsControl ItemsSource="{Binding ArchivedMessages}" ItemTemplate="{StaticResource MsgTemplate}" />
+          <ItemsControl ItemsSource="{Binding RecentThreads}" ItemTemplate="{StaticResource ThreadTemplate}" />
+
+          <Border Background="#15152A" Padding="8,4" Margin="0,6,0,0">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="ARCHIVE" FontSize="10" FontWeight="SemiBold"
+                         Foreground="#55556E" LetterSpacing="1" />
+              <TextBlock Text="{Binding ArchivedThreads.Count}" FontSize="10" Foreground="#55556E" />
+            </StackPanel>
+          </Border>
+          <ItemsControl ItemsSource="{Binding ArchivedThreads}" ItemTemplate="{StaticResource ThreadTemplate}" />
 
         </StackPanel>
       </ScrollViewer>

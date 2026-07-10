@@ -1,8 +1,12 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Styloagent.App.Config;
+using Styloagent.App.Services;
 using Styloagent.App.ViewModels;
 using Styloagent.App.Views;
+using Styloagent.Core.Projects;
 using Styloagent.Core.Sessions;
 using Styloagent.Terminal;
 
@@ -19,46 +23,57 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var channelRoot = Environment.GetEnvironmentVariable("STYLOAGENT_CHANNEL")
-                ?? "/tmp/agent-channel";
-            // Agents are the git worktrees of this repo. Point Styloagent elsewhere with
-            // STYLOAGENT_REPO; defaults to the directory the app was launched from.
-            var repoRoot = Environment.GetEnvironmentVariable("STYLOAGENT_REPO")
-                ?? Directory.GetCurrentDirectory();
+            string recentsPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Styloagent", "recent-projects.yaml");
+            var recents = new RecentProjectsStore();
 
-            // Show the window immediately so the user sees it right away.
-            var window = new MainWindow();
-            desktop.MainWindow = window;
-            window.Show();
+            async Task OpenProjectAsync(string root, Window? welcomeWindow)
+            {
+                var cfg = ProjectScaffolder.Ensure(root);
+                await recents.AddAsync(recentsPath, root);
+                var vm = await MainWindowViewModel.InitializeAsync(
+                    cfg.ChannelRoot,
+                    new PortaPtyLauncher(),
+                    new FileSystemFileWatcher(),
+                    gitReader: null,
+                    repoRoot: cfg.Root,
+                    overviewSystemPromptPath: cfg.SystemPromptPath);
+                vm.AttachProject(cfg);
+
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    var cockpit = new MainWindow { DataContext = vm };
+                    desktop.MainWindow = cockpit;
+                    cockpit.Show();
+                    welcomeWindow?.Close();
+                });
+            }
 
             // Dispose the VM (and its BusViewModel/FileSystemWatcher) on clean shutdown.
             desktop.ShutdownRequested += (_, _) =>
                 (desktop.MainWindow?.DataContext as IDisposable)?.Dispose();
 
-            // Initialise the view-model asynchronously; if seeding fails or finds
-            // nothing the factory still produces an empty shell (handled in InitializeAsync).
-            _ = Task.Run(async () =>
+            var repoEnv = Environment.GetEnvironmentVariable("STYLOAGENT_REPO");
+            if (!string.IsNullOrWhiteSpace(repoEnv))
             {
-                try
-                {
-                    var vm = await MainWindowViewModel.InitializeAsync(
-                        channelRoot,
-                        new PortaPtyLauncher(),
-                        new FileSystemFileWatcher(),
-                        new GitCliReader(),
-                        repoRoot);
-
-                    await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
-                    {
-                        window.DataContext = vm;
-                    });
-                }
-                catch (Exception ex)
-                {
-                    // Log to trace; the window stays open showing an empty shell.
-                    System.Diagnostics.Trace.WriteLine($"[Styloagent] Init failed: {ex}");
-                }
-            });
+                // Fast-path: open directly without showing the Welcome screen.
+                var placeholder = new MainWindow();
+                desktop.MainWindow = placeholder;
+                placeholder.Show();
+                _ = OpenProjectAsync(repoEnv, welcomeWindow: null);
+            }
+            else
+            {
+                var welcomeWindow = new Window { Title = "Styloagent", Width = 520, Height = 380 };
+                var welcome = new WelcomeViewModel(recents, recentsPath,
+                    new StorageFolderPicker(welcomeWindow),
+                    root => _ = OpenProjectAsync(root, welcomeWindow));
+                welcomeWindow.Content = new WelcomeView { DataContext = welcome };
+                desktop.MainWindow = welcomeWindow;
+                welcomeWindow.Show();
+                _ = welcome.LoadRecentsAsync();
+            }
         }
 
         base.OnFrameworkInitializationCompleted();

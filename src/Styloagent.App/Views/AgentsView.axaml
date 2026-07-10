@@ -52,8 +52,42 @@
       </Border>
 
       <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-        <ItemsControl ItemsSource="{Binding Panes}"
-                      ItemTemplate="{StaticResource AgentRowTemplate}" />
+        <StackPanel>
+
+          <!-- PROPOSED subsystems: written by the overview agent; click Spawn to promote to live. -->
+          <StackPanel IsVisible="{Binding ProposedTeam.Proposals.Count}">
+            <Border Background="#2A1A1A" Padding="8,4">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="PROPOSED" FontSize="10" FontWeight="SemiBold" Foreground="#E5A05A" LetterSpacing="1" />
+                <Button Grid.Column="1" Content="Spawn all" FontSize="10" Padding="6,1"
+                        Command="{Binding ProposedTeam.SpawnAllCommand}" />
+              </Grid>
+            </Border>
+            <ItemsControl ItemsSource="{Binding ProposedTeam.Proposals}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:ProposedAgentItem">
+                  <Border Background="#111122" Margin="0,1,0,0">
+                    <Grid ColumnDefinitions="4,*,Auto">
+                      <Border Grid.Column="0" Background="{Binding ColorHex}" Width="4" />
+                      <StackPanel Grid.Column="1" Margin="8,5" Spacing="1">
+                        <TextBlock Text="{Binding Prefix}" FontWeight="SemiBold" FontSize="12" Foreground="{Binding ColorHex}" />
+                        <TextBlock Text="{Binding Responsibility}" FontSize="10" Foreground="#8888AA" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                      <Button Grid.Column="2" Content="Spawn" FontSize="10" Margin="0,0,6,0" VerticalAlignment="Center"
+                              Command="{Binding DataContext.ProposedTeam.SpawnCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                              CommandParameter="{Binding Agent}" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+
+          <!-- Live roster -->
+          <ItemsControl ItemsSource="{Binding Panes}"
+                        ItemTemplate="{StaticResource AgentRowTemplate}" />
+
+        </StackPanel>
       </ScrollViewer>
 
     </Grid>

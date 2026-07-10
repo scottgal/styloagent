@@ -1,0 +1,27 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
+             x:Class="Styloagent.App.Views.WelcomeView"
+             x:DataType="vm:WelcomeViewModel">
+  <Border Background="#0C0C0C" Padding="40">
+    <StackPanel Spacing="16" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="420">
+      <TextBlock Text="Styloagent" FontSize="24" FontWeight="Bold" Foreground="#9D7FE0" />
+      <Button Content="Open a project folder…" Command="{Binding OpenFolderCommand}"
+              Padding="14,8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+      <TextBlock Text="Recent" FontSize="11" Foreground="#7A7AA0" Margin="0,8,0,0"
+                 IsVisible="{Binding Recent.Count}" />
+      <ItemsControl ItemsSource="{Binding Recent}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Margin="0,1"
+                    Background="#151528" BorderThickness="0"
+                    Command="{Binding DataContext.OpenRecentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                    CommandParameter="{Binding}">
+              <TextBlock Text="{Binding}" Foreground="#CCCCDD" FontSize="12" TextTrimming="CharacterEllipsis" />
+            </Button>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </Border>
+</UserControl>

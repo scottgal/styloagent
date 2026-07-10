@@ -41,3 +41,18 @@ internal sealed class FakeWatcher : IFileWatcher
     public Task<bool> WaitForChangeAsync(string path, TimeSpan timeout, CancellationToken ct = default)
         => Task.FromResult(WillChange);
 }
+
+/// <summary>
+/// Capturing PTY launcher: records every <see cref="PtySpawnOptions"/> passed to
+/// <see cref="SpawnAsync"/> so tests can assert on the args threaded into each launch.
+/// </summary>
+internal sealed class CapturingLauncher : IPtyLauncher
+{
+    public List<PtySpawnOptions> Options { get; } = new();
+
+    public Task<IPtySession> SpawnAsync(PtySpawnOptions o, CancellationToken ct = default)
+    {
+        Options.Add(o);
+        return Task.FromResult<IPtySession>(new FakePty());
+    }
+}

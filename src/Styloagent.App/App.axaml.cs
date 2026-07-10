@@ -42,6 +42,7 @@ public partial class App : Application
                         repoRoot: cfg.Root,
                         overviewSystemPromptPath: cfg.SystemPromptPath);
                     vm.AttachProject(cfg);
+                    await vm.StartFleetServerAsync();
 
                     await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
                     {

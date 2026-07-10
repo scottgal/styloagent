@@ -6,6 +6,7 @@ using Dock.Model.Core;
 using Dock.Model.Mvvm.Controls;
 using Styloagent.App.Config;
 using Styloagent.App.Dock;
+using Styloagent.App.Mcp;
 using Styloagent.Core.Abstractions;
 using Styloagent.Core.Git;
 using Styloagent.Core.Hooks;
@@ -62,6 +63,41 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // drop-dir; we route them to the owning pane by a per-pane hook id.
     private HookChannel? _hookChannel;
     private readonly Dictionary<string, AgentPaneViewModel> _panesByHookId = new();
+
+    // ── MCP server ────────────────────────────────────────────────────────────
+
+    private StyloagentMcpServer? _mcpServer;
+
+    /// <summary>True once the in-process MCP server is up and listening.</summary>
+    public bool McpServerRunning => _mcpServer?.IsRunning ?? false;
+
+    /// <summary>Non-null when the server failed to start (degraded mode — agents still launch).</summary>
+    public string? McpServerWarning { get; private set; }
+
+    /// <summary>
+    /// Starts the in-process MCP server and fleet controller. Idempotent; degrades gracefully on
+    /// failure so agents can still launch without MCP support.
+    /// </summary>
+    public async Task StartFleetServerAsync()
+    {
+        if (_mcpServer is not null) return;
+        try
+        {
+            _mcpServer = await StyloagentMcpServer.StartAsync(new FleetController(this)).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            McpServerWarning = $"MCP server unavailable — agents cannot spawn subteams: {ex.Message}";
+            System.Diagnostics.Trace.WriteLine($"[Styloagent] {McpServerWarning}");
+        }
+    }
+
+    /// <summary>
+    /// Returns the <c>--mcp-config</c> args for a given agent prefix, or an empty list when the
+    /// server is not running (degraded mode).
+    /// </summary>
+    public IReadOnlyList<string> McpArgsFor(string prefix)
+        => _mcpServer is { IsRunning: true } s ? s.McpConfigArgs(prefix) : Array.Empty<string>();
 
     // ── Fleet management ─────────────────────────────────────────────────────
 
@@ -121,6 +157,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (overviewSystemPromptPath is not null)
         {
             // Overview mode: seed a single overview agent; worktree/channel seeding is skipped.
+            // Start the fleet server NOW — before the overview AgentSession is built — so that
+            // McpArgsFor("overview-") is non-empty when the session args are assembled.
+            await vm.StartFleetServerAsync().ConfigureAwait(false);
+
             string overviewRoot = repoRoot ?? Directory.GetCurrentDirectory();
             entries = new[]
             {
@@ -191,7 +231,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         string firstHookId = vm.ReserveHookId(first.Prefix);
         var session = new AgentSession(first, launcher, watcher,
-            vm.HookArgs(firstHookId).Concat(vm._overviewSystemPromptArgs).ToArray());
+            vm.HookArgs(firstHookId)
+              .Concat(vm._overviewSystemPromptArgs)
+              .Concat(vm.McpArgsFor(first.Prefix))
+              .ToArray());
 
         vm.Pane = new AgentPaneViewModel(
             session,
@@ -303,6 +346,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void AttachProject(ProjectConfig project)
     {
         _project = project;
+        FleetPolicy = FleetPolicyReader.Read(project.FleetPolicyPath);
         ProposedTeam?.Dispose();
         ProposedTeam = new ProposedTeamViewModel(project.ProposedAgentsPath, SpawnProposed);
     }
@@ -378,7 +422,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             Transport: AgentTransport.Local);
 
         string hookId = ReserveHookId(entry.Prefix);
-        var session = new AgentSession(entry, _launcher, _watcher, HookArgs(hookId));
+        var session = new AgentSession(entry, _launcher, _watcher,
+            HookArgs(hookId).Concat(McpArgsFor(p.Prefix)).ToArray());
         var paneVm = new AgentPaneViewModel(
             session,
             entry,
@@ -543,7 +588,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Disposes managed resources, including the <see cref="BusViewModel"/> (which
-    /// stops the FileSystemWatcher and cleans up the debounce timer).
+    /// stops the FileSystemWatcher and cleans up the debounce timer), and the MCP server.
     /// </summary>
     public void Dispose()
     {
@@ -552,6 +597,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         ProposedTeam?.Dispose();
         _busViewModel?.Dispose();
+
+        if (_mcpServer is not null)
+        {
+            // Fire-and-forget: stop and dispose the Kestrel server asynchronously.
+            _ = _mcpServer.DisposeAsync().AsTask();
+            _mcpServer = null;
+        }
 
         if (_hookChannel is not null)
         {

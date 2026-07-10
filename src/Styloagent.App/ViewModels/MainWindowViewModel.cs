@@ -10,6 +10,7 @@ using Styloagent.Core.Abstractions;
 using Styloagent.Core.Git;
 using Styloagent.Core.Hooks;
 using Styloagent.Core.Model;
+using Styloagent.Core.Projects;
 using Styloagent.Core.Seeding;
 using Styloagent.Core.Sessions;
 
@@ -37,6 +38,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private DocLibraryViewModel? _docLibrary;
 
+    [ObservableProperty]
+    private ProposedTeamViewModel? _proposedTeam;
+
+    private ProjectConfig? _project;
+
     private IFactory? _factory;
     private StyloagentDockFactory? _dockFactory;
     private BusViewModel? _busViewModel;
@@ -47,6 +53,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private IPtyLauncher? _launcher;
     private IFileWatcher? _watcher;
     private int _genericAgentCounter;
+
+    // Extra args appended to the first pane's session when launched in overview mode.
+    private IReadOnlyList<string> _overviewSystemPromptArgs = Array.Empty<string>();
 
     // Hook state channel (§4.4): each spawned claude reports lifecycle events into a shared
     // drop-dir; we route them to the owning pane by a per-pane hook id.
@@ -68,6 +77,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         IGitReader? gitReader = null,
         string? repoRoot = null,
         string? presentationPath = null,
+        string? overviewSystemPromptPath = null,
         CancellationToken ct = default)
     {
         var vm = new MainWindowViewModel();
@@ -92,7 +102,26 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // worktrees): each launches claude in that worktree. Falls back to channel-seeded
         // agents when no git reader is supplied (e.g. in unit tests).
         IReadOnlyList<AgentManifestEntry> entries;
-        if (gitReader is not null)
+        if (overviewSystemPromptPath is not null)
+        {
+            // Overview mode: seed a single overview agent; worktree/channel seeding is skipped.
+            string overviewRoot = repoRoot ?? Directory.GetCurrentDirectory();
+            entries = new[]
+            {
+                new AgentManifestEntry(
+                    Prefix: "overview-",
+                    Repo: overviewRoot,
+                    Worktree: overviewRoot,
+                    LaunchPromptPath: string.Empty,
+                    RestartPromptPath: string.Empty,
+                    SavedContextPath: string.Empty,
+                    Transport: AgentTransport.Local),
+            };
+            vm._overviewSystemPromptArgs = File.Exists(overviewSystemPromptPath)
+                ? new[] { "--append-system-prompt", File.ReadAllText(overviewSystemPromptPath) }
+                : Array.Empty<string>();
+        }
+        else if (gitReader is not null)
         {
             var root = repoRoot
                 ?? Environment.GetEnvironmentVariable("STYLOAGENT_REPO")
@@ -145,7 +174,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             BorderColorHex: PresentationStore.DefaultColorFor(first.Prefix));
 
         string firstHookId = vm.ReserveHookId(first.Prefix);
-        var session = new AgentSession(first, launcher, watcher, vm.HookArgs(firstHookId));
+        var session = new AgentSession(first, launcher, watcher,
+            vm.HookArgs(firstHookId).Concat(vm._overviewSystemPromptArgs).ToArray());
 
         vm.Pane = new AgentPaneViewModel(
             session,
@@ -252,6 +282,72 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // Launch claude in the new pane immediately.
         _ = paneVm.SpawnAsync();
     }
+
+    /// <summary>Wires the ProposedTeam VM against a project's proposed-agents.yaml. Idempotent.</summary>
+    public void AttachProject(ProjectConfig project)
+    {
+        _project = project;
+        ProposedTeam?.Dispose();
+        ProposedTeam = new ProposedTeamViewModel(project.ProposedAgentsPath, SpawnProposed);
+    }
+
+    /// <summary>Turns a proposed subsystem into a live roster agent (mirrors AddAgent).</summary>
+    public void SpawnProposed(ProposedAgent p)
+    {
+        if (_dockFactory is null || _launcher is null || _watcher is null) return;
+        var documentDock = _dockFactory.DocumentDock;
+        var rootDock = _dockFactory.RootDock;
+        if (documentDock is null || rootDock is null) return;
+
+        // Persist the launch prompt to a file so the existing LaunchPromptPath path can read it.
+        string root = _project?.Root ?? DefaultWorkingDirectory();
+        string launchPromptPath = string.Empty;
+        if (_project is not null && !string.IsNullOrWhiteSpace(p.LaunchPrompt))
+        {
+            Directory.CreateDirectory(_project.LaunchPromptsDir);
+            launchPromptPath = Path.Combine(_project.LaunchPromptsDir, SanitizeFileName(p.Prefix) + ".md");
+            File.WriteAllText(launchPromptPath, p.LaunchPrompt);
+        }
+
+        var entry = new AgentManifestEntry(
+            Prefix: p.Prefix,
+            Repo: root,
+            Worktree: WorkingDirectoryResolver.Resolve(
+                string.IsNullOrWhiteSpace(p.Dir) ? null : Path.Combine(root, p.Dir),
+                DefaultWorkingDirectory()),
+            LaunchPromptPath: launchPromptPath,
+            RestartPromptPath: string.Empty,
+            SavedContextPath: string.Empty,
+            Transport: AgentTransport.Local);
+
+        string hookId = ReserveHookId(entry.Prefix);
+        var session = new AgentSession(entry, _launcher, _watcher, HookArgs(hookId));
+        var paneVm = new AgentPaneViewModel(
+            session,
+            entry,
+            p.Prefix.TrimEnd('-'),
+            PresentationStore.DefaultColorFor(p.Prefix));
+        Panes.Add(paneVm);
+        SelectedPane = paneVm;
+        _panesByHookId[hookId] = paneVm;
+
+        var doc = new Document
+        {
+            Id = $"AgentPane-{p.Prefix}",
+            Title = paneVm.DisplayName,
+            Context = paneVm,
+            CanFloat = true,
+        };
+
+        _dockFactory.AddDockable(documentDock, doc);
+        _dockFactory.SetActiveDockable(doc);
+        _dockFactory.SetFocusedDockable(rootDock, doc);
+
+        _ = paneVm.SpawnAsync();
+    }
+
+    private static string SanitizeFileName(string s)
+        => new string(s.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '-').ToArray());
 
     /// <summary>Selects a pane so its terminal document is brought to front in the centre dock.</summary>
     [RelayCommand]
@@ -391,6 +487,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (_dockFactory is not null)
             _dockFactory.ActiveDockableChanged -= OnActiveDockableChanged;
 
+        ProposedTeam?.Dispose();
         _busViewModel?.Dispose();
 
         if (_hookChannel is not null)

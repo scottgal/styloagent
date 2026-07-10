@@ -1,5 +1,6 @@
 using Dock.Model.Mvvm.Controls;
 using Styloagent.App.ViewModels;
+using Styloagent.Core.Projects;
 
 namespace Styloagent.App.Tests;
 
@@ -205,6 +206,23 @@ public class MainWindowViewModelTests : IDisposable
                 .ElementAt(2);
             var thirdPaneVm = Assert.IsType<AgentPaneViewModel>(thirdDoc.Context);
             Assert.StartsWith("agent-", thirdPaneVm.DisplayName);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task SpawnProposed_adds_a_live_pane()
+    {
+        var root = MakeTwoAgentChannel();
+        try
+        {
+            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            int before = vm.Panes.Count;
+
+            vm.SpawnProposed(new ProposedAgent("newsub-", "owns the new subsystem", ".", "You are newsub-."));
+
+            Assert.Equal(before + 1, vm.Panes.Count);
+            Assert.Contains(vm.Panes, p => p.DisplayName.Contains("newsub"));
         }
         finally { Directory.Delete(root, recursive: true); }
     }

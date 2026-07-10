@@ -9,6 +9,24 @@ across many focused, long-lived specialist agents — each with its own terminal
 worktree, and its own running context document. Styloagent is the environment those agents
 run *inside*, and the surface a human uses to see and drive them.
 
+## Getting started
+
+Point Styloagent at a project folder. On first open it scaffolds a `.styloagent/` config
+(system prompt, coordination protocol, and the file-drop channel) and remembers the folder in
+your recents:
+
+![Welcome — open a project folder](docs/screenshots/welcome.png)
+
+It then launches a single **overview** agent with that system prompt. The overview reads the
+repo, decides the initial subsystems, and writes them to `.styloagent/proposed-agents.yaml`.
+Styloagent watches that file and surfaces the suggestions as a **PROPOSED** section at the top of
+the roster — colour-coded by prefix, each with a one-click **Spawn** (or **Spawn all**):
+
+![Proposed team roster](docs/screenshots/proposed-team.png)
+
+Clicking **Spawn** promotes a proposal into a live, long-lived agent with its own terminal in the
+cockpit. From there the team keeps splitting and specialising through the coordination protocol.
+
 ## The cockpit
 
 Roster of agents on the left, dockable agent terminals in the centre, and a
@@ -45,7 +63,7 @@ Documents render with lucidVIEW's presentation — headings, code, lists, and re
 
 ![Rendered markdown document](docs/screenshots/markdown-doc.png)
 
-> Every screenshot above is generated **headlessly from the real controls** by the UITest suite
+> Every screenshot in this README is generated **headlessly from the real controls** by the UITest suite
 > (`tests/Styloagent.UITests/ReadmeScreenshotTests.cs`) using the
 > [`Mostlylucid.Avalonia.UITesting`](https://www.nuget.org/packages/Mostlylucid.Avalonia.UITesting)
 > framework — so the README always reflects the actual UI. Run `dotnet test` to refresh them.
@@ -63,6 +81,9 @@ The cockpit shell and its panels are built and tested end-to-end:
   roster.
 - **Document Library** — repo+channel markdown, opened as rendered documents via
   `Mostlylucid.LucidView.Markdown` (LiveMarkdown.Avalonia + Naiad), extracted from lucidVIEW.
+- **Onboarding** — point at a folder → scaffold `.styloagent/` → launch the **overview** agent
+  (system prompt injected) → watch `proposed-agents.yaml` → a **PROPOSED** roster section you spawn
+  from. Recents remembered; `STYLOAGENT_REPO` opens a project directly.
 - **`Styloagent.Core`** — fleet manifest, YAML persistence (VYaml), channel→manifest seeding, the
   `AgentSession` spawn → dehydrate → rehydrate state machine, and the pure bus/doc/hook logic.
 

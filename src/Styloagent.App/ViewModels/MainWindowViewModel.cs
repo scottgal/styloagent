@@ -16,6 +16,7 @@ using Styloagent.Core.Mcp;
 using Styloagent.Core.Model;
 using Styloagent.Core.Projects;
 using Styloagent.Core.Seeding;
+using Styloagent.Core.Diagrams;
 using Styloagent.Core.Sessions;
 
 namespace Styloagent.App.ViewModels;
@@ -74,6 +75,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // drop-dir; we route them to the owning pane by a per-pane hook id.
     private HookChannel? _hookChannel;
     private readonly Dictionary<string, AgentPaneViewModel> _panesByHookId = new();
+
+    // ── Diagram cockpit ───────────────────────────────────────────────────────
+
+    private readonly List<DiagramDocumentViewModel> _openDiagrams = new();
+    private DispatcherTimer? _diagramDebounceTimer;
 
     // ── Attention auto-reveal (Task 4) ────────────────────────────────────────
 
@@ -161,6 +167,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             OnPropertyChanged(nameof(FleetCount));
             OnPropertyChanged(nameof(FleetHudText));
+            ArmDiagramDebounce();
         };
     }
 
@@ -762,12 +769,112 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _dockFactory.SetFocusedDockable(rootDock, doc);
     }
 
+    // ── Diagram cockpit commands ──────────────────────────────────────────────
+
+    /// <summary>Opens a live System Map diagram tab driven by the current fleet roster.</summary>
+    [RelayCommand]
+    private void ShowSystemMap()
+    {
+        var doc = new DiagramDocumentViewModel(
+            "System Map",
+            DiagramKind.SystemMap,
+            () => SystemMapGenerator.Build(BuildFleetNodes()));
+        _openDiagrams.Add(doc);
+        OpenMarkdownDocument(doc);
+    }
+
+    /// <summary>Opens a live Bus Sequence diagram tab driven by the current bus threads.</summary>
+    [RelayCommand]
+    private void ShowBusSequence()
+    {
+        var doc = new DiagramDocumentViewModel(
+            "Bus Sequence",
+            DiagramKind.BusSequence,
+            () => BusSequenceGenerator.Build(BuildBusThreads()));
+        _openDiagrams.Add(doc);
+        OpenMarkdownDocument(doc);
+    }
+
+    /// <summary>Builds the fleet-node list for the System Map from the current pane roster.</summary>
+    internal IReadOnlyList<FleetNode> BuildFleetNodes()
+        => Panes
+            .Select(p => new FleetNode(p.Prefix, p.ParentPrefix, p.Responsibility, p.HookStateText ?? ""))
+            .ToList();
+
+    /// <summary>
+    /// Builds the bus-thread list for the Bus Sequence diagram from <see cref="BusViewModel"/>.
+    /// Each <c>BusThreadItem</c> has no slug property; the slug is derived from the first
+    /// message's <c>Slug</c> when available, falling back to the thread's <c>Subject</c>.
+    /// </summary>
+    internal IReadOnlyList<SeqThread> BuildBusThreads()
+    {
+        if (_busViewModel is null) return Array.Empty<SeqThread>();
+
+        return _busViewModel.AttentionThreads
+            .Concat(_busViewModel.RecentThreads)
+            .Concat(_busViewModel.ArchivedThreads)
+            .Select(item =>
+            {
+                string slug = item.Messages.Count > 0
+                    ? item.Messages[0].Slug
+                    : item.Subject;
+                var messages = item.Messages
+                    .Select(m => new SeqMessage(m.From ?? "?", m.Timestamp))
+                    .ToList();
+                return new SeqThread(slug, messages);
+            })
+            .ToList();
+    }
+
+    /// <summary>Exposes the open-diagrams list for test assertions.</summary>
+    internal IReadOnlyList<DiagramDocumentViewModel> OpenDiagramsForTest() => _openDiagrams;
+
+    /// <summary>Deterministic test seam: runs live-diagram regeneration synchronously.</summary>
+    internal void RegenerateLiveDiagramsForTest() => RegenerateLiveDiagrams();
+
+    /// <summary>Regenerates every tracked diagram whose <see cref="DiagramDocumentViewModel.Live"/> flag is true.</summary>
+    private void RegenerateLiveDiagrams()
+    {
+        foreach (var d in _openDiagrams)
+        {
+            if (d.Live) d.RegenerateCommand.Execute(null);
+        }
+    }
+
+    /// <summary>
+    /// Arms (or re-arms) the 500 ms single-shot debounce timer for live diagram regeneration.
+    /// Safe to call from any thread that can reach the UI dispatcher.
+    /// Note: bus-data changes are not currently wired here — only Panes changes trigger the
+    /// debounce. Hooking BusViewModel.PropertyChanged is a future improvement.
+    /// </summary>
+    private void ArmDiagramDebounce()
+    {
+        if (_diagramDebounceTimer is null)
+        {
+            // Create on first call (ctor runs before Dispatcher is available in tests).
+            _diagramDebounceTimer = new DispatcherTimer(
+                TimeSpan.FromMilliseconds(500),
+                DispatcherPriority.Background,
+                (_, _) =>
+                {
+                    _diagramDebounceTimer?.Stop();
+                    RegenerateLiveDiagrams();
+                });
+        }
+
+        _diagramDebounceTimer.Stop();
+        _diagramDebounceTimer.Start();
+    }
+
     /// <summary>
     /// Disposes managed resources, including the <see cref="BusViewModel"/> (which
     /// stops the FileSystemWatcher and cleans up the debounce timer), and the MCP server.
     /// </summary>
     public void Dispose()
     {
+        _diagramDebounceTimer?.Stop();
+        _diagramDebounceTimer = null;
+
         _idleTimer?.Stop();
         _idleTimer = null;
 

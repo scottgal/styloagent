@@ -7,7 +7,9 @@ using Dock.Model.Mvvm.Controls;
 using Styloagent.App.Config;
 using Styloagent.App.Dock;
 using Styloagent.App.Mcp;
+using Styloagent.App.Services;
 using Styloagent.Core.Abstractions;
+using Styloagent.Core.Attention;
 using Styloagent.Core.Git;
 using Styloagent.Core.Hooks;
 using Styloagent.Core.Mcp;
@@ -72,6 +74,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // drop-dir; we route them to the owning pane by a per-pane hook id.
     private HookChannel? _hookChannel;
     private readonly Dictionary<string, AgentPaneViewModel> _panesByHookId = new();
+
+    // ── Attention auto-reveal (Task 4) ────────────────────────────────────────
+
+    private static readonly TimeSpan IdleWindow = TimeSpan.FromSeconds(4);
+    private readonly InteractionMonitor _interaction = new();
+
+    /// <summary>Internal counter: number of times auto-reveal (no focus) was triggered (for tests).</summary>
+    internal int AutoActivateCountForTest;
+
+    /// <summary>Internal counter: number of times jump-to-next (with focus) was triggered (for tests).</summary>
+    internal int JumpFocusCountForTest;
 
     // ── MCP server ────────────────────────────────────────────────────────────
 
@@ -275,6 +288,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         vm._dockFactory = dockFactory;
         vm._factory = dockFactory;
         dockFactory.ActiveDockableChanged += vm.OnActiveDockableChanged;
+        vm._interaction.Idle += () => Dispatcher.UIThread.Post(vm.AutoRevealHead);
         var layout = dockFactory.CreateLayout();
         vm.Layout = layout;
         if (layout is not null)
@@ -555,6 +569,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             pane.ApplyHookEvent(e);
             pane.WaitingSince = pane.NeedsYou ? (pane.WaitingSince ?? DateTimeOffset.UtcNow) : null;
             RefreshAttention();
+            if (!_interaction.IsBusy(IdleWindow)) AutoRevealHead();
         }
     }
 
@@ -573,9 +588,73 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(AttentionHudText));
     }
 
+    // ── Attention reveal + jump (Task 4) ─────────────────────────────────────
+
+    /// <summary>
+    /// Makes a pane's tab visible. When <paramref name="focus"/> is true, also grabs keyboard
+    /// focus — only for human-initiated jumps. Auto-reveal passes false to honour the focus
+    /// invariant (no keyboard grab without the human asking).
+    /// </summary>
+    public void RevealPane(AgentPaneViewModel pane, bool focus)
+    {
+        if (_dockFactory?.DocumentDock is not { } dock) return;
+        var doc = dock.VisibleDockables?
+            .OfType<Document>()
+            .FirstOrDefault(d => ReferenceEquals(d.Context, pane));
+        if (doc is null) return;
+
+        _dockFactory.SetActiveDockable(doc);
+
+        if (focus)
+        {
+            if (_dockFactory.RootDock is { } rootDock)
+                _dockFactory.SetFocusedDockable(rootDock, doc);
+            SelectedPane = pane;
+            JumpFocusCountForTest++;
+        }
+        else
+        {
+            AutoActivateCountForTest++;
+        }
+    }
+
+    /// <summary>Auto-reveals the oldest waiting pane iff the human is idle and it is not already active.</summary>
+    public void AutoRevealHead()
+    {
+        var head = AttentionQueue.FirstOrDefault();
+        var target = AutoReveal.Decide(_interaction.IsBusy(IdleWindow), head?.Prefix, ActivePrefix());
+        if (target is not null && head is not null) RevealPane(head, focus: false);
+    }
+
+    /// <summary>Jumps keyboard focus to the oldest waiting pane (human-initiated; always focuses).</summary>
+    [RelayCommand]
+    private void JumpToNextWaiting()
+    {
+        var head = AttentionQueue.FirstOrDefault();
+        if (head is not null) RevealPane(head, focus: true);
+    }
+
+    /// <summary>Returns the prefix of the currently active document, or null when nothing is active.</summary>
+    private string? ActivePrefix()
+    {
+        if (_dockFactory?.DocumentDock?.ActiveDockable is Document { Context: AgentPaneViewModel p })
+            return p.Prefix;
+        return null;
+    }
+
+    /// <summary>Exposes the interaction monitor for tests.</summary>
+    internal InteractionMonitor InteractionForTest() => _interaction;
+
+    /// <summary>Exposes the active-prefix logic for tests.</summary>
+    internal string? ActivePrefixForTest() => ActivePrefix();
+
     /// <summary>Returns the first hook id registered (for test seams).</summary>
     internal string FirstHookIdForTest()
         => _panesByHookId.Keys.First();
+
+    /// <summary>Returns the second hook id registered (for test seams that need a background pane).</summary>
+    internal string SecondHookIdForTest()
+        => _panesByHookId.Keys.Skip(1).First();
 
     /// <summary>Applies a hook event synchronously on the calling thread (for unit tests — bypasses UIThread.Post).</summary>
     internal void DispatchHookForTest(HookEvent e) => ApplyHookEventOnUiThread(e);

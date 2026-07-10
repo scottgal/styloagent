@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Dock.Model.Mvvm.Controls;
 using Styloagent.Core.Hooks;
 using Styloagent.Core.Model;
 using Styloagent.Core.Sessions;
@@ -8,10 +9,12 @@ namespace Styloagent.App.ViewModels;
 
 /// <summary>
 /// View-model that wraps one <see cref="AgentSession"/> and drives it through its
-/// lifecycle (Unspawned → Live → Dehydrated → Live).  All public properties are
-/// observable via INotifyPropertyChanged (CommunityToolkit.Mvvm).
+/// lifecycle (Unspawned → Live → Dehydrated → Live).  It IS a Dock <see cref="Document"/> so the
+/// centre DockControl hosts it directly and renders it through the App.axaml DataTemplate
+/// (AgentPaneViewModel → AgentPaneView) — the wrapper pattern (base Document + Context) does NOT
+/// render its body in Dock 11.3. All extra properties are observable (CommunityToolkit.Mvvm).
 /// </summary>
-public sealed partial class AgentPaneViewModel : ObservableObject
+public sealed partial class AgentPaneViewModel : Document
 {
     private static readonly TimeSpan DehydrateTimeout = TimeSpan.FromSeconds(30);
 
@@ -139,6 +142,11 @@ public sealed partial class AgentPaneViewModel : ObservableObject
         _displayName = displayName;
         _borderColorHex = borderColorHex;
         _state = session.State;
+
+        // Dock document identity: Id is the (unique) prefix; Title is the tab caption.
+        Id = manifest.Prefix;
+        Title = displayName;
+        CanFloat = true;
     }
 
     /// <summary>
@@ -190,9 +198,13 @@ public sealed partial class AgentPaneViewModel : ObservableObject
         State = _session.State;
     }
 
-    /// <summary>Renames the display name shown in the cockpit UI.</summary>
+    /// <summary>Renames the display name shown in the cockpit UI (and the dock tab title).</summary>
     [RelayCommand]
-    public void Rename(string newName) => DisplayName = newName;
+    public void Rename(string newName)
+    {
+        DisplayName = newName;
+        Title = newName;
+    }
 
     // ── helpers ─────────────────────────────────────────────────────────────
 

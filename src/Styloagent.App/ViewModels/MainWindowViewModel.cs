@@ -405,17 +405,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         SelectedPane = paneVm;
         _panesByHookId[hookId] = paneVm;
 
-        var doc = new Document
-        {
-            Id = $"AgentPane-{presentation.Prefix}",
-            Title = paneVm.DisplayName,
-            Context = paneVm,
-            CanFloat = true,
-        };
-
-        _dockFactory.AddDockable(documentDock, doc);
-        _dockFactory.SetActiveDockable(doc);
-        _dockFactory.SetFocusedDockable(rootDock, doc);
+        // The pane IS a Dock Document — add it directly (Id/Title/CanFloat set in its ctor).
+        _dockFactory.AddDockable(documentDock, paneVm);
+        _dockFactory.SetActiveDockable(paneVm);
+        _dockFactory.SetFocusedDockable(rootDock, paneVm);
 
         // Launch claude in the new pane immediately.
         _ = paneVm.SpawnAsync();
@@ -521,17 +514,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         SelectedPane = paneVm;
         _panesByHookId[hookId] = paneVm;
 
-        var doc = new Document
-        {
-            Id = $"AgentPane-{p.Prefix}",
-            Title = paneVm.DisplayName,
-            Context = paneVm,
-            CanFloat = true,
-        };
-
-        _dockFactory.AddDockable(documentDock, doc);
-        _dockFactory.SetActiveDockable(doc);
-        _dockFactory.SetFocusedDockable(rootDock, doc);
+        // The pane IS a Dock Document — add it directly (Id/Title/CanFloat set in its ctor).
+        _dockFactory.AddDockable(documentDock, paneVm);
+        _dockFactory.SetActiveDockable(paneVm);
+        _dockFactory.SetFocusedDockable(rootDock, paneVm);
 
         _ = paneVm.SpawnAsync();
         return paneVm;
@@ -556,21 +542,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (newValue is not null) newValue.IsSelected = true;
     }
 
-    /// <summary>Brings the dock document whose context is <paramref name="pane"/> to the front.</summary>
+    /// <summary>Brings the dock document for <paramref name="pane"/> to the front. The pane IS a
+    /// Dock Document, so it is the dockable itself.</summary>
     private void ActivateDocumentFor(AgentPaneViewModel pane)
     {
-        if (_dockFactory?.DocumentDock is not { } dock) return;
-        var doc = dock.VisibleDockables?
-            .OfType<Document>()
-            .FirstOrDefault(d => ReferenceEquals(d.Context, pane));
-        if (doc is not null)
-            _dockFactory.SetActiveDockable(doc);
+        if (_dockFactory is null) return;
+        _dockFactory.SetActiveDockable(pane);
     }
 
     /// <summary>Reverse sync: activating a dock tab updates the roster selection/highlight.</summary>
     private void OnActiveDockableChanged(object? sender, global::Dock.Model.Core.Events.ActiveDockableChangedEventArgs e)
     {
-        if (e.Dockable is Document { Context: AgentPaneViewModel pane } && !ReferenceEquals(SelectedPane, pane))
+        if (e.Dockable is AgentPaneViewModel pane && !ReferenceEquals(SelectedPane, pane))
             SelectedPane = pane;
     }
 
@@ -637,18 +620,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     public void RevealPane(AgentPaneViewModel pane, bool focus)
     {
-        if (_dockFactory?.DocumentDock is not { } dock) return;
-        var doc = dock.VisibleDockables?
-            .OfType<Document>()
-            .FirstOrDefault(d => ReferenceEquals(d.Context, pane));
-        if (doc is null) return;
-
-        _dockFactory.SetActiveDockable(doc);
+        if (_dockFactory is null) return;
+        // The pane IS the dockable (it inherits Document).
+        _dockFactory.SetActiveDockable(pane);
 
         if (focus)
         {
             if (_dockFactory.RootDock is { } rootDock)
-                _dockFactory.SetFocusedDockable(rootDock, doc);
+                _dockFactory.SetFocusedDockable(rootDock, pane);
             SelectedPane = pane;
             JumpFocusCountForTest++;
         }
@@ -687,7 +666,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>Returns the prefix of the currently active document, or null when nothing is active.</summary>
     private string? ActivePrefix()
     {
-        if (_dockFactory?.DocumentDock?.ActiveDockable is Document { Context: AgentPaneViewModel p })
+        if (_dockFactory?.DocumentDock?.ActiveDockable is AgentPaneViewModel p)
             return p.Prefix;
         return null;
     }
@@ -760,17 +739,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (documentDock is null || rootDock is null)
             return;
 
-        var doc = new Document
-        {
-            Id = "Doc-" + Guid.NewGuid().ToString("N"),
-            Title = docVm.Title,
-            Context = docVm,
-            CanFloat = true,
-        };
-
-        _dockFactory.AddDockable(documentDock, doc);
-        _dockFactory.SetActiveDockable(doc);
-        _dockFactory.SetFocusedDockable(rootDock, doc);
+        // The markdown/diagram VM IS a Dock Document — add it directly. Give it a unique dock Id so
+        // opening the same-titled doc twice doesn't collide.
+        docVm.Id = "Doc-" + Guid.NewGuid().ToString("N");
+        docVm.CanFloat = true;
+        _dockFactory.AddDockable(documentDock, docVm);
+        _dockFactory.SetActiveDockable(docVm);
+        _dockFactory.SetFocusedDockable(rootDock, docVm);
     }
 
     // ── Diagram cockpit commands ──────────────────────────────────────────────

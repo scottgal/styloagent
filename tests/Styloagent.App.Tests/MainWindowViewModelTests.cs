@@ -147,10 +147,11 @@ public class MainWindowViewModelTests : IDisposable
             Assert.NotNull(dock);
             Assert.Equal(2, dock!.VisibleDockables?.Count);
 
+            // The pane VM IS the Dock document (it inherits Document) — the dockable itself is the pane.
             var secondDoc = dock.VisibleDockables!
                 .OfType<Document>()
                 .ElementAt(1);
-            Assert.IsType<AgentPaneViewModel>(secondDoc.Context);
+            Assert.IsType<AgentPaneViewModel>(secondDoc);
         }
         finally { Directory.Delete(root, recursive: true); }
     }
@@ -204,7 +205,7 @@ public class MainWindowViewModelTests : IDisposable
             var thirdDoc = dock.VisibleDockables!
                 .OfType<Document>()
                 .ElementAt(2);
-            var thirdPaneVm = Assert.IsType<AgentPaneViewModel>(thirdDoc.Context);
+            var thirdPaneVm = Assert.IsType<AgentPaneViewModel>(thirdDoc);
             Assert.StartsWith("agent-", thirdPaneVm.DisplayName);
         }
         finally { Directory.Delete(root, recursive: true); }

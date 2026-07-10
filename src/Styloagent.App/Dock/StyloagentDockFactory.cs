@@ -41,19 +41,14 @@ public sealed class StyloagentDockFactory : Factory
             VisibleDockables = CreateList<IDockable>(),
         };
 
-        // Seed the first agent as a document when one is supplied.
+        // Seed the first agent as a document when one is supplied. The pane view-model IS a Dock
+        // Document (it inherits Document), so it is added directly — no wrapper — and the DockControl
+        // renders it via the App.axaml DataTemplate (AgentPaneViewModel → AgentPaneView).
         if (_agentPane is not null)
         {
-            var agentDocument = new Document
-            {
-                Id = "AgentPane",
-                Title = _agentPane.DisplayName,
-                Context = _agentPane,
-                CanFloat = true,
-            };
-            documentDock.VisibleDockables!.Add(agentDocument);
-            documentDock.ActiveDockable = agentDocument;
-            documentDock.DefaultDockable = agentDocument;
+            documentDock.VisibleDockables!.Add(_agentPane);
+            documentDock.ActiveDockable = _agentPane;
+            documentDock.DefaultDockable = _agentPane;
         }
 
         var rootDock = CreateRootDock();

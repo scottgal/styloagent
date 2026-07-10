@@ -31,6 +31,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>All open agent panes — bound by the shell's tab strip.</summary>
     public System.Collections.ObjectModel.ObservableCollection<AgentPaneViewModel> Panes { get; } = new();
 
+    /// <summary>Panes currently waiting for human attention, oldest-first.</summary>
+    public System.Collections.ObjectModel.ObservableCollection<AgentPaneViewModel> AttentionQueue { get; } = new();
+
+    /// <summary>Count of panes currently waiting for human attention.</summary>
+    public int WaitingCount => AttentionQueue.Count;
+
+    /// <summary>HUD text for the attention queue: empty when nobody is waiting.</summary>
+    public string AttentionHudText => WaitingCount == 0 ? "" : $"⚠ {WaitingCount} waiting";
+
     [ObservableProperty]
     private AgentPaneViewModel? _selectedPane;
 
@@ -535,12 +544,41 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>Routes a hook event (raised on a background thread) to the owning pane on the UI thread.</summary>
     private void OnHookEvent(HookEvent e)
     {
-        Dispatcher.UIThread.Post(() =>
-        {
-            if (_panesByHookId.TryGetValue(e.AgentId, out var pane) && pane is not null)
-                pane.ApplyHookEvent(e);
-        });
+        Dispatcher.UIThread.Post(() => ApplyHookEventOnUiThread(e));
     }
+
+    /// <summary>Applies a hook event on the UI thread — extracted so tests can call it directly.</summary>
+    private void ApplyHookEventOnUiThread(HookEvent e)
+    {
+        if (_panesByHookId.TryGetValue(e.AgentId, out var pane) && pane is not null)
+        {
+            pane.ApplyHookEvent(e);
+            pane.WaitingSince = pane.NeedsYou ? (pane.WaitingSince ?? DateTimeOffset.UtcNow) : null;
+            RefreshAttention();
+        }
+    }
+
+    /// <summary>Rebuilds the oldest-first attention queue from the current panes.</summary>
+    public void RefreshAttention()
+    {
+        var order = Styloagent.Core.Attention.AttentionQueue.Build(
+            Panes.Select(p => new Styloagent.Core.Attention.AttentionCandidate(p.Prefix, p.NeedsYou, p.WaitingSince)));
+        AttentionQueue.Clear();
+        foreach (var id in order)
+        {
+            var pane = Panes.FirstOrDefault(p => p.Prefix == id);
+            if (pane is not null) AttentionQueue.Add(pane);
+        }
+        OnPropertyChanged(nameof(WaitingCount));
+        OnPropertyChanged(nameof(AttentionHudText));
+    }
+
+    /// <summary>Returns the first hook id registered (for test seams).</summary>
+    internal string FirstHookIdForTest()
+        => _panesByHookId.Keys.First();
+
+    /// <summary>Applies a hook event synchronously on the calling thread (for unit tests — bypasses UIThread.Post).</summary>
+    internal void DispatchHookForTest(HookEvent e) => ApplyHookEventOnUiThread(e);
 
     /// <summary>
     /// The default directory to launch agents in when their worktree isn't configured.

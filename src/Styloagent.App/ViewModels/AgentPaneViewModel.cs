@@ -87,6 +87,9 @@ public sealed partial class AgentPaneViewModel : ObservableObject
     /// <summary>True when the agent is blocked on a human — the glanceable "who needs me".</summary>
     public bool NeedsYou => HookState == AgentHookState.WaitingForHuman;
 
+    /// <summary>When this agent entered WaitingForHuman (null when it is not waiting). Drives queue order.</summary>
+    public DateTimeOffset? WaitingSince { get; set; }
+
     /// <summary>Applies a hook event, advancing this pane's <see cref="HookState"/>.</summary>
     public void ApplyHookEvent(HookEvent e) => HookState = HookStateMachine.Next(HookState, e);
 

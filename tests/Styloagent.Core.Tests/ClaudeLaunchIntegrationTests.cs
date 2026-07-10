@@ -14,6 +14,8 @@ using Xunit;
 /// </summary>
 public class ClaudeLaunchIntegrationTests
 {
+    private static readonly string[] VersionArgs = ["--version"];
+
     [Fact(Timeout = 20000)]
     [Trait("Category", "Integration")]
     public async Task Launches_real_claude_with_empty_worktree()
@@ -24,7 +26,7 @@ public class ClaudeLaunchIntegrationTests
 
         // Empty cwd on purpose — the bug the app hit. The resolver must make this launch.
         await using var pty = await launcher.SpawnAsync(
-            new PtySpawnOptions("claude", new[] { "--version" }, "", null, 100, 30));
+            new PtySpawnOptions("claude", VersionArgs, "", null, 100, 30));
 
         pty.Output += chunk =>
         {
@@ -56,7 +58,7 @@ public class ClaudeLaunchIntegrationTests
 
         var hooksDir = Path.Combine(Path.GetTempPath(), "styloagent-hooks-it", Guid.NewGuid().ToString("N"));
         // [--settings <json>, --version] — same args the app appends at spawn.
-        var args = HookSettings.BuildSettingsArgs("web", hooksDir).Concat(new[] { "--version" }).ToArray();
+        var args = HookSettings.BuildSettingsArgs("web", hooksDir).Concat(VersionArgs).ToArray();
 
         await using var pty = await launcher.SpawnAsync(
             new PtySpawnOptions("claude", args, "", null, 100, 30));

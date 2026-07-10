@@ -9,6 +9,7 @@ namespace Styloagent.UITests;
 [Collection("Avalonia")]
 public class ItemsControlProbeTests
 {
+    private static readonly string[] Rows = { "ALPHA_ROW", "BETA_ROW", "GAMMA_ROW" };
     private readonly HeadlessAvaloniaFixture _fx;
     public ItemsControlProbeTests(HeadlessAvaloniaFixture fx) => _fx = fx;
 
@@ -25,7 +26,7 @@ public class ItemsControlProbeTests
         {
             var ic = new ItemsControl
             {
-                ItemsSource = new[] { "ALPHA_ROW", "BETA_ROW", "GAMMA_ROW" },
+                ItemsSource = Rows,
                 ItemTemplate = new FuncDataTemplate<string>((s, _) => new TextBlock { Text = s }, true),
             };
             var window = new Window { Width = 300, Height = 200, Content = ic };

@@ -9,6 +9,8 @@ namespace Styloagent.Core.Tests;
 /// </summary>
 public class PortaPtyIntegrationTests
 {
+    private static readonly string[] NoRcArgs = ["--norc"];
+
     [Fact(Timeout = 15_000)]
     [Trait("Category", "Integration")]
     public async Task Spawns_bash_writes_and_reads_output()
@@ -17,7 +19,7 @@ public class PortaPtyIntegrationTests
         var got = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         var opts = new PtySpawnOptions(
             Command: "/bin/bash",
-            Args: new[] { "--norc" },
+            Args: NoRcArgs,
             WorkingDirectory: Environment.CurrentDirectory,
             Env: null,
             Cols: 80,

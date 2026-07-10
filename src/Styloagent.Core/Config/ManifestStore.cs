@@ -4,6 +4,10 @@ using VYaml.Serialization;
 
 namespace Styloagent.Core.Config;
 
+// CA1822: methods below are intentionally instance members (stateless service kept instantiable
+// for the `new X().M()` call pattern used across the app/tests); do not make static.
+#pragma warning disable CA1822
+
 [YamlObject]
 internal partial class ManifestFile
 {

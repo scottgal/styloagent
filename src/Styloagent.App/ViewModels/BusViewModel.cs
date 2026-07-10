@@ -152,9 +152,9 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                     var threadItems = threads.Select(t =>
                     {
                         var view = BusThreadClassifier.Classify(t);
-                        string primaryPrefix = t.Prefixes.FirstOrDefault()
-                                               ?? t.Messages.FirstOrDefault()?.RoutingPrefix ?? "";
-                        string? from = t.Messages.FirstOrDefault()?.From;
+                        string primaryPrefix = (t.Prefixes.Count > 0 ? t.Prefixes[0] : null)
+                                               ?? (t.Messages.Count > 0 ? t.Messages[0].RoutingPrefix : null) ?? "";
+                        string? from = t.Messages.Count > 0 ? t.Messages[0].From : null;
                         string participants = string.IsNullOrWhiteSpace(from)
                             ? primaryPrefix
                             : $"{from} → {primaryPrefix}";

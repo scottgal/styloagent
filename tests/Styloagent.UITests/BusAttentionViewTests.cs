@@ -12,6 +12,7 @@ namespace Styloagent.UITests;
 [Collection("Avalonia")]
 public class BusAttentionViewTests
 {
+    private static readonly string[] Prefixes = { "alpha-", "beta-", "gamma-" };
     private readonly HeadlessAvaloniaFixture _fx;
     public BusAttentionViewTests(HeadlessAvaloniaFixture fx) => _fx = fx;
 
@@ -35,7 +36,7 @@ public class BusAttentionViewTests
                 File.WriteAllText(Path.Combine(root, "archive", "inbox", "gamma-old-thing.md"),
                     "**From:** ops\n**Timestamp:** 2024-01-09T09:00:00Z\n\nOld.");
 
-                var vm = new BusViewModel(root, new[] { "alpha-", "beta-", "gamma-" }, new ChannelProjection());
+                var vm = new BusViewModel(root, Prefixes, new ChannelProjection());
                 await vm.LoadAsync();
                 await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 

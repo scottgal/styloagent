@@ -9,6 +9,8 @@ namespace Styloagent.App.Tests;
 /// </summary>
 public class BusViewModelTests : IDisposable
 {
+    private static readonly string[] Prefixes3 = { "alpha-", "beta-", "gamma-" };
+    private static readonly string[] Prefix1 = { "alpha-" };
     private readonly string _channelRoot;
 
     public BusViewModelTests()
@@ -88,7 +90,7 @@ public class BusViewModelTests : IDisposable
     [Fact]
     public void Dispose_DoesNotThrow()
     {
-        var vm = new BusViewModel(_channelRoot, new[] { "alpha-" }, new ChannelProjection());
+        var vm = new BusViewModel(_channelRoot, Prefix1, new ChannelProjection());
         var ex = Record.Exception(() => vm.Dispose());
         Assert.Null(ex);
     }
@@ -152,7 +154,7 @@ public class BusViewModelTests : IDisposable
             File.WriteAllText(Path.Combine(root, "archive", "inbox", "gamma-old-thing.md"),
                 "**From:** ops\n**Timestamp:** 2024-01-09T09:00:00Z\n\nOld.");
 
-            var vm = new BusViewModel(root, new[] { "alpha-", "beta-", "gamma-" }, new ChannelProjection());
+            var vm = new BusViewModel(root, Prefixes3, new ChannelProjection());
             await vm.LoadAsync();
             await Task.Delay(50);
 

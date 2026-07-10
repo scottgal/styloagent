@@ -3,6 +3,10 @@ using VYaml.Serialization;
 
 namespace Styloagent.App.Config;
 
+// CA1822: SaveAsync/LoadAsync are intentionally instance members (stateless sidecar store kept
+// instantiable for the `new PresentationStore().M()` pattern used across the app/tests).
+#pragma warning disable CA1822
+
 /// <summary>
 /// Cockpit-only presentation record — border colour and display name per agent prefix.
 /// NOT the manifest; this sidecar lives in the App's own config directory.

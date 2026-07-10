@@ -3,6 +3,10 @@ using System.Text.RegularExpressions;
 
 namespace Styloagent.Core.Channel;
 
+// CA1822: methods below are intentionally instance members (stateless service kept instantiable
+// for the `new X().M()` call pattern used across the app/tests); do not make static.
+#pragma warning disable CA1822
+
 public sealed class ChannelProjection
 {
     private static readonly Regex FromPattern =

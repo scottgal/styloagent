@@ -98,4 +98,53 @@ public class AttentionRevealTests
         }
         finally { Directory.Delete(root, recursive: true); }
     }
+
+    /// <summary>
+    /// Trigger (b): a waiter that arrived while the human was BUSY must be auto-revealed
+    /// (without focus) when the human later becomes idle — proven by calling OnIdleTick()
+    /// after advancing a controllable clock past the IdleWindow.
+    /// </summary>
+    [Fact]
+    public async Task Idle_tick_reveals_a_waiter_that_was_queued_while_busy()
+    {
+        // Controllable clock starts at a fixed point in time.
+        var now = new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        MainWindowViewModel.InteractionClockForTest = () => now;
+
+        var root = MainWindowViewModelTests.MakeTwoAgentChannel();
+        try
+        {
+            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+
+            // Add a second agent and switch back to first so the second is NOT active.
+            vm.AddAgentCommand.Execute(null);
+            var secondHookId = vm.SecondHookIdForTest();
+            vm.SelectPaneCommand.Execute(vm.Panes[0]);
+
+            // Human types at `now` → busy.
+            vm.InteractionForTest().RecordInput();
+
+            // A permission_prompt hook fires on the background pane while the human is busy.
+            vm.DispatchHookForTest(new HookEvent(secondHookId, "Notification", "permission_prompt", null, null, null));
+
+            // Suppressed: human is still busy, nothing revealed yet.
+            Assert.Equal(0, vm.AutoActivateCountForTest);
+            Assert.Equal(1, vm.WaitingCount);
+
+            // Advance clock past the 4 s IdleWindow so the human is now idle.
+            now += TimeSpan.FromSeconds(5);
+
+            // Simulate the idle-timer tick.
+            vm.OnIdleTick();
+
+            // Trigger (b) fires: the queued waiter is auto-revealed without focus.
+            Assert.True(vm.AutoActivateCountForTest >= 1, "idle tick should reveal the queued waiter");
+            Assert.Equal(0, vm.JumpFocusCountForTest);   // focus invariant: idle path never focuses
+        }
+        finally
+        {
+            MainWindowViewModel.InteractionClockForTest = null;
+            Directory.Delete(root, recursive: true);
+        }
+    }
 }

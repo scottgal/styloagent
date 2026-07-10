@@ -78,7 +78,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // ── Attention auto-reveal (Task 4) ────────────────────────────────────────
 
     private static readonly TimeSpan IdleWindow = TimeSpan.FromSeconds(4);
-    private readonly InteractionMonitor _interaction = new();
+    private InteractionMonitor _interaction = new();
+    private DispatcherTimer? _idleTimer;
+
+    /// <summary>
+    /// Test seam: when set, <see cref="InitializeAsync"/> passes this clock to the
+    /// <see cref="InteractionMonitor"/> so tests can control time. Reset in a finally block.
+    /// Production callers leave this null (real UtcNow is used).
+    /// </summary>
+    internal static Func<DateTimeOffset>? InteractionClockForTest;
 
     /// <summary>Internal counter: number of times auto-reveal (no focus) was triggered (for tests).</summary>
     internal int AutoActivateCountForTest;
@@ -287,11 +295,25 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         vm.SelectedPane = vm.Pane;
         vm._panesByHookId[firstHookId] = vm.Pane;
 
+        // Apply the injectable clock for tests; production path uses default UtcNow.
+        if (InteractionClockForTest is not null)
+            vm._interaction = new InteractionMonitor(InteractionClockForTest);
+
+        // Idle-gated auto-reveal timer: on each tick, reveal the head waiter when the
+        // human has been quiet for the IdleWindow.  This drives trigger (b) — a waiter
+        // that arrived while the human was busy is surfaced as soon as they go idle —
+        // complementing the hook-arrival path that already covers trigger (a).
+        vm._idleTimer = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background,
+            (_, _) => vm.OnIdleTick());
+        vm._idleTimer.Start();
+
+        // Assign UserInteracted on first pane after _interaction may have been replaced above.
+        vm.Pane.UserInteracted = vm._interaction.RecordInput;
+
         var dockFactory = new StyloagentDockFactory(vm.Pane, vm._busViewModel);
         vm._dockFactory = dockFactory;
         vm._factory = dockFactory;
         dockFactory.ActiveDockableChanged += vm.OnActiveDockableChanged;
-        vm._interaction.Idle += () => Dispatcher.UIThread.Post(vm.AutoRevealHead);
         var layout = dockFactory.CreateLayout();
         vm.Layout = layout;
         if (layout is not null)
@@ -625,6 +647,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Called on each idle-timer tick (~1 s). Surfaces the head waiter when the human
+    /// has been quiet for at least <see cref="IdleWindow"/> — this is trigger (b): a pane
+    /// that was queued while the human was busy is revealed as soon as they go idle.
+    /// </summary>
+    internal void OnIdleTick()
+    {
+        if (!_interaction.IsBusy(IdleWindow)) AutoRevealHead();
+    }
+
     /// <summary>Auto-reveals the oldest waiting pane iff the human is idle and it is not already active.</summary>
     public void AutoRevealHead()
     {
@@ -736,6 +768,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     public void Dispose()
     {
+        _idleTimer?.Stop();
+        _idleTimer = null;
+
         if (_dockFactory is not null)
             _dockFactory.ActiveDockableChanged -= OnActiveDockableChanged;
 

@@ -15,7 +15,9 @@ Naiad path:
 - **System Map** — the agent fleet tree (Theme 4's `Prefix` / `ParentPrefix` / `Responsibility` /
   hook-state) as a mermaid `graph TD`: overview → subsystems → children, nodes styled by state.
 - **Bus Sequence** — the channel threads (`BusMessage.From` + `Timestamp`, grouped by `Slug`) as a
-  mermaid `sequenceDiagram`: consecutive senders in each thread become arrows over time.
+  mermaid **flowchart** (`graph LR`): each thread's messages become a left-to-right chain of
+  sender→sender edges labelled by slug, ordered by time. (Naiad's Avalonia surface renders only
+  flowcharts — see §6 — so this is a flowchart, not a `sequenceDiagram`.)
 
 Diagrams are **on-demand** by default (a button generates from current state, a Refresh regenerates);
 a per-diagram **Live** toggle opts into debounced auto-refresh on fleet/bus changes.
@@ -63,11 +65,14 @@ public sealed record SeqMessage(string From, DateTimeOffset? When);
 public sealed record SeqThread(string Slug, IReadOnlyList<SeqMessage> Messages);
 public static class BusSequenceGenerator { public static string Build(IEnumerable<SeqThread> threads); }
 ```
-Emits `# Bus Sequence\n\n` then a fenced ` ```mermaid ` block: `sequenceDiagram`, declared
-`participant`s (distinct senders across all threads, sanitized + aliased), and for each thread —
-messages ordered by `When` — an arrow between each pair of **consecutive distinct senders**
-(`A->>B: slug`). A thread with a single distinct sender emits `A->>A: slug (awaiting reply)`.
-**Empty input → a valid `sequenceDiagram` with a `note over ...` "no bus activity yet".**
+Emits `# Bus Sequence\n\n` then a fenced ` ```mermaid ` **flowchart** block: `graph LR`, one node per
+distinct sender (sanitized id, prefix label), and for each thread — messages ordered by `When` — a
+directed edge between each pair of **consecutive distinct senders** labelled by slug
+(`a -->|slug| b`). A thread with a single distinct sender emits a self-note node
+(`a -->|slug awaiting| a` is invalid in mermaid, so instead add an `awaiting["prefix: slug (awaiting reply)"]`
+node and edge `a --> awaiting`). **Empty input → a valid `graph LR` with a single
+`note["no bus activity yet"]` node.** (Flowchart, not `sequenceDiagram`, because only flowcharts render
+on Naiad's Avalonia surface — §6.)
 
 Both generators are deterministic and never throw. Prefix/participant ids are sanitized to a mermaid-
 safe token (`[A-Za-z0-9_]`), with the original prefix shown in the label.
@@ -132,12 +137,15 @@ click "Bus Sequence" → ShowBusSequence → SeqThread[] from channel → BusSeq
   note; ids are sanitized so no agent prefix can produce invalid mermaid.
 - Live regeneration is debounced (~500 ms) and marshalled to the UI thread; the watcher is
   unsubscribed on dispose.
-- **Plan-time verification (load-bearing):**
-  1. Confirm Naiad (lucidview) renders mermaid `graph TD` **and** `sequenceDiagram`. If
-     `sequenceDiagram` is unsupported, the Bus Sequence generator falls back to a flowchart depiction
-     (`graph LR` with ordered edges) — decide and record in the plan.
-  2. Confirm `LucidMarkdownView` renders **inline** markdown set via `Markdown` with no `SourcePath`
-     (Naiad blocks are self-contained; this should hold) — verify and record.
+- **Plan-time verification:**
+  1. **RESOLVED during design:** Naiad's Avalonia render path (`AvaloniaNativeDiagramRendererPlugin` →
+     `FlowchartCanvas`, `FlowchartMarkerPrefix`/`FlowchartLayouts`) renders **only Flowchart** diagrams
+     on the desktop surface. `DiagramType` includes `Sequence`, but it does not render natively.
+     Therefore **both** diagrams are mermaid flowcharts (`graph TD` for the map, `graph LR` for the bus).
+     No `sequenceDiagram` is emitted.
+  2. Confirm `LucidMarkdownView` renders **inline** markdown set via the `Markdown` property with no
+     `SourcePath` (Naiad blocks are self-contained; the existing `MarkdownDocumentView` binds `Markdown`,
+     so this should hold) — verify in the first App task and record.
 
 ---
 
@@ -145,8 +153,8 @@ click "Bus Sequence" → ShowBusSequence → SeqThread[] from channel → BusSeq
 
 - **Core (pure):** `SystemMapGenerator` — a node per agent, a parent→child edge per child, a fenced
   `graph TD` block, deterministic order, empty-safe placeholder; sanitizes prefixes. `BusSequenceGenerator`
-  — a `sequenceDiagram` block, participants declared, an arrow per consecutive-distinct-sender pair per
-  thread ordered by `When`, single-sender "awaiting" case, empty-safe placeholder.
+  — a `graph LR` flowchart block, a node per distinct sender, a labelled edge per consecutive-distinct-
+  sender pair per thread ordered by `When`, single-sender "awaiting" case, empty-safe placeholder.
 - **App:** `MarkdownDocumentViewModel.FromMarkdown` sets `Markdown` with empty `SourcePath`;
   `ShowSystemMap`/`ShowBusSequence` open a `DiagramDocumentViewModel` whose `Markdown` contains
   `` ```mermaid `` and the expected diagram type; `Refresh` changes `Markdown` after a simulated fleet
@@ -160,7 +168,8 @@ click "Bus Sequence" → ShowBusSequence → SeqThread[] from channel → BusSeq
 ## 8. Resolved decisions
 
 - **Freshness:** on-demand snapshot + a per-diagram **Live** toggle (debounced ~500 ms auto-refresh).
-- **Diagrams:** both **System Map** (`graph TD`) and **Bus Sequence** (`sequenceDiagram`) this slice.
+- **Diagrams:** both **System Map** (`graph TD`) and **Bus Sequence** (`graph LR` flowchart) this
+  slice — both flowcharts, because only flowcharts render on Naiad's Avalonia surface (§6).
 - **Render path:** generated mermaid markdown opened as a document via the existing
   `OpenMarkdownDocument`/`LucidMarkdownView` path; a `FromMarkdown` factory avoids temp files.
 - **Buttons:** in the Documents panel; Refresh + Live controls on the diagram document.

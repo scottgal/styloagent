@@ -6,6 +6,21 @@ using Styloagent.Core.Channel;
 
 namespace Styloagent.App.ViewModels;
 
+/// <summary>Shared relative-time formatter for bus rows.</summary>
+internal static class BusTime
+{
+    public static string Format(DateTimeOffset? ts)
+        => ts.HasValue ? FormatRelative(DateTimeOffset.UtcNow - ts.Value) : "–";
+
+    private static string FormatRelative(TimeSpan elapsed) => elapsed switch
+    {
+        { TotalSeconds: < 60 } => $"{(int)elapsed.TotalSeconds}s ago",
+        { TotalMinutes: < 60 } => $"{(int)elapsed.TotalMinutes}m ago",
+        { TotalHours: < 24 }   => $"{(int)elapsed.TotalHours}h ago",
+        _                       => $"{(int)elapsed.TotalDays}d ago",
+    };
+}
+
 /// <summary>
 /// A single flattened message row for the live bus feed UI.
 /// </summary>
@@ -20,18 +35,22 @@ public sealed class BusMessageItem
     public string ColorHex { get; init; } = "#888888";
     public string DisplayLine { get; init; } = "";
 
-    public string RelativeTime =>
-        Timestamp.HasValue
-            ? FormatRelative(DateTimeOffset.UtcNow - Timestamp.Value)
-            : "–";
+    public string RelativeTime => BusTime.Format(Timestamp);
+}
 
-    private static string FormatRelative(TimeSpan elapsed) => elapsed switch
-    {
-        { TotalSeconds: < 60 } => $"{(int)elapsed.TotalSeconds}s ago",
-        { TotalMinutes: < 60 } => $"{(int)elapsed.TotalMinutes}m ago",
-        { TotalHours: < 24 }   => $"{(int)elapsed.TotalHours}h ago",
-        _                       => $"{(int)elapsed.TotalDays}d ago",
-    };
+/// <summary>One thread row in the attention-first bus.</summary>
+public sealed partial class BusThreadItem : ObservableObject
+{
+    public string Glyph { get; init; } = "";
+    public string Subject { get; init; } = "";
+    public string ParticipantsDisplay { get; init; } = "";
+    public string ColorHex { get; init; } = "#888888";
+    public string RelativeTime { get; init; } = "–";
+    public BusThreadSection Section { get; init; }
+    public IReadOnlyList<BusMessageItem> Messages { get; init; } = Array.Empty<BusMessageItem>();
+
+    [ObservableProperty]
+    private bool _isExpanded;
 }
 
 /// <summary>
@@ -66,6 +85,15 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
     /// <summary>Archived messages.</summary>
     [ObservableProperty]
     private ObservableCollection<BusMessageItem> _archivedMessages = new();
+
+    [ObservableProperty]
+    private ObservableCollection<BusThreadItem> _attentionThreads = new();
+
+    [ObservableProperty]
+    private ObservableCollection<BusThreadItem> _recentThreads = new();
+
+    [ObservableProperty]
+    private ObservableCollection<BusThreadItem> _archivedThreads = new();
 
     [ObservableProperty]
     private bool _isLoading;
@@ -134,6 +162,39 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                         })
                         .ToList();
 
+                    // Build attention-first thread rows.
+                    var threadItems = threads.Select(t =>
+                    {
+                        var view = BusThreadClassifier.Classify(t);
+                        string primaryPrefix = t.Prefixes.FirstOrDefault()
+                                               ?? t.Messages.FirstOrDefault()?.RoutingPrefix ?? "";
+                        string? from = t.Messages.FirstOrDefault()?.From;
+                        string participants = string.IsNullOrWhiteSpace(from)
+                            ? primaryPrefix
+                            : $"{from} → {primaryPrefix}";
+                        var msgItems = t.Messages.Select(m => new BusMessageItem
+                        {
+                            RoutingPrefix = m.RoutingPrefix,
+                            Slug          = m.Slug,
+                            Kind          = m.Kind.ToString(),
+                            State         = m.State.ToString(),
+                            From          = m.From,
+                            Timestamp     = m.Timestamp,
+                            ColorHex      = PresentationStore.DefaultColorFor(m.RoutingPrefix),
+                            DisplayLine   = BuildDisplayLine(m),
+                        }).ToList();
+                        return new BusThreadItem
+                        {
+                            Glyph               = view.Glyph,
+                            Subject             = view.Subject,
+                            ParticipantsDisplay = participants,
+                            ColorHex            = PresentationStore.DefaultColorFor(primaryPrefix),
+                            RelativeTime        = BusTime.Format(view.LastActivity),
+                            Section             = view.Section,
+                            Messages            = msgItems,
+                        };
+                    }).ToList();
+
                     // Update Messages — handle both UI-thread and headless/test contexts.
                     void UpdateMessages()
                     {
@@ -145,6 +206,18 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                             Messages.Add(item);
                             if (item.State == "Archived") ArchivedMessages.Add(item);
                             else CurrentMessages.Add(item);
+                        }
+                        AttentionThreads.Clear();
+                        RecentThreads.Clear();
+                        ArchivedThreads.Clear();
+                        foreach (var ti in threadItems)
+                        {
+                            switch (ti.Section)
+                            {
+                                case BusThreadSection.Attention: AttentionThreads.Add(ti); break;
+                                case BusThreadSection.Archive:    ArchivedThreads.Add(ti);  break;
+                                default:                          RecentThreads.Add(ti);    break;
+                            }
                         }
                         IsLoading = false;
                     }

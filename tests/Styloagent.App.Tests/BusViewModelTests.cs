@@ -130,4 +130,40 @@ public class BusViewModelTests : IDisposable
         var loadEx = await Record.ExceptionAsync(async () => await loadTask);
         Assert.Null(loadEx);
     }
+
+    [Fact]
+    public async Task LoadAsync_BucketsThreads_IntoAttentionRecentArchive()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "busbucket-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "inbox"));
+        Directory.CreateDirectory(Path.Combine(root, "outbox"));
+        Directory.CreateDirectory(Path.Combine(root, "archive", "inbox"));
+        try
+        {
+            // alpha: unreplied inbox -> Attention
+            File.WriteAllText(Path.Combine(root, "inbox", "alpha-open-question.md"),
+                "**From:** ops\n**Timestamp:** 2024-01-10T10:00:00Z\n\nQ?");
+            // beta: inbox + reply -> Recent
+            File.WriteAllText(Path.Combine(root, "inbox", "beta-done-task.md"),
+                "**From:** ops\n**Timestamp:** 2024-01-10T11:00:00Z\n\nTask.");
+            File.WriteAllText(Path.Combine(root, "outbox", "beta-done-task.reply.md"),
+                "**From:** beta-\n**Timestamp:** 2024-01-10T11:05:00Z\n\nDone.");
+            // gamma: archived -> Archive
+            File.WriteAllText(Path.Combine(root, "archive", "inbox", "gamma-old-thing.md"),
+                "**From:** ops\n**Timestamp:** 2024-01-09T09:00:00Z\n\nOld.");
+
+            var vm = new BusViewModel(root, new[] { "alpha-", "beta-", "gamma-" }, new ChannelProjection());
+            await vm.LoadAsync();
+            await Task.Delay(50);
+
+            Assert.Contains(vm.AttentionThreads, t => t.Subject.Contains("open"));
+            Assert.All(vm.AttentionThreads, t => Assert.Equal("●", t.Glyph));
+            Assert.Contains(vm.RecentThreads, t => t.Subject.Contains("done"));
+            Assert.Contains(vm.ArchivedThreads, t => t.Subject.Contains("old"));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
 }

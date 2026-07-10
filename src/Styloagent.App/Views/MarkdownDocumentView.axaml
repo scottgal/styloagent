@@ -5,7 +5,9 @@
              x:Class="Styloagent.App.Views.MarkdownDocumentView"
              x:DataType="vm:MarkdownDocumentViewModel">
 
-  <ScrollViewer>
+  <!-- lucidVIEW renders dark ("paper") text, so the doc gets a light background to stay
+       readable inside the dark cockpit — a light document panel beside the dark terminals. -->
+  <ScrollViewer Background="#FBFBFB" Padding="16,12">
     <lucid:LucidMarkdownView Markdown="{Binding Markdown}"
                              SourcePath="{Binding SourcePath}" />
   </ScrollViewer>

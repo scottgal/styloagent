@@ -21,6 +21,9 @@
     <DataTemplate DataType="vm:BusViewModel">
       <views:BusView />
     </DataTemplate>
+    <DataTemplate DataType="vm:MarkdownDocumentViewModel">
+      <views:MarkdownDocumentView />
+    </DataTemplate>
   </Application.DataTemplates>
 
 </Application>

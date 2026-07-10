@@ -34,6 +34,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private IRootDock? _layout;
 
+    [ObservableProperty]
+    private DocLibraryViewModel? _docLibrary;
+
     private IFactory? _factory;
     private StyloagentDockFactory? _dockFactory;
     private BusViewModel? _busViewModel;
@@ -165,6 +168,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // A pane IS a claude terminal: launch the agent immediately so the pane comes
         // up running claude. The view attaches to CurrentPty when it renders.
         _ = vm.Pane.SpawnAsync();
+
+        var docRepoRoot = repoRoot ?? Environment.GetEnvironmentVariable("STYLOAGENT_REPO") ?? Directory.GetCurrentDirectory();
+        vm.DocLibrary = new DocLibraryViewModel(docRepoRoot, channelRoot, vm.OpenMarkdownDocument);
 
         return vm;
     }
@@ -348,6 +354,33 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     /// <summary>Exposes the live bus feed view-model (e.g. tests).</summary>
     public BusViewModel? BusViewModel => _busViewModel;
+
+    /// <summary>
+    /// Opens a markdown document in a new floating dockable tab in the centre DocumentDock.
+    /// No-ops when the dock factory is not yet initialised (e.g. empty-entries path).
+    /// </summary>
+    public void OpenMarkdownDocument(MarkdownDocumentViewModel docVm)
+    {
+        if (_dockFactory is null)
+            return;
+
+        var documentDock = _dockFactory.DocumentDock;
+        var rootDock = _dockFactory.RootDock;
+        if (documentDock is null || rootDock is null)
+            return;
+
+        var doc = new Document
+        {
+            Id = "Doc-" + Guid.NewGuid().ToString("N"),
+            Title = docVm.Title,
+            Context = docVm,
+            CanFloat = true,
+        };
+
+        _dockFactory.AddDockable(documentDock, doc);
+        _dockFactory.SetActiveDockable(doc);
+        _dockFactory.SetFocusedDockable(rootDock, doc);
+    }
 
     /// <summary>
     /// Disposes managed resources, including the <see cref="BusViewModel"/> (which

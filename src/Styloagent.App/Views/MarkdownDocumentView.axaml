@@ -1,0 +1,13 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
+             xmlns:lucid="clr-namespace:Mostlylucid.LucidView.Markdown;assembly=Mostlylucid.LucidView.Markdown"
+             x:Class="Styloagent.App.Views.MarkdownDocumentView"
+             x:DataType="vm:MarkdownDocumentViewModel">
+
+  <ScrollViewer>
+    <lucid:LucidMarkdownView Markdown="{Binding Markdown}"
+                             SourcePath="{Binding SourcePath}" />
+  </ScrollViewer>
+
+</UserControl>

@@ -42,7 +42,14 @@
                         Background="#0C0C0C" />
 
       <GridSplitter Grid.Column="3" Background="#222" />
-      <views:BusView Grid.Column="4" DataContext="{Binding BusViewModel}" />
+      <TabControl Grid.Column="4" Background="#0D0D1A">
+        <TabItem Header="Signal Bus">
+          <views:BusView DataContext="{Binding BusViewModel}" />
+        </TabItem>
+        <TabItem Header="Documents">
+          <views:DocLibraryView DataContext="{Binding DocLibrary}" />
+        </TabItem>
+      </TabControl>
 
     </Grid>
 

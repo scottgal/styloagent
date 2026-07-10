@@ -1,0 +1,53 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
+             xmlns:core="clr-namespace:Styloagent.Core.Docs;assembly=Styloagent.Core"
+             x:Class="Styloagent.App.Views.DocLibraryView"
+             x:DataType="vm:DocLibraryViewModel">
+
+  <Border Background="#0D0D1A" CornerRadius="4">
+    <Grid RowDefinitions="Auto,*">
+
+      <Border Grid.Row="0" Background="#1A1A2E" Padding="8,6">
+        <TextBlock Text="Documents" FontWeight="Bold" FontSize="13"
+                   Foreground="#9D7FE0" LetterSpacing="1" />
+      </Border>
+
+      <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <ItemsControl ItemsSource="{Binding Groups}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="vm:DocLibraryViewModel+DocGroupViewModel">
+              <StackPanel>
+                <Border Background="#15152A" Padding="8,4" Margin="0,4,0,0">
+                  <TextBlock Text="{Binding Header}" FontSize="10" FontWeight="SemiBold"
+                             Foreground="#7A7AA0" LetterSpacing="1" />
+                </Border>
+                <ItemsControl ItemsSource="{Binding Entries}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="core:DocEntry">
+                      <Button HorizontalAlignment="Stretch"
+                              HorizontalContentAlignment="Stretch"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              Padding="8,4"
+                              Margin="0,1,0,0"
+                              Command="{Binding DataContext.OpenDocCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                              CommandParameter="{Binding}">
+                        <TextBlock Text="{Binding RelativePath}"
+                                   FontSize="11"
+                                   Foreground="#AAAACC"
+                                   TextTrimming="CharacterEllipsis" />
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+
+    </Grid>
+  </Border>
+
+</UserControl>

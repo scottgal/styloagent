@@ -110,6 +110,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>Number of currently-open agent panes.</summary>
     public int FleetCount => Panes.Count;
 
+    /// <summary>Passthrough for XAML binding (FleetPolicy is not observable).</summary>
+    public int MaxFleet => FleetPolicy.MaxFleet;
+
+    /// <summary>Passthrough for XAML binding (FleetPolicy is not observable).</summary>
+    public int MaxDepth => FleetPolicy.MaxDepth;
+
+    /// <summary>Formatted HUD line for the Agents header: "fleet N/max · depth max max".</summary>
+    public string FleetHudText => $"fleet {FleetCount}/{FleetPolicy.MaxFleet} · depth {FleetPolicy.MaxDepth} max";
+
     /// <summary>Toggles the fleet-paused flag, blocking all governor-checked spawns when true.</summary>
     [RelayCommand]
     private void PauseFleet() => FleetPaused = !FleetPaused;

@@ -149,17 +149,7 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                     var items = threads
                         .SelectMany(t => t.Messages)
                         .OrderByDescending(m => m.Timestamp ?? DateTimeOffset.MinValue)
-                        .Select(m => new BusMessageItem
-                        {
-                            RoutingPrefix = m.RoutingPrefix,
-                            Slug          = m.Slug,
-                            Kind          = m.Kind.ToString(),
-                            State         = m.State.ToString(),
-                            From          = m.From,
-                            Timestamp     = m.Timestamp,
-                            ColorHex      = PresentationStore.DefaultColorFor(m.RoutingPrefix),
-                            DisplayLine   = BuildDisplayLine(m),
-                        })
+                        .Select(BuildMessageItem)
                         .ToList();
 
                     // Build attention-first thread rows.
@@ -172,17 +162,7 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                         string participants = string.IsNullOrWhiteSpace(from)
                             ? primaryPrefix
                             : $"{from} → {primaryPrefix}";
-                        var msgItems = t.Messages.Select(m => new BusMessageItem
-                        {
-                            RoutingPrefix = m.RoutingPrefix,
-                            Slug          = m.Slug,
-                            Kind          = m.Kind.ToString(),
-                            State         = m.State.ToString(),
-                            From          = m.From,
-                            Timestamp     = m.Timestamp,
-                            ColorHex      = PresentationStore.DefaultColorFor(m.RoutingPrefix),
-                            DisplayLine   = BuildDisplayLine(m),
-                        }).ToList();
+                        var msgItems = t.Messages.Select(BuildMessageItem).ToList();
                         return new BusThreadItem
                         {
                             Glyph               = view.Glyph,
@@ -255,6 +235,18 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                 _reloadGate.Release();
         }
     }
+
+    private static BusMessageItem BuildMessageItem(BusMessage m) => new()
+    {
+        RoutingPrefix = m.RoutingPrefix,
+        Slug          = m.Slug,
+        Kind          = m.Kind.ToString(),
+        State         = m.State.ToString(),
+        From          = m.From,
+        Timestamp     = m.Timestamp,
+        ColorHex      = PresentationStore.DefaultColorFor(m.RoutingPrefix),
+        DisplayLine   = BuildDisplayLine(m),
+    };
 
     private static string BuildDisplayLine(BusMessage m)
     {

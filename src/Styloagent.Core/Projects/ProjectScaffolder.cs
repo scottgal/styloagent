@@ -19,6 +19,8 @@ public static class ProjectScaffolder
             File.WriteAllText(cfg.SystemPromptPath, DefaultTemplates.SystemPrompt);
         if (!File.Exists(cfg.ProtocolPath))
             File.WriteAllText(cfg.ProtocolPath, DefaultTemplates.Protocol);
+        if (!File.Exists(cfg.FleetPolicyPath))
+            File.WriteAllText(cfg.FleetPolicyPath, "maxFleet: 12\nmaxDepth: 3\n");
 
         return cfg;
     }

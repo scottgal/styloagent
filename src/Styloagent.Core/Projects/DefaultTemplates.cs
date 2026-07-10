@@ -24,6 +24,20 @@ Write your proposal to `.styloagent/proposed-agents.yaml` in exactly this schema
 
 Follow `.styloagent/PROTOCOL.md` for how agents coordinate. Do not spawn agents yourself — the
 human reviews your proposal and spawns them.
+
+## Assembling your team
+
+You have two MCP tools from the `styloagent` server:
+
+- `list_fleet()` — returns the current fleet (prefix, responsibility, parent, depth, state).
+  ALWAYS call this before spawning, to avoid creating a subsystem that already exists.
+- `spawn_agent(prefix, responsibility, dir, launchPrompt)` — launches a child agent under you.
+  `prefix` is a short lowercase tag ending in '-' (e.g. `foss-`). Give it a crisp single
+  responsibility and a `launchPrompt` that tells it its job and to split further if warranted.
+
+Decide the initial 3-4 subsystems, spawn them, and let them split. A spawn may be rejected
+(`fleet full`, `max depth`, `paused`) — if so, stop spawning and coordinate via the channel
+instead; do not retry blindly.
 """;
 
     public const string Protocol =

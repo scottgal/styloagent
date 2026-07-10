@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -16,9 +17,11 @@ namespace Styloagent.App.Mcp;
 public sealed class StyloagentMcpServer : IAsyncDisposable
 {
     private readonly WebApplication _app;
+    private volatile bool _running;
+
     public Uri BaseUrl { get; }
     public string Token { get; }
-    public bool IsRunning { get; private set; }
+    public bool IsRunning => _running;
 
     private StyloagentMcpServer(WebApplication app, Uri baseUrl, string token)
         => (_app, BaseUrl, Token) = (app, baseUrl, token);
@@ -29,9 +32,9 @@ public sealed class StyloagentMcpServer : IAsyncDisposable
 
         var builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders();
-        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.WebHost.UseKestrel(o => o.Listen(IPAddress.Loopback, 0));
         builder.Services.AddHttpContextAccessor();
-        builder.Services.AddSingleton(controller);
+        builder.Services.AddSingleton<IFleetController>(controller);
         builder.Services.AddSingleton(new McpAuth(token));
         builder.Services.AddMcpServer()
             .WithHttpTransport(o => o.Stateless = true)
@@ -44,14 +47,17 @@ public sealed class StyloagentMcpServer : IAsyncDisposable
         var addr = app.Services.GetRequiredService<IServer>()
             .Features.Get<IServerAddressesFeature>()!.Addresses.First();
         var baseUrl = new Uri(new Uri(addr), "/mcp");
-        return new StyloagentMcpServer(app, baseUrl, token) { IsRunning = true };
+        var server = new StyloagentMcpServer(app, baseUrl, token);
+        server._running = true;
+        return server;
     }
 
     public IReadOnlyList<string> McpConfigArgs(string prefix) => McpConfig.Args(prefix, BaseUrl, Token);
 
     public async ValueTask DisposeAsync()
     {
-        IsRunning = false;
+        if (!_running) return;
+        _running = false;
         await _app.StopAsync().ConfigureAwait(false);
         await _app.DisposeAsync().ConfigureAwait(false);
     }

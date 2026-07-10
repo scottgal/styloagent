@@ -51,6 +51,7 @@ public class StyloagentMcpServerTests
         var resp = await http.SendAsync(req);
         var body = await resp.Content.ReadAsStringAsync();
 
+        Assert.True(resp.IsSuccessStatusCode, body);
         Assert.Contains("spawn_agent", body);
         Assert.Contains("list_fleet", body);
     }

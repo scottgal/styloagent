@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
+             xmlns:conv="clr-namespace:Styloagent.App.Converters"
              x:Class="Styloagent.App.Views.AgentsView"
              x:DataType="vm:MainWindowViewModel">
 
@@ -55,7 +56,7 @@
         <StackPanel>
 
           <!-- PROPOSED subsystems: written by the overview agent; click Spawn to promote to live. -->
-          <StackPanel IsVisible="{Binding ProposedTeam.Proposals.Count}">
+          <StackPanel IsVisible="{Binding ProposedTeam.Proposals.Count, Converter={x:Static conv:CountToBoolConverter.Instance}}">
             <Border Background="#2A1A1A" Padding="8,4">
               <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Text="PROPOSED" FontSize="10" FontWeight="SemiBold" Foreground="#E5A05A" LetterSpacing="1" />

@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
+             xmlns:conv="clr-namespace:Styloagent.App.Converters"
              x:Class="Styloagent.App.Views.WelcomeView"
              x:DataType="vm:WelcomeViewModel">
   <Border Background="#0C0C0C" Padding="40">
@@ -9,7 +10,7 @@
       <Button Content="Open a project folder…" Command="{Binding OpenFolderCommand}"
               Padding="14,8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
       <TextBlock Text="Recent" FontSize="11" Foreground="#7A7AA0" Margin="0,8,0,0"
-                 IsVisible="{Binding Recent.Count}" />
+                 IsVisible="{Binding Recent.Count, Converter={x:Static conv:CountToBoolConverter.Instance}}" />
       <ItemsControl ItemsSource="{Binding Recent}">
         <ItemsControl.ItemTemplate>
           <DataTemplate>

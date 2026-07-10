@@ -30,24 +30,32 @@ public partial class App : Application
 
             async Task OpenProjectAsync(string root, Window? welcomeWindow)
             {
-                var cfg = ProjectScaffolder.Ensure(root);
-                await recents.AddAsync(recentsPath, root);
-                var vm = await MainWindowViewModel.InitializeAsync(
-                    cfg.ChannelRoot,
-                    new PortaPtyLauncher(),
-                    new FileSystemFileWatcher(),
-                    gitReader: null,
-                    repoRoot: cfg.Root,
-                    overviewSystemPromptPath: cfg.SystemPromptPath);
-                vm.AttachProject(cfg);
-
-                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                try
                 {
-                    var cockpit = new MainWindow { DataContext = vm };
-                    desktop.MainWindow = cockpit;
-                    cockpit.Show();
-                    welcomeWindow?.Close();
-                });
+                    var cfg = ProjectScaffolder.Ensure(root);
+                    await recents.AddAsync(recentsPath, root);
+                    var vm = await MainWindowViewModel.InitializeAsync(
+                        cfg.ChannelRoot,
+                        new PortaPtyLauncher(),
+                        new FileSystemFileWatcher(),
+                        gitReader: null,
+                        repoRoot: cfg.Root,
+                        overviewSystemPromptPath: cfg.SystemPromptPath);
+                    vm.AttachProject(cfg);
+
+                    await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        var cockpit = new MainWindow { DataContext = vm };
+                        desktop.MainWindow = cockpit;
+                        cockpit.Show();
+                        welcomeWindow?.Close();
+                    });
+                }
+                catch (Exception ex)
+                {
+                    // Log to trace; the window stays open showing an empty shell.
+                    System.Diagnostics.Trace.WriteLine($"[Styloagent] Init failed: {ex}");
+                }
             }
 
             // Dispose the VM (and its BusViewModel/FileSystemWatcher) on clean shutdown.

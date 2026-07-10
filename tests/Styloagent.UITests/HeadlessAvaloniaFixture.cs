@@ -84,6 +84,9 @@ public sealed class TestApp : Application
         // content resolves its view the same way it does in the real app.
         DataTemplates.Add(new FuncDataTemplate<AgentPaneViewModel>((_, _) => new AgentPaneView(), true));
         DataTemplates.Add(new FuncDataTemplate<BusViewModel>((_, _) => new BusView(), true));
+        // DiagramDocumentViewModel is more derived — register it before MarkdownDocumentViewModel
+        // so Avalonia's first-match resolution picks the dedicated diagram view.
+        DataTemplates.Add(new FuncDataTemplate<DiagramDocumentViewModel>((_, _) => new DiagramDocumentView(), true));
         DataTemplates.Add(new FuncDataTemplate<MarkdownDocumentViewModel>((_, _) => new MarkdownDocumentView(), true));
 
         // Suppress rendering exceptions caused by the CFF-format Seagull Fluent Icons

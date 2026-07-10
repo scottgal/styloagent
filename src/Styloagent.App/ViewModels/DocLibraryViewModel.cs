@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Styloagent.Core.Docs;
@@ -24,6 +25,20 @@ public sealed partial class DocLibraryViewModel : ObservableObject
     private readonly Action<MarkdownDocumentViewModel> _openDocument;
 
     public ObservableCollection<DocGroupViewModel> Groups { get; } = new();
+
+    /// <summary>
+    /// Pass-through for the System Map command on <see cref="MainWindowViewModel"/>.
+    /// Set by the owner before the view binds, so the DocLibraryView header can reach it
+    /// without a RelativeSource walk up to the window.
+    /// </summary>
+    public ICommand? ShowSystemMapCommand { get; init; }
+
+    /// <summary>
+    /// Pass-through for the Bus Sequence command on <see cref="MainWindowViewModel"/>.
+    /// Set by the owner before the view binds, so the DocLibraryView header can reach it
+    /// without a RelativeSource walk up to the window.
+    /// </summary>
+    public ICommand? ShowBusSequenceCommand { get; init; }
 
     public DocLibraryViewModel(
         string? repoRoot,

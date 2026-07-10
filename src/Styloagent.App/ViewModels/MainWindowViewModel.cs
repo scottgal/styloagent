@@ -331,7 +331,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _ = vm.Pane.SpawnAsync();
 
         var docRepoRoot = repoRoot ?? Environment.GetEnvironmentVariable("STYLOAGENT_REPO") ?? Directory.GetCurrentDirectory();
-        vm.DocLibrary = new DocLibraryViewModel(docRepoRoot, channelRoot, vm.OpenMarkdownDocument);
+        vm.DocLibrary = new DocLibraryViewModel(docRepoRoot, channelRoot, vm.OpenMarkdownDocument)
+        {
+            ShowSystemMapCommand = vm.ShowSystemMapCommand,
+            ShowBusSequenceCommand = vm.ShowBusSequenceCommand,
+        };
 
         return vm;
     }

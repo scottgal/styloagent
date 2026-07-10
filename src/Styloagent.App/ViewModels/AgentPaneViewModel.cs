@@ -90,6 +90,13 @@ public sealed partial class AgentPaneViewModel : ObservableObject
     /// <summary>When this agent entered WaitingForHuman (null when it is not waiting). Drives queue order.</summary>
     public DateTimeOffset? WaitingSince { get; set; }
 
+    /// <summary>
+    /// Called by the hosting view when the user interacts with this pane's terminal.
+    /// Wired by <see cref="MainWindowViewModel"/> to <c>InteractionMonitor.RecordInput</c>
+    /// so auto-reveal is suppressed while the human is actively typing.
+    /// </summary>
+    public Action? UserInteracted { get; set; }
+
     /// <summary>Applies a hook event, advancing this pane's <see cref="HookState"/>.</summary>
     public void ApplyHookEvent(HookEvent e) => HookState = HookStateMachine.Next(HookState, e);
 

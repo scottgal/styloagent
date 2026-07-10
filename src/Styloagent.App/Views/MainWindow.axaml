@@ -11,6 +11,10 @@
         Height="800"
         Background="#0C0C0C">
 
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Alt+Right" Command="{Binding JumpToNextWaitingCommand}" />
+  </Window.KeyBindings>
+
   <DockPanel>
 
     <!-- Top cockpit bar -->

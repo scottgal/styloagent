@@ -5,6 +5,13 @@
              x:Class="Styloagent.App.Views.AgentsView"
              x:DataType="vm:MainWindowViewModel">
 
+  <UserControl.Styles>
+    <Style Selector="Border.needsYou">
+      <Setter Property="BorderBrush" Value="#E5A05A" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+  </UserControl.Styles>
+
   <UserControl.Resources>
     <!-- One roster row. Extracted to a resource so it can be rendered on a single control in a
          screenshot test (a headless ItemsControl doesn't materialize its item containers). -->
@@ -21,6 +28,7 @@
                 BorderBrush="{Binding SelectionBrushHex}"
                 BorderThickness="1"
                 CornerRadius="2"
+                Classes.needsYou="{Binding NeedsYou}"
                 Margin="{Binding Depth, Converter={x:Static conv:DepthToMarginConverter.Instance}}">
           <Grid ColumnDefinitions="4,*,Auto">
             <!-- Per-agent identity colour (same as its terminal accent) -->
@@ -54,9 +62,16 @@
             <TextBlock Text="Agents" FontWeight="Bold" FontSize="13" Foreground="#9D7FE0" LetterSpacing="1" />
             <TextBlock Text="{Binding FleetHudText}" FontSize="10" Foreground="#7A7AA0" />
           </StackPanel>
-          <ToggleButton Grid.Column="1" VerticalAlignment="Center" FontSize="10" Padding="6,2"
-                        IsChecked="{Binding FleetPaused, Mode=OneWay}" Command="{Binding PauseFleetCommand}"
-                        Content="⏸ Pause" />
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
+                        IsVisible="{Binding WaitingCount, Converter={x:Static conv:CountToBoolConverter.Instance}}">
+              <TextBlock Text="{Binding AttentionHudText}" FontSize="10" Foreground="#E5A05A" VerticalAlignment="Center" />
+              <Button Content="Jump ⌥→" FontSize="10" Padding="6,1" Command="{Binding JumpToNextWaitingCommand}" />
+            </StackPanel>
+            <ToggleButton VerticalAlignment="Center" FontSize="10" Padding="6,2"
+                          IsChecked="{Binding FleetPaused, Mode=OneWay}" Command="{Binding PauseFleetCommand}"
+                          Content="⏸ Pause" />
+          </StackPanel>
         </Grid>
       </Border>
 

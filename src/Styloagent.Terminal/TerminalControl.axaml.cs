@@ -190,8 +190,15 @@ public sealed partial class TerminalControl : UserControl
         FireAndForgetWrite(vtSequence);
     }
 
+    /// <summary>
+    /// Raised whenever the user interacts with this terminal (key down, text input, or pointer press).
+    /// The hosting view subscribes to forward the interaction to the pane's attention monitor.
+    /// </summary>
+    public event EventHandler? UserInteracted;
+
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
+        UserInteracted?.Invoke(this, EventArgs.Empty);
         if (_session is null) return;
 
         string? vtSequence = TranslateKey(e);
@@ -205,6 +212,7 @@ public sealed partial class TerminalControl : UserControl
     /// <summary>Clicking the terminal focuses it so it receives keyboard input.</summary>
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
+        UserInteracted?.Invoke(this, EventArgs.Empty);
         Focus();
         base.OnPointerPressed(e);
     }
@@ -216,6 +224,7 @@ public sealed partial class TerminalControl : UserControl
     /// </summary>
     protected override void OnTextInput(TextInputEventArgs e)
     {
+        UserInteracted?.Invoke(this, EventArgs.Empty);
         if (_session is not null && !string.IsNullOrEmpty(e.Text))
         {
             FireAndForgetWrite(e.Text);

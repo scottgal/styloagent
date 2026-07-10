@@ -36,6 +36,9 @@ public partial class AgentPaneView : UserControl
         // Subscribe to future PTY sessions.
         _vm.PtyStarted += OnPtyStarted;
 
+        // Forward terminal user interactions to the pane's attention callback.
+        Terminal.UserInteracted += OnTerminalUserInteracted;
+
         // Apply border colour from the VM.
         if (Color.TryParse(_vm.BorderColorHex, out var color))
             PaneBorder.BorderBrush = new SolidColorBrush(color);
@@ -65,7 +68,11 @@ public partial class AgentPaneView : UserControl
     {
         if (_vm is not null)
             _vm.PtyStarted -= OnPtyStarted;
+        Terminal.UserInteracted -= OnTerminalUserInteracted;
     }
+
+    private void OnTerminalUserInteracted(object? sender, EventArgs e)
+        => _vm?.UserInteracted?.Invoke();
 
     private void OnPtyStarted(IPtySession pty)
     {

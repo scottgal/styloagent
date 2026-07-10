@@ -279,7 +279,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             session,
             first,
             presentation.DisplayName,
-            presentation.BorderColorHex);
+            presentation.BorderColorHex)
+        {
+            UserInteracted = vm._interaction.RecordInput,
+        };
         vm.Panes.Add(vm.Pane);
         vm.SelectedPane = vm.Pane;
         vm._panesByHookId[firstHookId] = vm.Pane;
@@ -361,7 +364,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             session,
             entry,
             presentation.DisplayName,
-            presentation.BorderColorHex);
+            presentation.BorderColorHex)
+        {
+            UserInteracted = _interaction.RecordInput,
+        };
         Panes.Add(paneVm);
         SelectedPane = paneVm;
         _panesByHookId[hookId] = paneVm;
@@ -476,6 +482,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             ParentPrefix = parentPrefix,
             Depth = depth,
             Responsibility = p.Responsibility,
+            UserInteracted = _interaction.RecordInput,
         };
         Panes.Add(paneVm);
         SelectedPane = paneVm;

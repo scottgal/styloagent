@@ -226,4 +226,83 @@ public class MainWindowViewModelTests : IDisposable
         }
         finally { Directory.Delete(root, recursive: true); }
     }
+
+    // ── Overview-launch path tests ────────────────────────────────────────────
+
+    [Fact]
+    public async Task OverviewPath_ExistingSystemPromptFile_SeedsExactlyOneOverviewPane()
+    {
+        // Arrange: a temp dir to act as repoRoot and a temp system-prompt file with known content.
+        var repoRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(repoRoot);
+        var promptFile = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".md");
+        const string promptContent = "You are the overview agent.";
+        File.WriteAllText(promptFile, promptContent);
+
+        var launcher = new FakeLauncher();
+        try
+        {
+            var vm = await MainWindowViewModel.InitializeAsync(
+                _channelRoot,
+                launcher,
+                new FakeWatcher(),
+                repoRoot: repoRoot,
+                overviewSystemPromptPath: promptFile);
+
+            // Exactly one pane, and it is the overview- agent.
+            Assert.Single(vm.Panes);
+            Assert.NotNull(vm.Pane);
+            Assert.Contains("overview", vm.Pane!.DisplayName);
+
+            // FakeLauncher captures PtySpawnOptions synchronously (Task.FromResult),
+            // so the spawn args are observable here.
+            Assert.Single(launcher.Options);
+            var args = launcher.Options[0].Args.ToList();
+            var appendIdx = args.IndexOf("--append-system-prompt");
+            Assert.True(appendIdx >= 0, "Expected --append-system-prompt arg to be present");
+            Assert.Equal(promptContent, args[appendIdx + 1]);
+        }
+        finally
+        {
+            Directory.Delete(repoRoot, recursive: true);
+            File.Delete(promptFile);
+        }
+    }
+
+    [Fact]
+    public async Task OverviewPath_MissingSystemPromptFile_DoesNotThrow_SeedsOneOverviewPane_NoAppendArgs()
+    {
+        // Arrange: a non-existent system-prompt file path.
+        var repoRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(repoRoot);
+        var missingPromptFile = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + "-missing.md");
+        // Intentionally do NOT create missingPromptFile.
+
+        var launcher = new FakeLauncher();
+        try
+        {
+            // Must not throw even though the file does not exist.
+            var vm = await MainWindowViewModel.InitializeAsync(
+                _channelRoot,
+                launcher,
+                new FakeWatcher(),
+                repoRoot: repoRoot,
+                overviewSystemPromptPath: missingPromptFile);
+
+            // Still seeds exactly one overview pane.
+            Assert.Single(vm.Panes);
+            Assert.NotNull(vm.Pane);
+            Assert.Contains("overview", vm.Pane!.DisplayName);
+
+            // No --append-system-prompt arg should be present because the file was missing.
+            Assert.Single(launcher.Options);
+            var args = launcher.Options[0].Args.ToList();
+            Assert.DoesNotContain("--append-system-prompt", args);
+        }
+        finally
+        {
+            Directory.Delete(repoRoot, recursive: true);
+            // missingPromptFile was never created, nothing to delete.
+        }
+    }
 }

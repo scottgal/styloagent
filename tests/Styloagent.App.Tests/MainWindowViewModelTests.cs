@@ -106,7 +106,7 @@ public class MainWindowViewModelTests : IDisposable
     /// <summary>
     /// Sets up a channel with TWO saved-context files so we can test seeded-entry promotion.
     /// </summary>
-    private static string MakeTwoAgentChannel()
+    internal static string MakeTwoAgentChannel()
     {
         var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         var ctx = Path.Combine(root, "saved-context");

@@ -9,6 +9,7 @@ using Styloagent.App.Dock;
 using Styloagent.Core.Abstractions;
 using Styloagent.Core.Git;
 using Styloagent.Core.Hooks;
+using Styloagent.Core.Mcp;
 using Styloagent.Core.Model;
 using Styloagent.Core.Projects;
 using Styloagent.Core.Seeding;
@@ -61,6 +62,21 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // drop-dir; we route them to the owning pane by a per-pane hook id.
     private HookChannel? _hookChannel;
     private readonly Dictionary<string, AgentPaneViewModel> _panesByHookId = new();
+
+    // ── Fleet management ─────────────────────────────────────────────────────
+
+    [ObservableProperty]
+    private bool _fleetPaused;
+
+    /// <summary>Guardrail limits for this session (read from fleet.yaml on project attach).</summary>
+    public FleetPolicy FleetPolicy { get; set; } = FleetPolicy.Default;
+
+    /// <summary>Number of currently-open agent panes.</summary>
+    public int FleetCount => Panes.Count;
+
+    /// <summary>Toggles the fleet-paused flag, blocking all governor-checked spawns when true.</summary>
+    [RelayCommand]
+    private void PauseFleet() => FleetPaused = !FleetPaused;
 
     // private ctor — callers must use InitializeAsync.
     private MainWindowViewModel() { }
@@ -294,10 +310,51 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>Turns a proposed subsystem into a live roster agent (mirrors AddAgent).</summary>
     public void SpawnProposed(ProposedAgent p)
     {
-        if (_dockFactory is null || _launcher is null || _watcher is null) return;
+        CreatePaneForProposed(p);
+    }
+
+    /// <summary>
+    /// Governor-checked spawn from a parent agent. Builds fleet state, runs the governor,
+    /// and on approval creates the pane with parent/depth lineage stamped in.
+    /// </summary>
+    public SpawnOutcome SpawnChild(SpawnRequest req)
+    {
+        var state = new FleetState(BuildFleetSnapshot().Members, FleetPolicy.MaxFleet, FleetPolicy.MaxDepth, FleetPaused);
+        var decision = FleetGovernor.Check(state, req.ParentPrefix, req.Prefix);
+        if (!decision.Allowed) return SpawnOutcome.Reject(decision.Reason!.Value, decision.Message);
+
+        int parentDepth = Panes.First(p => p.Prefix == req.ParentPrefix).Depth;
+        var proposed = new ProposedAgent(req.Prefix, req.Responsibility, req.Dir, req.LaunchPrompt);
+        var paneVm = CreatePaneForProposed(proposed, parentPrefix: req.ParentPrefix, depth: parentDepth + 1);
+        return paneVm is null
+            ? SpawnOutcome.Reject(RejectReason.InvalidPrefix, "could not create pane")
+            : SpawnOutcome.Ok(req.Prefix);
+    }
+
+    /// <summary>Builds a fleet snapshot from the current roster (for list_fleet and SpawnChild).</summary>
+    public FleetSnapshot BuildFleetSnapshot()
+    {
+        var members = Panes.Select(p => new FleetMember(
+            p.Prefix, p.Responsibility, p.ParentPrefix, p.Depth,
+            p.HookStateText ?? "running")).ToList();
+        return new FleetSnapshot(members, FleetPolicy.MaxFleet, FleetPolicy.MaxDepth, FleetPaused);
+    }
+
+    /// <summary>
+    /// Core pane-creation path shared by SpawnProposed and SpawnChild.
+    /// Builds the manifest entry, reserves the hook id, creates the AgentPaneViewModel
+    /// (with optional lineage), adds it to Panes + dock, and fires SpawnAsync.
+    /// Returns null if the dock factory is unavailable (guards are not met).
+    /// </summary>
+    private AgentPaneViewModel? CreatePaneForProposed(
+        ProposedAgent p,
+        string? parentPrefix = null,
+        int depth = 0)
+    {
+        if (_dockFactory is null || _launcher is null || _watcher is null) return null;
         var documentDock = _dockFactory.DocumentDock;
         var rootDock = _dockFactory.RootDock;
-        if (documentDock is null || rootDock is null) return;
+        if (documentDock is null || rootDock is null) return null;
 
         // Persist the launch prompt to a file so the existing LaunchPromptPath path can read it.
         string root = _project?.Root ?? DefaultWorkingDirectory();
@@ -326,7 +383,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             session,
             entry,
             p.Prefix.TrimEnd('-'),
-            PresentationStore.DefaultColorFor(p.Prefix));
+            PresentationStore.DefaultColorFor(p.Prefix))
+        {
+            ParentPrefix = parentPrefix,
+            Depth = depth,
+            Responsibility = p.Responsibility,
+        };
         Panes.Add(paneVm);
         SelectedPane = paneVm;
         _panesByHookId[hookId] = paneVm;
@@ -344,6 +406,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _dockFactory.SetFocusedDockable(rootDock, doc);
 
         _ = paneVm.SpawnAsync();
+        return paneVm;
     }
 
     private static string SanitizeFileName(string s)

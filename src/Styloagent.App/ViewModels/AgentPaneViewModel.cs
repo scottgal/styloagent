@@ -106,6 +106,18 @@ public sealed partial class AgentPaneViewModel : ObservableObject
     /// </summary>
     public IPtySession? CurrentPty => _session.CurrentPty;
 
+    /// <summary>The agent's prefix (e.g. "foss-"), read from the manifest entry.</summary>
+    public string Prefix => _manifest.Prefix;
+
+    /// <summary>Prefix of the parent agent, or null for root-level panes.</summary>
+    public string? ParentPrefix { get; init; }
+
+    /// <summary>Nesting depth: 0 for root panes (overview, manually-added), 1+ for spawned children.</summary>
+    public int Depth { get; init; }
+
+    /// <summary>Human-readable responsibility description for this agent.</summary>
+    public string Responsibility { get; init; } = "";
+
     public AgentPaneViewModel(
         AgentSession session,
         AgentManifestEntry manifest,

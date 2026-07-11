@@ -11,28 +11,28 @@ public sealed class GitService : IGitService
 {
     public async Task<GitResult<GitStatus>> GetStatusAsync(string worktreePath, CancellationToken ct = default)
     {
-        var r = await RunAsync(worktreePath, ct, "status", "--porcelain=v2", "--branch");
+        var r = await RunAsync(worktreePath, ct, "status", "--porcelain=v2", "--branch").ConfigureAwait(false);
         return r.Ok ? GitResult<GitStatus>.Success(GitStatusParser.Parse(r.Stdout)) : GitResult<GitStatus>.Fail(r.Stderr);
     }
 
     public async Task<GitResult> AddWorktreeAsync(string repoRoot, string worktreePath, string newBranch, CancellationToken ct = default)
-        => ToResult(await RunAsync(repoRoot, ct, "worktree", "add", worktreePath, "-b", newBranch));
+        => ToResult(await RunAsync(repoRoot, ct, "worktree", "add", worktreePath, "-b", newBranch).ConfigureAwait(false));
 
     public async Task<GitResult> RemoveWorktreeAsync(string repoRoot, string worktreePath, CancellationToken ct = default)
-        => ToResult(await RunAsync(repoRoot, ct, "worktree", "remove", "--force", worktreePath));
+        => ToResult(await RunAsync(repoRoot, ct, "worktree", "remove", "--force", worktreePath).ConfigureAwait(false));
 
     public async Task<GitResult> MergeNoFfAsync(string repoRoot, string sourceBranch, string intoBranch, CancellationToken ct = default)
     {
-        var checkout = await RunAsync(repoRoot, ct, "checkout", intoBranch);
+        var checkout = await RunAsync(repoRoot, ct, "checkout", intoBranch).ConfigureAwait(false);
         if (!checkout.Ok) return GitResult.Fail(checkout.Stderr);
-        return ToResult(await RunAsync(repoRoot, ct, "merge", "--no-ff", "--no-edit", sourceBranch));
+        return ToResult(await RunAsync(repoRoot, ct, "merge", "--no-ff", "--no-edit", sourceBranch).ConfigureAwait(false));
     }
 
     public async Task<GitResult> AbortMergeAsync(string repoRoot, CancellationToken ct = default)
-        => ToResult(await RunAsync(repoRoot, ct, "merge", "--abort"));
+        => ToResult(await RunAsync(repoRoot, ct, "merge", "--abort").ConfigureAwait(false));
 
     public async Task<GitResult> DeleteBranchAsync(string repoRoot, string branch, bool force, CancellationToken ct = default)
-        => ToResult(await RunAsync(repoRoot, ct, "branch", force ? "-D" : "-d", branch));
+        => ToResult(await RunAsync(repoRoot, ct, "branch", force ? "-D" : "-d", branch).ConfigureAwait(false));
 
     private static GitResult ToResult(ProcOutcome p) => p.Ok ? GitResult.Success() : GitResult.Fail(p.Stderr);
 
@@ -54,9 +54,9 @@ public sealed class GitService : IGitService
 
             using var proc = Process.Start(psi);
             if (proc is null) return new ProcOutcome(false, "", "failed to start git");
-            string stdout = await proc.StandardOutput.ReadToEndAsync(ct);
-            string stderr = await proc.StandardError.ReadToEndAsync(ct);
-            await proc.WaitForExitAsync(ct);
+            string stdout = await proc.StandardOutput.ReadToEndAsync(ct).ConfigureAwait(false);
+            string stderr = await proc.StandardError.ReadToEndAsync(ct).ConfigureAwait(false);
+            await proc.WaitForExitAsync(ct).ConfigureAwait(false);
             return new ProcOutcome(proc.ExitCode == 0, stdout, stderr);
         }
         catch (Exception ex)

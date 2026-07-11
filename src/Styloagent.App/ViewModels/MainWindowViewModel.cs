@@ -111,6 +111,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private readonly HashSet<string> _openedPrefixes = new();
     private IPtyLauncher? _launcher;
     private IFileWatcher? _watcher;
+    private IGitService? _git;
     private int _genericAgentCounter;
 
     // Extra args appended to the first pane's session when launched in overview mode.
@@ -229,11 +230,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         string? repoRoot = null,
         string? presentationPath = null,
         string? overviewSystemPromptPath = null,
+        IGitService? gitService = null,
         CancellationToken ct = default)
     {
         var vm = new MainWindowViewModel();
         vm._launcher = launcher;
         vm._watcher = watcher;
+        vm._git = gitService;
 
         // Hook state channel (§4.4): drop-dir under temp, one per app run. Failure to set it up
         // must never stop agents launching — hooks are observe-only, so degrade gracefully.
@@ -524,8 +527,23 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (!decision.Allowed) return SpawnOutcome.Reject(decision.Reason!.Value, decision.Message);
 
         int parentDepth = Panes.First(p => p.Prefix == req.ParentPrefix).Depth;
+
+        string? worktreePath = null, worktreeBranch = null;
+        if (req.Worktree && _git is not null && _project is not null)
+        {
+            var existing = Panes.Where(p => p.WorktreePath is not null).Select(p => p.WorktreePath!);
+            var (path, branch) = WorktreeNaming.For(_project.Root, req.Prefix, existing);
+            var add = _git.AddWorktreeAsync(_project.Root, path, branch).GetAwaiter().GetResult();
+            if (!add.Ok)
+                return SpawnOutcome.Reject(RejectReason.InvalidPrefix, $"worktree add failed: {add.Error}");
+            EnsureWorktreesIgnored(_project.Root);
+            worktreePath = path;
+            worktreeBranch = branch;
+        }
+
         var proposed = new ProposedAgent(req.Prefix, req.Responsibility, req.Dir, req.LaunchPrompt);
-        var paneVm = CreatePaneForProposed(proposed, parentPrefix: req.ParentPrefix, depth: parentDepth + 1);
+        var paneVm = CreatePaneForProposed(proposed, parentPrefix: req.ParentPrefix, depth: parentDepth + 1,
+            worktreeOverride: worktreePath, worktreeBranch: worktreeBranch);
         return paneVm is null
             ? SpawnOutcome.Reject(RejectReason.InvalidPrefix, "could not create pane")
             : SpawnOutcome.Ok(req.Prefix);
@@ -549,7 +567,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private AgentPaneViewModel? CreatePaneForProposed(
         ProposedAgent p,
         string? parentPrefix = null,
-        int depth = 0)
+        int depth = 0,
+        string? worktreeOverride = null,
+        string? worktreeBranch = null)
     {
         if (_dockFactory is null || _launcher is null || _watcher is null) return null;
         var documentDock = _dockFactory.DocumentDock;
@@ -566,12 +586,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             File.WriteAllText(launchPromptPath, p.LaunchPrompt);
         }
 
+        string resolvedWorktree = worktreeOverride ?? WorkingDirectoryResolver.Resolve(
+            string.IsNullOrWhiteSpace(p.Dir) ? null : Path.Combine(root, p.Dir),
+            DefaultWorkingDirectory());
+
         var entry = new AgentManifestEntry(
             Prefix: p.Prefix,
             Repo: root,
-            Worktree: WorkingDirectoryResolver.Resolve(
-                string.IsNullOrWhiteSpace(p.Dir) ? null : Path.Combine(root, p.Dir),
-                DefaultWorkingDirectory()),
+            Worktree: resolvedWorktree,
             LaunchPromptPath: launchPromptPath,
             RestartPromptPath: string.Empty,
             SavedContextPath: string.Empty,
@@ -591,6 +613,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             Responsibility = p.Responsibility,
             UserInteracted = _interaction.RecordInput,
         };
+        paneVm.WorktreePath = worktreeOverride;
+        paneVm.WorktreeBranch = worktreeBranch;
         Panes.Add(paneVm);
         SelectedPane = paneVm;
         _panesByHookId[hookId] = paneVm;
@@ -990,6 +1014,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         _diagramDebounceTimer.Stop();
         _diagramDebounceTimer.Start();
+    }
+
+    /// <summary>Ensures .worktrees/ is git-ignored via .git/info/exclude (never touches the user's .gitignore).</summary>
+    private static void EnsureWorktreesIgnored(string repoRoot)
+    {
+        try
+        {
+            var exclude = Path.Combine(repoRoot, ".git", "info", "exclude");
+            if (!File.Exists(exclude)) return;
+            var lines = File.ReadAllLines(exclude);
+            if (lines.Any(l => l.Trim() == ".worktrees/")) return;
+            File.AppendAllText(exclude, Environment.NewLine + ".worktrees/" + Environment.NewLine);
+        }
+        catch { /* ignoring is best-effort */ }
     }
 
     /// <summary>

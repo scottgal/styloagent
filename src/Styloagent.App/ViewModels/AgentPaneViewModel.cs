@@ -141,6 +141,12 @@ public sealed partial class AgentPaneViewModel : Document
     /// <summary>Human-readable responsibility description for this agent.</summary>
     public string Responsibility { get; init; } = "";
 
+    /// <summary>The agent's dedicated git worktree checkout path, or null if it shares the repo.</summary>
+    public string? WorktreePath { get; set; }
+
+    /// <summary>The agent's dedicated branch (agent/&lt;slug&gt;), or null if it shares the repo.</summary>
+    public string? WorktreeBranch { get; set; }
+
     public AgentPaneViewModel(
         AgentSession session,
         AgentManifestEntry manifest,

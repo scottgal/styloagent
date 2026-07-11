@@ -30,6 +30,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Styloagent.Core\Styloagent.Core.csproj" />
+    <ProjectReference Include="..\Styloagent.Git\Styloagent.Git.csproj" />
     <ProjectReference Include="..\Styloagent.Terminal\Styloagent.Terminal.csproj" />
     <!-- lucidVIEW's markdown render control (cross-repo project ref; publish to NuGet later). -->
     <ProjectReference Include="..\..\..\lucidview\Mostlylucid.LucidView.Markdown\Mostlylucid.LucidView.Markdown.csproj" />

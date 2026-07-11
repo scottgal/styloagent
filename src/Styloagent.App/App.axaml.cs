@@ -40,7 +40,8 @@ public partial class App : Application
                         new FileSystemFileWatcher(),
                         gitReader: null,
                         repoRoot: cfg.Root,
-                        overviewSystemPromptPath: cfg.SystemPromptPath);
+                        overviewSystemPromptPath: cfg.SystemPromptPath,
+                        gitService: new Styloagent.Git.GitService());
                     vm.AttachProject(cfg);
                     await vm.StartFleetServerAsync();
 

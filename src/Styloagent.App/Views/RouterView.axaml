@@ -1,0 +1,93 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
+             x:Class="Styloagent.App.Views.RouterView"
+             x:DataType="vm:RouterViewModel">
+
+  <Border Background="{DynamicResource PanelBgBrush}" CornerRadius="4">
+    <Grid RowDefinitions="Auto,*">
+
+      <Border Grid.Row="0" Background="{DynamicResource PanelHeaderBgBrush}" Padding="8,6">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Grid.Column="0" Text="Router ledger" FontSize="11"
+                     Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+          <Button Grid.Column="1" Content="Refresh" FontSize="10" Padding="6,1"
+                  Command="{Binding RefreshCommand}" />
+        </Grid>
+      </Border>
+
+      <!-- Empty state -->
+      <TextBlock Grid.Row="1" IsVisible="{Binding !HasResources}"
+                 Text="No environments configured."
+                 FontSize="11" Foreground="{DynamicResource MutedTextBrush}"
+                 TextWrapping="Wrap" Padding="12" />
+
+      <ScrollViewer Grid.Row="1" IsVisible="{Binding HasResources}"
+                    HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <ItemsControl ItemsSource="{Binding Resources}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="vm:RouterResourceRow">
+              <Border Padding="10,7" Margin="0,1,0,0" Background="{DynamicResource RowBgBrush}">
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+                  <!-- Env / Name -->
+                  <TextBlock Grid.Column="0" Grid.Row="0"
+                             FontSize="12" FontWeight="SemiBold"
+                             Foreground="{DynamicResource PrimaryTextBrush}"
+                             TextTrimming="CharacterEllipsis">
+                    <TextBlock.Text>
+                      <MultiBinding StringFormat="{}{0} / {1}">
+                        <Binding Path="Env" />
+                        <Binding Path="Name" />
+                      </MultiBinding>
+                    </TextBlock.Text>
+                  </TextBlock>
+                  <!-- Kind badge -->
+                  <TextBlock Grid.Column="1" Grid.Row="0" Text="{Binding Kind}"
+                             FontSize="10" Foreground="{DynamicResource MutedTextBrush}"
+                             VerticalAlignment="Center" />
+                  <!-- Holders -->
+                  <StackPanel Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="1"
+                              Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
+                    <TextBlock FontSize="10" Foreground="{DynamicResource MutedTextBrush}">
+                      <TextBlock.Text>
+                        <MultiBinding StringFormat="held by {0}">
+                          <Binding Path="Holders" />
+                        </MultiBinding>
+                      </TextBlock.Text>
+                      <TextBlock.IsVisible>
+                        <Binding Path="Holders"
+                                 Converter="{x:Static StringConverters.IsNotNullOrEmpty}" />
+                      </TextBlock.IsVisible>
+                    </TextBlock>
+                    <TextBlock Text="free" FontSize="10" Foreground="{DynamicResource MutedTextBrush}">
+                      <TextBlock.IsVisible>
+                        <Binding Path="Holders"
+                                 Converter="{x:Static StringConverters.IsNullOrEmpty}" />
+                      </TextBlock.IsVisible>
+                    </TextBlock>
+                    <TextBlock FontSize="10" Foreground="{DynamicResource MutedTextBrush}">
+                      <TextBlock.Text>
+                        <MultiBinding StringFormat="{}{0} queued">
+                          <Binding Path="QueueDepth" />
+                        </MultiBinding>
+                      </TextBlock.Text>
+                    </TextBlock>
+                  </StackPanel>
+                  <!-- Cooldown (only when non-empty) -->
+                  <TextBlock Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="2"
+                             Text="{Binding Cooldown}"
+                             FontSize="10" Foreground="{DynamicResource MutedTextBrush}"
+                             Margin="0,2,0,0"
+                             IsVisible="{Binding Cooldown,
+                                         Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+
+    </Grid>
+  </Border>
+
+</UserControl>

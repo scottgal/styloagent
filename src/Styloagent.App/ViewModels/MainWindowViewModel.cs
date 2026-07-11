@@ -102,6 +102,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private ChangesViewModel? _changes;
 
+    [ObservableProperty]
+    private RouterViewModel? _router;
+
     private IGitLog? _gitLog;
     private WorktreeGitWatcher? _gitWatcher;
 
@@ -516,6 +519,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         // Start (or restart) the RouterHost whenever a project is attached so the coordinator
         // drives the ledger at project.RouterRoot.  Dispose the previous host first (idempotent).
+        Router = new RouterViewModel(project.RouterRoot);
+        Router.Refresh(); // initial load
         _routerHost?.Dispose();
         _routerHost = new RouterHost(
             project.RouterRoot,
@@ -531,7 +536,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         try
         {
-            // TODO(Task 6): Router?.Refresh() — refresh the Router panel VM when it exists.
+            Router?.Refresh();
             var root = _project?.RouterRoot ?? string.Empty;
             System.Diagnostics.Trace.WriteLine($"[Router:{root}] {d.Action} {d.Prefix} on {d.Env}/{d.Name}");
         }

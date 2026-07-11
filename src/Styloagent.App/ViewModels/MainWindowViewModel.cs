@@ -95,6 +95,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private IssuesViewModel? _issues;
 
+    [ObservableProperty]
+    private GitGraphViewModel? _gitGraph;
+
+    private IGitLog? _gitLog;
+
     private ProjectConfig? _project;
 
     private IFactory? _factory;
@@ -232,12 +237,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         string? presentationPath = null,
         string? overviewSystemPromptPath = null,
         IGitService? gitService = null,
+        IGitLog? gitLog = null,
         CancellationToken ct = default)
     {
         var vm = new MainWindowViewModel();
         vm._launcher = launcher;
         vm._watcher = watcher;
         vm._git = gitService;
+        vm._gitLog = gitLog;
+        if (gitLog is not null)
+            vm.GitGraph = new GitGraphViewModel(gitLog);
 
         // Hook state channel (§4.4): drop-dir under temp, one per app run. Failure to set it up
         // must never stop agents launching — hooks are observe-only, so degrade gracefully.
@@ -672,11 +681,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Keeps each pane's <see cref="AgentPaneViewModel.IsSelected"/> in sync so the roster
-    /// outlines only the active agent.</summary>
+    /// outlines only the active agent. Also loads the worktree graph when the new pane has a path.</summary>
     partial void OnSelectedPaneChanged(AgentPaneViewModel? oldValue, AgentPaneViewModel? newValue)
     {
         if (oldValue is not null) oldValue.IsSelected = false;
         if (newValue is not null) newValue.IsSelected = true;
+        if (GitGraph is not null && newValue?.WorktreePath is { } path)
+            _ = GitGraph.LoadAsync(path);
     }
 
     /// <summary>Brings the dock document for <paramref name="pane"/> to the front. The pane IS a

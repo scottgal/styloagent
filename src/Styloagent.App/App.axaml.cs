@@ -34,6 +34,7 @@ public partial class App : Application
                 {
                     var cfg = ProjectScaffolder.Ensure(root);
                     await recents.AddAsync(recentsPath, root);
+                    var gitSvc = new Styloagent.Git.GitService();
                     var vm = await MainWindowViewModel.InitializeAsync(
                         cfg.ChannelRoot,
                         new PortaPtyLauncher(),
@@ -41,7 +42,8 @@ public partial class App : Application
                         gitReader: null,
                         repoRoot: cfg.Root,
                         overviewSystemPromptPath: cfg.SystemPromptPath,
-                        gitService: new Styloagent.Git.GitService());
+                        gitService: gitSvc,
+                        gitLog: gitSvc);
                     vm.AttachProject(cfg);
                     await vm.StartFleetServerAsync();
 

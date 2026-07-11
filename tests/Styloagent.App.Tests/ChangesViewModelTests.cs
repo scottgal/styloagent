@@ -8,7 +8,7 @@ public class ChangesViewModelTests
     {
         public Task<GitResult<GitStatus>> GetStatusAsync(string w, CancellationToken ct = default)
             => Task.FromResult(GitResult<GitStatus>.Success(new GitStatus(true, 0, 0, false,
-                new[] { new GitChange("a.txt", GitChangeKind.Modified), new GitChange("b.txt", GitChangeKind.Added) })));
+                new[] { new GitChange("a.txt", GitChangeKind.Modified, false, true), new GitChange("b.txt", GitChangeKind.Added, true, false) })));
 
         public Task<GitResult> AddWorktreeAsync(string r, string w, string b, CancellationToken ct = default)
             => Task.FromResult(GitResult.Success());

@@ -60,4 +60,18 @@ public class GitStatusParserTests
         Assert.Equal(GitChangeKind.Renamed, change.Kind);
         Assert.True(s.IsDirty);
     }
+
+    [Fact]
+    public void Parse_tracks_staged_and_unstaged()
+    {
+        // "1 M. …" = staged modify (X=M, Y=.); "1 .M …" = unstaged modify; "? new" = untracked (unstaged)
+        var s = GitStatusParser.Parse(
+            "# branch.ab +0 -0\n" +
+            "1 M. N... 100644 100644 100644 aaa bbb staged.cs\n" +
+            "1 .M N... 100644 100644 100644 aaa bbb unstaged.cs\n" +
+            "? untracked.cs\n");
+        Assert.Contains(s.Changes, c => c.Path == "staged.cs" && c.Staged && !c.Unstaged);
+        Assert.Contains(s.Changes, c => c.Path == "unstaged.cs" && !c.Staged && c.Unstaged);
+        Assert.Contains(s.Changes, c => c.Path == "untracked.cs" && !c.Staged && c.Unstaged);
+    }
 }

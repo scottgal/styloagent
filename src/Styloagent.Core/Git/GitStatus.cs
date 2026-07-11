@@ -4,7 +4,7 @@ namespace Styloagent.Core.Git;
 public enum GitChangeKind { Added, Modified, Deleted, Renamed, Untracked, Conflicted }
 
 /// <summary>One changed path in a worktree.</summary>
-public sealed record GitChange(string Path, GitChangeKind Kind);
+public sealed record GitChange(string Path, GitChangeKind Kind, bool Staged, bool Unstaged);
 
 /// <summary>A worktree's status: dirtiness, ahead/behind vs upstream, conflicts, and the changes.</summary>
 public sealed record GitStatus(

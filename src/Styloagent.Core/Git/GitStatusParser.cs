@@ -25,12 +25,14 @@ public static class GitStatusParser
             }
             if (line[0] == '#') continue;
             if (line[0] == '!') continue;                       // ignored
-            if (line[0] == '?') { changes.Add(new GitChange(line[2..].Trim(), GitChangeKind.Untracked)); continue; }
-            if (line[0] == 'u') { hasConflicts = true; changes.Add(new GitChange(PathOf(line), GitChangeKind.Conflicted)); continue; }
+            if (line[0] == '?') { changes.Add(new GitChange(line[2..].Trim(), GitChangeKind.Untracked, false, true)); continue; }
+            if (line[0] == 'u') { hasConflicts = true; changes.Add(new GitChange(PathOf(line), GitChangeKind.Conflicted, false, true)); continue; }
             if (line[0] == '1' || line[0] == '2')
             {
                 var xy = line.Length >= 4 ? line.Substring(2, 2) : "..";
-                changes.Add(new GitChange(PathOf(line), KindFromXy(xy, renamed: line[0] == '2')));
+                bool staged = xy[0] != '.';
+                bool unstaged = xy[1] != '.';
+                changes.Add(new GitChange(PathOf(line), KindFromXy(xy, renamed: line[0] == '2'), staged, unstaged));
             }
         }
 

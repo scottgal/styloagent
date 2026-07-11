@@ -38,6 +38,41 @@ You have two MCP tools from the `styloagent` server:
 Decide the initial 3-4 subsystems, spawn them, and let them split. A spawn may be rejected
 (`fleet full`, `max depth`, `paused`) — if so, stop spawning and coordinate via the channel
 instead; do not retry blindly.
+
+## New system
+
+If `.styloagent/brief.md` exists, you are scoping a **new** system rather than analysing an
+existing codebase — read it first and follow its instructions (research, clarify with the human,
+define the shape, then build the first feature) before proposing the team.
+""";
+
+    /// <summary>
+    /// The brief written when a project is created via the "New System" path. Instructs the architect
+    /// to research and clarify the desired system, define its shape (as an ownership-coloured C4
+    /// architecture), then build the first feature — from the human's one-line goal.
+    /// </summary>
+    public static string NewSystemBrief(string description) =>
+$"""
+# New System Brief
+
+The human wants to build a new system:
+
+> {description.Trim()}
+
+You are the **architect**. This project is empty — you are defining a system from scratch, not
+analysing existing code. Work in this order:
+
+1. **Research** the domain and comparable systems ("a system like X"): the core capabilities, the
+   typical architecture, the key components and how they interact.
+2. **Ask the human clarifying questions, one at a time**, to scope it appropriately — target users,
+   must-have now vs later, constraints, tech preferences, expected scale. Do not over-scope; a first
+   cut with 3-4 subsystems is right.
+3. **Define the system shape**: write `.styloagent/architecture.md` containing a C4 diagram of the
+   proposed components (colour each by its owning agent with `UpdateElementStyle(id, $bgColor="…")`),
+   and propose the initial team in `.styloagent/proposed-agents.yaml`.
+4. Once the shape is agreed with the human, **build the first feature** inside it.
+
+Coordinate over the bus per `.styloagent/PROTOCOL.md`.
 """;
 
     public const string Protocol =

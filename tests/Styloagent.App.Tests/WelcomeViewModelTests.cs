@@ -42,4 +42,42 @@ public class WelcomeViewModelTests
 
         Assert.Equal("/recent/proj", chosen);
     }
+
+    [Fact]
+    public async Task NewSystem_scaffolds_the_folder_writes_the_brief_and_opens_it()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "newsys-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        string? chosen = null;
+        try
+        {
+            var vm = new WelcomeViewModel(new RecentProjectsStore(), "/tmp/none.yaml",
+                new FakePicker(root), p => chosen = p)
+            {
+                NewSystemDescription = "a system like Trello which manages kanban boards",
+            };
+
+            await vm.NewSystemCommand.ExecuteAsync(null);
+
+            var briefPath = Path.Combine(root, ".styloagent", "brief.md");
+            Assert.True(File.Exists(briefPath));
+            var brief = await File.ReadAllTextAsync(briefPath);
+            Assert.Contains("Trello", brief);
+            Assert.Contains("clarifying questions", brief, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(root, chosen);           // opened the new project
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task NewSystem_with_blank_description_does_nothing()
+    {
+        string? chosen = null;
+        var vm = new WelcomeViewModel(new RecentProjectsStore(), "/tmp/none.yaml",
+            new FakePicker("/should/not/be/used"), p => chosen = p);
+
+        await vm.NewSystemCommand.ExecuteAsync(null);
+
+        Assert.Null(chosen);
+    }
 }

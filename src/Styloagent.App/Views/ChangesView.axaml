@@ -7,45 +7,128 @@
              x:DataType="vm:ChangesViewModel">
 
   <Border Background="{DynamicResource PanelBgBrush}" CornerRadius="4">
-    <Grid RowDefinitions="180,*">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
 
-      <!-- Changed-files list (top) -->
-      <Grid Grid.Row="0" RowDefinitions="Auto,*">
+      <!-- ── Unstaged section ──────────────────────────────────────────────── -->
+      <Border Grid.Row="0" Background="{DynamicResource PanelHeaderBgBrush}" Padding="8,5">
+        <TextBlock Text="Unstaged" FontSize="11" FontWeight="SemiBold"
+                   Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+      </Border>
 
-        <Border Grid.Row="0" Background="{DynamicResource PanelHeaderBgBrush}" Padding="8,6">
-          <TextBlock Text="Changed files" FontSize="11"
-                     Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+      <ListBox Grid.Row="1"
+               ItemsSource="{Binding UnstagedFiles}"
+               SelectedItem="{Binding SelectedFile}"
+               SelectionChanged="OnFileSelectionChanged"
+               MaxHeight="120"
+               Background="Transparent"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+               x:Name="UnstagedList">
+        <ListBox.ItemTemplate>
+          <DataTemplate DataType="git:GitChange">
+            <Grid ColumnDefinitions="Auto,*,Auto" Margin="4,2">
+              <TextBlock Grid.Column="0" Text="{Binding Kind}"
+                         FontSize="10" FontWeight="SemiBold"
+                         Foreground="{DynamicResource AccentBrush}"
+                         VerticalAlignment="Center"
+                         MinWidth="56" />
+              <TextBlock Grid.Column="1" Text="{Binding Path}"
+                         FontSize="11"
+                         Foreground="{DynamicResource PrimaryTextBrush}"
+                         FontFamily="Cascadia Mono,Consolas,monospace"
+                         TextTrimming="CharacterEllipsis"
+                         VerticalAlignment="Center" />
+              <Button Grid.Column="2"
+                      Content="Stage"
+                      FontSize="10" Padding="6,1"
+                      Margin="4,0,0,0"
+                      Command="{Binding DataContext.StageCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                      CommandParameter="{Binding}" />
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+      <!-- ── Staged section ───────────────────────────────────────────────── -->
+      <Border Grid.Row="2" Background="{DynamicResource PanelHeaderBgBrush}" Padding="8,5" Margin="0,4,0,0">
+        <TextBlock Text="Staged" FontSize="11" FontWeight="SemiBold"
+                   Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+      </Border>
+
+      <ListBox Grid.Row="3"
+               ItemsSource="{Binding StagedFiles}"
+               SelectedItem="{Binding SelectedFile}"
+               SelectionChanged="OnFileSelectionChanged"
+               MaxHeight="120"
+               Background="Transparent"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+               x:Name="StagedList">
+        <ListBox.ItemTemplate>
+          <DataTemplate DataType="git:GitChange">
+            <Grid ColumnDefinitions="Auto,*,Auto" Margin="4,2">
+              <TextBlock Grid.Column="0" Text="{Binding Kind}"
+                         FontSize="10" FontWeight="SemiBold"
+                         Foreground="{DynamicResource AccentBrush}"
+                         VerticalAlignment="Center"
+                         MinWidth="56" />
+              <TextBlock Grid.Column="1" Text="{Binding Path}"
+                         FontSize="11"
+                         Foreground="{DynamicResource PrimaryTextBrush}"
+                         FontFamily="Cascadia Mono,Consolas,monospace"
+                         TextTrimming="CharacterEllipsis"
+                         VerticalAlignment="Center" />
+              <Button Grid.Column="2"
+                      Content="Unstage"
+                      FontSize="10" Padding="6,1"
+                      Margin="4,0,0,0"
+                      Command="{Binding DataContext.UnstageCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                      CommandParameter="{Binding}" />
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+      <!-- ── Commit bar + push/pull actions ───────────────────────────────── -->
+      <Grid Grid.Row="4" RowDefinitions="Auto,Auto,Auto,*">
+
+        <!-- Commit bar -->
+        <Border Grid.Row="0" Padding="6,6,6,0">
+          <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto">
+            <TextBox Grid.Column="0"
+                     Text="{Binding CommitMessage}"
+                     Watermark="Commit message…"
+                     AcceptsReturn="True"
+                     MinHeight="54"
+                     FontSize="11"
+                     Padding="6,4"
+                     TextWrapping="Wrap"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto" />
+            <Button Grid.Column="1"
+                    Content="Commit"
+                    FontSize="11" Padding="8,4"
+                    Margin="4,0,0,0"
+                    VerticalAlignment="Stretch"
+                    Command="{Binding CommitCommand}"
+                    IsEnabled="{Binding CanCommit}" />
+          </Grid>
         </Border>
 
-        <ListBox Grid.Row="1"
-                 ItemsSource="{Binding Files}"
-                 SelectedItem="{Binding SelectedFile}"
-                 SelectionChanged="OnFileSelectionChanged"
-                 Background="Transparent"
-                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-          <ListBox.ItemTemplate>
-            <DataTemplate DataType="git:GitChange">
-              <StackPanel Orientation="Horizontal" Spacing="6" Margin="4,2">
-                <TextBlock Text="{Binding Kind}"
-                           FontSize="10" FontWeight="SemiBold"
-                           Foreground="{DynamicResource AccentBrush}"
-                           VerticalAlignment="Center"
-                           MinWidth="60" />
-                <TextBlock Text="{Binding Path}"
-                           FontSize="11"
-                           Foreground="{DynamicResource PrimaryTextBrush}"
-                           FontFamily="Cascadia Mono,Consolas,monospace"
-                           TextTrimming="CharacterEllipsis"
-                           VerticalAlignment="Center" />
-              </StackPanel>
-            </DataTemplate>
-          </ListBox.ItemTemplate>
-        </ListBox>
+        <!-- Push / Pull row -->
+        <StackPanel Grid.Row="1"
+                    Orientation="Horizontal"
+                    Spacing="6"
+                    Margin="6,4,6,6">
+          <Button Content="Push"
+                  FontSize="11" Padding="8,4"
+                  Command="{Binding PushCommand}" />
+          <Button Content="Pull"
+                  FontSize="11" Padding="8,4"
+                  Command="{Binding PullCommand}" />
+        </StackPanel>
+
+        <!-- Diff panel -->
+        <views:DiffView Grid.Row="2" DataContext="{Binding Diff}" />
 
       </Grid>
-
-      <!-- Diff panel (below) -->
-      <views:DiffView Grid.Row="1" DataContext="{Binding Diff}" />
 
     </Grid>
   </Border>

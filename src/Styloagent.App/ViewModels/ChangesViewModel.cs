@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Styloagent.Core.Git;
 using Styloagent.Git;
 
@@ -91,6 +92,7 @@ public sealed partial class ChangesViewModel : ObservableObject
     }
 
     /// <summary>Stages <paramref name="change"/> then reloads the status.</summary>
+    [RelayCommand]
     public async Task StageAsync(GitChange change)
     {
         await _write.StageAsync(_worktreePath, change.Path);
@@ -98,6 +100,7 @@ public sealed partial class ChangesViewModel : ObservableObject
     }
 
     /// <summary>Unstages <paramref name="change"/> then reloads the status.</summary>
+    [RelayCommand]
     public async Task UnstageAsync(GitChange change)
     {
         await _write.UnstageAsync(_worktreePath, change.Path);
@@ -108,6 +111,7 @@ public sealed partial class ChangesViewModel : ObservableObject
     /// Commits the staged files with <see cref="CommitMessage"/>. No-ops when
     /// <see cref="CanCommit"/> is false. Clears the message on success then reloads.
     /// </summary>
+    [RelayCommand]
     public async Task CommitAsync()
     {
         if (!CanCommit) return;
@@ -118,6 +122,7 @@ public sealed partial class ChangesViewModel : ObservableObject
     }
 
     /// <summary>Pushes the current branch then reloads.</summary>
+    [RelayCommand]
     public async Task PushAsync()
     {
         await _write.PushAsync(_worktreePath);
@@ -125,6 +130,7 @@ public sealed partial class ChangesViewModel : ObservableObject
     }
 
     /// <summary>Pulls the current branch then reloads.</summary>
+    [RelayCommand]
     public async Task PullAsync()
     {
         await _write.PullAsync(_worktreePath);

@@ -98,6 +98,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private GitGraphViewModel? _gitGraph;
 
+    [ObservableProperty]
+    private ChangesViewModel? _changes;
+
     private IGitLog? _gitLog;
 
     private ProjectConfig? _project;
@@ -247,6 +250,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         vm._gitLog = gitLog;
         if (gitLog is not null)
             vm.GitGraph = new GitGraphViewModel(gitLog);
+        if (gitService is IGitDiff gitDiff)
+            vm.Changes = new ChangesViewModel(gitService, gitDiff);
 
         // Hook state channel (§4.4): drop-dir under temp, one per app run. Failure to set it up
         // must never stop agents launching — hooks are observe-only, so degrade gracefully.
@@ -686,8 +691,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (oldValue is not null) oldValue.IsSelected = false;
         if (newValue is not null) newValue.IsSelected = true;
-        if (GitGraph is not null && newValue?.WorktreePath is { } path)
-            _ = GitGraph.LoadAsync(path);
+        if (newValue?.WorktreePath is { } path)
+        {
+            if (GitGraph is not null) _ = GitGraph.LoadAsync(path);
+            if (Changes is not null) _ = Changes.LoadAsync(path);
+        }
     }
 
     /// <summary>Brings the dock document for <paramref name="pane"/> to the front. The pane IS a

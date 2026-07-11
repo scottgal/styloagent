@@ -141,7 +141,21 @@
               <TextBlock Text="Git" VerticalAlignment="Center" />
             </StackPanel>
           </TabItem.Header>
-          <views:GitGraphView DataContext="{Binding GitGraph}" />
+          <TabControl Background="{DynamicResource PanelBgBrush}">
+            <TabControl.Styles>
+              <Style Selector="TabItem">
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Foreground" Value="#9D7FE0" />
+              </Style>
+            </TabControl.Styles>
+            <TabItem Header="History">
+              <views:GitGraphView DataContext="{Binding GitGraph}" />
+            </TabItem>
+            <TabItem Header="Changes">
+              <views:ChangesView DataContext="{Binding Changes}" />
+            </TabItem>
+          </TabControl>
         </TabItem>
       </TabControl>
 

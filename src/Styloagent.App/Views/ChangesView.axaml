@@ -1,0 +1,53 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
+             xmlns:views="clr-namespace:Styloagent.App.Views"
+             xmlns:git="clr-namespace:Styloagent.Core.Git;assembly=Styloagent.Core"
+             x:Class="Styloagent.App.Views.ChangesView"
+             x:DataType="vm:ChangesViewModel">
+
+  <Border Background="{DynamicResource PanelBgBrush}" CornerRadius="4">
+    <Grid RowDefinitions="180,*">
+
+      <!-- Changed-files list (top) -->
+      <Grid Grid.Row="0" RowDefinitions="Auto,*">
+
+        <Border Grid.Row="0" Background="{DynamicResource PanelHeaderBgBrush}" Padding="8,6">
+          <TextBlock Text="Changed files" FontSize="11"
+                     Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+        </Border>
+
+        <ListBox Grid.Row="1"
+                 ItemsSource="{Binding Files}"
+                 SelectedItem="{Binding SelectedFile}"
+                 SelectionChanged="OnFileSelectionChanged"
+                 Background="Transparent"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <ListBox.ItemTemplate>
+            <DataTemplate DataType="git:GitChange">
+              <StackPanel Orientation="Horizontal" Spacing="6" Margin="4,2">
+                <TextBlock Text="{Binding Kind}"
+                           FontSize="10" FontWeight="SemiBold"
+                           Foreground="{DynamicResource AccentBrush}"
+                           VerticalAlignment="Center"
+                           MinWidth="60" />
+                <TextBlock Text="{Binding Path}"
+                           FontSize="11"
+                           Foreground="{DynamicResource PrimaryTextBrush}"
+                           FontFamily="Cascadia Mono,Consolas,monospace"
+                           TextTrimming="CharacterEllipsis"
+                           VerticalAlignment="Center" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+
+      </Grid>
+
+      <!-- Diff panel (below) -->
+      <views:DiffView Grid.Row="1" DataContext="{Binding Diff}" />
+
+    </Grid>
+  </Border>
+
+</UserControl>

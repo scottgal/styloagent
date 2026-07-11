@@ -251,8 +251,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         vm._gitLog = gitLog;
         if (gitLog is not null)
             vm.GitGraph = new GitGraphViewModel(gitLog);
-        if (gitService is IGitDiff gitDiff)
-            vm.Changes = new ChangesViewModel(gitService, gitDiff);
+        if (gitService is IGitDiff gitDiff && gitService is IGitWrite gitWrite)
+            vm.Changes = new ChangesViewModel(gitService, gitDiff, gitWrite);
 
         // Hook state channel (§4.4): drop-dir under temp, one per app run. Failure to set it up
         // must never stop agents launching — hooks are observe-only, so degrade gracefully.

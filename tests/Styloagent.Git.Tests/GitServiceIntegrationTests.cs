@@ -158,6 +158,29 @@ public class GitServiceIntegrationTests
         finally { TryDeleteRepo(repo); }
     }
 
+    [Fact]
+    public async Task Stash_save_list_and_pop()
+    {
+        if (!GitAvailable()) return;
+        var repo = Path.Combine(Path.GetTempPath(), "gitstash-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(repo);
+        try
+        {
+            Run(repo, "init -b main"); Run(repo, "config user.email t@t.t"); Run(repo, "config user.name t");
+            File.WriteAllText(Path.Combine(repo, "a.txt"), "one\n"); Run(repo, "add -A"); Run(repo, "commit -m init");
+            File.WriteAllText(Path.Combine(repo, "a.txt"), "two\n");
+
+            var git = new Styloagent.Git.GitService();
+            Assert.True((await git.StashAsync(repo, "wip")).Ok);
+            Assert.False((await git.GetStatusAsync(repo)).Value!.IsDirty);
+            var list = await git.ListStashesAsync(repo);
+            Assert.True(list.Ok); Assert.Single(list.Value!);
+            Assert.True((await git.StashPopAsync(repo)).Ok);
+            Assert.True((await git.GetStatusAsync(repo)).Value!.IsDirty);
+        }
+        finally { TryDeleteRepo(repo); }
+    }
+
     private static void TryDeleteRepo(string repo)
     {
         try { if (Directory.Exists(repo)) Directory.Delete(repo, recursive: true); } catch { }

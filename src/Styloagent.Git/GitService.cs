@@ -9,7 +9,7 @@ namespace Styloagent.Git;
 /// Never throws: failures surface as a failed <see cref="GitResult"/> carrying git's stderr.
 /// Mirrors GitCliReader's process pattern.
 /// </summary>
-public sealed class GitService : IGitService, IGitLog, IGitDiff, IGitWrite, IGitBranch
+public sealed class GitService : IGitService, IGitLog, IGitDiff, IGitWrite, IGitBranch, IGitStash
 {
     public async Task<GitResult<GitStatus>> GetStatusAsync(string worktreePath, CancellationToken ct = default)
     {
@@ -103,6 +103,23 @@ public sealed class GitService : IGitService, IGitLog, IGitDiff, IGitWrite, IGit
 
     public async Task<GitResult> SwitchBranchAsync(string worktreePath, string name, CancellationToken ct = default)
         => ToResult(await RunAsync(worktreePath, ct, "switch", name).ConfigureAwait(false));
+
+    // IGitStash — Save / Pop / List
+    public async Task<GitResult> StashAsync(string worktreePath, string? message, CancellationToken ct = default)
+        => ToResult(string.IsNullOrWhiteSpace(message)
+            ? await RunAsync(worktreePath, ct, "stash", "push").ConfigureAwait(false)
+            : await RunAsync(worktreePath, ct, "stash", "push", "-m", message).ConfigureAwait(false));
+
+    public async Task<GitResult> StashPopAsync(string worktreePath, CancellationToken ct = default)
+        => ToResult(await RunAsync(worktreePath, ct, "stash", "pop").ConfigureAwait(false));
+
+    public async Task<GitResult<IReadOnlyList<string>>> ListStashesAsync(string worktreePath, CancellationToken ct = default)
+    {
+        var r = await RunAsync(worktreePath, ct, "stash", "list", "--format=%gd: %gs").ConfigureAwait(false);
+        if (!r.Ok) return GitResult<IReadOnlyList<string>>.Fail(r.Stderr);
+        var list = r.Stdout.Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0).ToList();
+        return GitResult<IReadOnlyList<string>>.Success(list);
+    }
 
     private static GitResult ToResult(ProcOutcome p) => p.Ok ? GitResult.Success() : GitResult.Fail(p.Stderr);
 

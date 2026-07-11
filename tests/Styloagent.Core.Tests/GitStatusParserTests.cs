@@ -48,4 +48,16 @@ public class GitStatusParserTests
         Assert.False(clean.IsDirty);
         Assert.Empty(clean.Changes);
     }
+
+    [Fact]
+    public void Parse_renamed_file_uses_the_new_path()
+    {
+        var s = GitStatusParser.Parse(
+            "# branch.ab +0 -0\n" +
+            "2 R. N... 100644 100644 100644 ce0136 ce0136 R100 New.cs\tOld.cs\n");
+        var change = Assert.Single(s.Changes);
+        Assert.Equal("New.cs", change.Path);           // the NEW path, not the original
+        Assert.Equal(GitChangeKind.Renamed, change.Kind);
+        Assert.True(s.IsDirty);
+    }
 }

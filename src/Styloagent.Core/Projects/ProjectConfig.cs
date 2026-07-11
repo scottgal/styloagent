@@ -9,7 +9,8 @@ public sealed record ProjectConfig(
     string ChannelRoot,
     string ProposedAgentsPath,
     string LaunchPromptsDir,
-    string FleetPolicyPath)
+    string FleetPolicyPath,
+    string PriorityPolicyPath)
 {
     /// <summary>Builds the config paths for a project root. Pure — performs no I/O.</summary>
     public static ProjectConfig For(string root)
@@ -23,6 +24,7 @@ public sealed record ProjectConfig(
             ChannelRoot: Path.Combine(cfg, "channel"),
             ProposedAgentsPath: Path.Combine(cfg, "proposed-agents.yaml"),
             LaunchPromptsDir: Path.Combine(cfg, "launch-prompts"),
-            FleetPolicyPath: Path.Combine(cfg, "fleet.yaml"));
+            FleetPolicyPath: Path.Combine(cfg, "fleet.yaml"),
+            PriorityPolicyPath: Path.Combine(cfg, "priority-policy.yaml"));
     }
 }

@@ -10,9 +10,10 @@ public class WrapUpServiceTests
         public GitStatus Status = GitStatus.Clean;
         public bool MergeOk = true;
         public bool Removed, BranchDeleted, MergeAborted;
+        public bool StatusOk = true;
 
         public Task<GitResult<GitStatus>> GetStatusAsync(string worktreePath, CancellationToken ct = default)
-            => Task.FromResult(GitResult<GitStatus>.Success(Status));
+            => Task.FromResult(StatusOk ? GitResult<GitStatus>.Success(Status) : GitResult<GitStatus>.Fail("git status failed"));
         public Task<GitResult> AddWorktreeAsync(string r, string w, string b, CancellationToken ct = default) => Task.FromResult(GitResult.Success());
         public Task<GitResult> RemoveWorktreeAsync(string r, string w, CancellationToken ct = default) { Removed = true; return Task.FromResult(GitResult.Success()); }
         public Task<GitResult> MergeNoFfAsync(string r, string s, string i, CancellationToken ct = default)
@@ -90,6 +91,37 @@ public class WrapUpServiceTests
             Assert.True(git.MergeAborted);
             Assert.False(git.Removed);
             Assert.Single(IssueStore.Read(issues));
+        }
+        finally { if (Directory.Exists(issues)) Directory.Delete(issues, true); }
+    }
+
+    [Fact]
+    public async Task Unreadable_status_keeps_worktree_and_does_not_merge()
+    {
+        var (req, issues) = Fixture();
+        var git = new FakeGit { StatusOk = false };
+        var svc = new WrapUpService(git, new FakeTests());
+        try
+        {
+            var outcome = await svc.WrapUpAsync(req, new GitPolicy("dotnet test", true, "main"), issues);
+            Assert.Equal(WrapUpStatus.KeptUncommitted, outcome.Status);
+            Assert.False(git.Removed);
+        }
+        finally { if (Directory.Exists(issues)) Directory.Delete(issues, true); }
+    }
+
+    [Fact]
+    public async Task Merge_without_cleanup_when_policy_disables_removal()
+    {
+        var (req, issues) = Fixture();
+        var git = new FakeGit();
+        var svc = new WrapUpService(git, new FakeTests());
+        try
+        {
+            var outcome = await svc.WrapUpAsync(req, new GitPolicy(null, false, "main"), issues);
+            Assert.Equal(WrapUpStatus.Merged, outcome.Status);
+            Assert.False(git.Removed);
+            Assert.False(git.BranchDeleted);
         }
         finally { if (Directory.Exists(issues)) Directory.Delete(issues, true); }
     }

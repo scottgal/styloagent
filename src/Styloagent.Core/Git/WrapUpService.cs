@@ -30,7 +30,10 @@ public sealed class WrapUpService
     {
         // 1. Guard clean.
         var status = await _git.GetStatusAsync(req.WorktreePath, ct).ConfigureAwait(false);
-        if (status.Ok && status.Value!.IsDirty)
+        if (!status.Ok)
+            return new WrapUpOutcome(WrapUpStatus.KeptUncommitted,
+                $"could not read status for {req.Prefix} ({status.Error}); worktree kept, not merged.", null);
+        if (status.Value!.IsDirty)
             return new WrapUpOutcome(WrapUpStatus.KeptUncommitted,
                 $"{req.Prefix} has uncommitted changes — commit or discard before wrap-up.", null);
 

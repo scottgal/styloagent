@@ -18,6 +18,13 @@ public partial class MarkdownDocumentViewModel : Document
     public string FullPath { get; }
     public string SourcePath { get; }
 
+    /// <summary>Raised when a C4 component in this document is clicked, with the element id — so the
+    /// shell can treat the architecture diagram as a navigation surface (focus the owning agent).</summary>
+    public event Action<string>? ComponentClicked;
+
+    /// <summary>Invoked by the view when its C4 diagram reports an element click.</summary>
+    internal void RaiseComponentClicked(string elementId) => ComponentClicked?.Invoke(elementId);
+
     public MarkdownDocumentViewModel(string title, string fullPath)
     {
         Id = title;

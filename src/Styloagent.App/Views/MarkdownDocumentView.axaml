@@ -10,7 +10,8 @@
        light-on-light here. Pin an explicit dark Foreground so the paper stays readable
        regardless of the app theme variant. -->
   <ScrollViewer Background="#FBFBFB" Padding="16,12">
-    <lucid:LucidMarkdownView Markdown="{Binding Markdown}"
+    <lucid:LucidMarkdownView Name="Md"
+                             Markdown="{Binding Markdown}"
                              SourcePath="{Binding SourcePath}"
                              Foreground="#1A1A1A" />
   </ScrollViewer>

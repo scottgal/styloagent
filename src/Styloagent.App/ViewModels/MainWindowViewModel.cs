@@ -788,9 +788,24 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // opening the same-titled doc twice doesn't collide.
         docVm.Id = "Doc-" + Guid.NewGuid().ToString("N");
         docVm.CanFloat = true;
+        // Clicking a C4 component in an architecture doc focuses its owning agent.
+        docVm.ComponentClicked -= FocusAgentByComponentId;
+        docVm.ComponentClicked += FocusAgentByComponentId;
         _dockFactory.AddDockable(documentDock, docVm);
         _dockFactory.SetActiveDockable(docVm);
         _dockFactory.SetFocusedDockable(rootDock, docVm);
+    }
+
+    /// <summary>
+    /// Focuses the agent that owns a clicked C4 component. C4ResponsibilityGenerator uses the
+    /// sanitized agent prefix as the element id, so match panes on that.
+    /// </summary>
+    private void FocusAgentByComponentId(string componentId)
+    {
+        var pane = Panes.FirstOrDefault(p => SystemMapGenerator.Id(p.Prefix) == componentId);
+        if (pane is null) return;
+        SelectedPane = pane;
+        ActivateDocumentFor(pane);
     }
 
     // ── Diagram cockpit commands ──────────────────────────────────────────────

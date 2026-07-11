@@ -34,7 +34,9 @@ public static class SystemMapGenerator
         return sb.ToString();
     }
 
-    internal static string Id(string prefix)
+    /// <summary>Sanitizes a prefix into a valid mermaid/C4 node id (used as the element id, so hosts
+    /// can map a clicked component back to its agent).</summary>
+    public static string Id(string prefix)
     {
         var chars = prefix.Where(c => char.IsAsciiLetterOrDigit(c) || c == '_').ToArray();
         var id = new string(chars);

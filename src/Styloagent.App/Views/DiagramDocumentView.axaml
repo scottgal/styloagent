@@ -18,7 +18,8 @@
 
     <!-- Row 1: Markdown content -->
     <ScrollViewer Grid.Row="1" Background="#FBFBFB" Padding="16,12">
-      <lucid:LucidMarkdownView Markdown="{Binding Markdown}"
+      <lucid:LucidMarkdownView Name="Md"
+                               Markdown="{Binding Markdown}"
                                SourcePath="{Binding SourcePath}" />
     </ScrollViewer>
 

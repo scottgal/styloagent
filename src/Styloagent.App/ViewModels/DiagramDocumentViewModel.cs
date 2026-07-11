@@ -8,6 +8,7 @@ public enum DiagramKind
 {
     SystemMap,
     BusSequence,
+    Architecture,
 }
 
 /// <summary>

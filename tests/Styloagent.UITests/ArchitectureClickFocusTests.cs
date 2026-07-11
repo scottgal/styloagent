@@ -71,4 +71,36 @@ public class ArchitectureClickFocusTests
             t.GetAwaiter().GetResult();
         });
     }
+
+    [Fact]
+    public Task Architecture_view_reflects_the_fleet_with_ownership_colours()
+    {
+        var root = MakeChannel();
+        return _fx.DispatchAsync(async () =>
+        {
+            MainWindowViewModel? vm = null;
+            try
+            {
+                vm = await MainWindowViewModel.InitializeAsync(root, new NewPtyLauncher(), new NoWatcher());
+                var pane = vm.Panes[0];
+
+                var components = vm.BuildArchitectureComponents();
+                Assert.Contains(components, c => c.Id == pane.Prefix && c.ColorHex == pane.BorderColorHex);
+
+                var md = C4ResponsibilityGenerator.Build(components, vm.BuildArchitectureLinks(), "Responsibility");
+                Assert.Contains("C4Component", md);
+                Assert.Contains(pane.BorderColorHex, md);          // owner colour present in the C4
+
+                vm.ShowArchitectureCommand.Execute(null);          // opening the live view does not throw
+            }
+            finally
+            {
+                vm?.Dispose();
+            }
+        }).ContinueWith(t =>
+        {
+            try { Directory.Delete(root, recursive: true); } catch { }
+            t.GetAwaiter().GetResult();
+        });
+    }
 }

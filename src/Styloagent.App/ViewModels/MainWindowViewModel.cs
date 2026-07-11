@@ -840,6 +840,30 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             .Select(p => new FleetNode(p.Prefix, p.ParentPrefix, p.Responsibility, p.HookStateText ?? ""))
             .ToList();
 
+    /// <summary>Opens a live, ownership-coloured, clickable C4 architecture view of the fleet's
+    /// responsibility decomposition — each agent a component in its own identity colour.</summary>
+    [RelayCommand]
+    private void ShowArchitecture()
+    {
+        var doc = new DiagramDocumentViewModel(
+            "Architecture",
+            DiagramKind.Architecture,
+            () => C4ResponsibilityGenerator.Build(BuildArchitectureComponents(), BuildArchitectureLinks(), "Responsibility"));
+        _openDiagrams.Add(doc);
+        OpenMarkdownDocument(doc);
+    }
+
+    internal IReadOnlyList<ArchitectureComponent> BuildArchitectureComponents()
+        => Panes
+            .Select(p => new ArchitectureComponent(p.Prefix, p.DisplayName, p.Responsibility, p.BorderColorHex))
+            .ToList();
+
+    internal IReadOnlyList<ArchitectureLink> BuildArchitectureLinks()
+        => Panes
+            .Where(p => !string.IsNullOrWhiteSpace(p.ParentPrefix))
+            .Select(p => new ArchitectureLink(p.ParentPrefix!, p.Prefix, "spawned"))
+            .ToList();
+
     /// <summary>
     /// Builds the bus-thread list for the Bus Sequence diagram from <see cref="BusViewModel"/>.
     /// Each <c>BusThreadItem</c> has no slug property; the slug is derived from the first

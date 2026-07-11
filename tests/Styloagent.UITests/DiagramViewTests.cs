@@ -8,7 +8,7 @@ using Xunit;
 
 namespace Styloagent.UITests;
 
-[Collection("Avalonia")]
+[Collection("Avalonia-Markdown")]
 public class DiagramViewTests
 {
     private readonly HeadlessAvaloniaFixture _fx;

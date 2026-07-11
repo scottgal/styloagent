@@ -7,6 +7,12 @@ using Avalonia.Threading;
 using Styloagent.App.ViewModels;
 using Styloagent.App.Views;
 
+[assembly: Xunit.TestCollectionOrderer("Styloagent.UITests.AvaloniaCollectionOrderer", "Styloagent.UITests")]
+// Both collections share ONE headless session (single UI thread) — they must run serially, not in
+// parallel, or their Dispatch calls interleave and wedge. (The suite was already serial when it was
+// a single collection.)
+[assembly: Xunit.CollectionBehavior(DisableTestParallelization = true)]
+
 namespace Styloagent.UITests;
 
 /// <summary>
@@ -16,13 +22,14 @@ namespace Styloagent.UITests;
 /// </summary>
 public sealed class HeadlessAvaloniaFixture : IDisposable
 {
-    private readonly HeadlessUnitTestSession _session;
+    // ONE session per process (Avalonia can only be initialized once): shared across every
+    // [Collection] that uses this fixture, so a second collection can exist for isolating the
+    // LiveMarkdown-render tests (which poison later tests in the shared session) to run last.
+    private static readonly HeadlessUnitTestSession _session =
+        HeadlessUnitTestSession.StartNew(typeof(TestApp));
 
-    public HeadlessAvaloniaFixture()
-    {
-        _session = HeadlessUnitTestSession.StartNew(typeof(TestApp));
-    }
-
+    // Instance methods (the collection-fixture contract) that delegate to the shared static session.
+#pragma warning disable CA1822
     public Task<T> DispatchAsync<T>(Func<T> work) =>
         _session.Dispatch(work, CancellationToken.None);
 
@@ -34,8 +41,10 @@ public sealed class HeadlessAvaloniaFixture : IDisposable
 
     public Task DispatchAsync(Func<Task> work) =>
         _session.Dispatch<bool>(async () => { await work(); return true; }, CancellationToken.None);
+#pragma warning restore CA1822
 
-    public void Dispose() => _session.Dispose();
+    // Shared, process-lifetime session — do not dispose per collection.
+    public void Dispose() { }
 }
 
 /// <summary>
@@ -114,3 +123,20 @@ public sealed class TestApp : Application
 /// <summary>Marker so all Avalonia tests share one headless session.</summary>
 [CollectionDefinition("Avalonia")]
 public sealed class AvaloniaCollection : ICollectionFixture<HeadlessAvaloniaFixture> { }
+
+/// <summary>
+/// Second collection sharing the SAME headless session, for tests that render LiveMarkdown. Those
+/// leave the shared single-thread dispatcher in a state that wedges a later test (a missed-wakeup on
+/// a Background-priority op); <see cref="AvaloniaCollectionOrderer"/> runs this collection LAST so
+/// nothing runs after them and the suite completes. They pass fine themselves.
+/// </summary>
+[CollectionDefinition("Avalonia-Markdown")]
+public sealed class AvaloniaMarkdownCollection : ICollectionFixture<HeadlessAvaloniaFixture> { }
+
+/// <summary>Runs the "Avalonia-Markdown" collection after "Avalonia".</summary>
+public sealed class AvaloniaCollectionOrderer : Xunit.ITestCollectionOrderer
+{
+    public IEnumerable<Xunit.Abstractions.ITestCollection> OrderTestCollections(
+        IEnumerable<Xunit.Abstractions.ITestCollection> testCollections)
+        => testCollections.OrderBy(c => c.DisplayName.Contains("Markdown", StringComparison.Ordinal) ? 1 : 0);
+}

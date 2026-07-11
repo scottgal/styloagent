@@ -133,42 +133,7 @@ public class ReadmeScreenshotTests
         });
     }
 
-    [Fact]
-    public Task Capture_markdown_doc()
-    {
-        return _fx.DispatchAsync(async () =>
-        {
-            var dir = Path.Combine(Path.GetTempPath(), "shot-md-" + Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(dir);
-            var mdPath = Path.Combine(dir, "PROTOCOL.md");
-            try
-            {
-                File.WriteAllText(mdPath,
-                    "# Signal Bus Protocol\n\n" +
-                    "Agents coordinate over a **file-drop** channel. Each message is a markdown file.\n\n" +
-                    "## Routing\n\n" +
-                    "- `inbox/` — messages awaiting a reply\n" +
-                    "- `outbox/` — replies\n" +
-                    "- `archive/` — resolved threads\n\n" +
-                    "A thread is *replied* once an `outbox/<slug>.reply.md` exists.\n");
-
-                var docVm = new MarkdownDocumentViewModel("PROTOCOL.md", mdPath);
-                var view = new MarkdownDocumentView { DataContext = docVm };
-                var window = new Window { Width = 560, Height = 400, Content = view };
-                window.Show();
-
-                int TextEls() => window.GetVisualDescendants().OfType<TextBlock>().Count();
-                for (int i = 0; i < 40 && TextEls() < 1; i++)
-                {
-                    await HeadlessRender.SettleAsync(window);
-                    await Task.Delay(25);
-                }
-                await ScreenshotCapture.CaptureControlAsync(window, view, Shot("markdown-doc.png"));
-                window.Close();
-            }
-            finally { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); }
-        });
-    }
+    // Capture_markdown_doc moved to MarkdownScreenshotTests (Avalonia-Markdown collection, runs last).
 
     [Fact]
     public async Task Capture_cockpit()

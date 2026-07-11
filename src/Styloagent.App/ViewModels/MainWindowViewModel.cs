@@ -55,6 +55,21 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isSidePanelCollapsed;
 
+    /// <summary>Terminal themes offered in the settings picker.</summary>
+#pragma warning disable CA1822 // instance property for XAML binding
+    public IReadOnlyList<Styloagent.Terminal.TerminalTheme> TerminalThemes => Styloagent.Terminal.TerminalTheme.All;
+#pragma warning restore CA1822
+
+    /// <summary>Global terminal theme — setting it re-themes every open terminal.</summary>
+    [ObservableProperty]
+    private Styloagent.Terminal.TerminalTheme _globalTerminalTheme = Styloagent.Terminal.TerminalTheme.Default;
+
+    partial void OnGlobalTerminalThemeChanged(Styloagent.Terminal.TerminalTheme value)
+    {
+        foreach (var pane in Panes)
+            pane.SelectedTerminalTheme = value;
+    }
+
     [ObservableProperty]
     private IRootDock? _layout;
 

@@ -5,6 +5,7 @@
         xmlns:dock="clr-namespace:Dock.Avalonia.Controls;assembly=Dock.Avalonia"
         xmlns:ic="using:FluentIcons.Avalonia.Fluent"
         xmlns:conv="clr-namespace:Styloagent.App.Converters"
+        xmlns:terminal="clr-namespace:Styloagent.Terminal;assembly=Styloagent.Terminal"
         x:Class="Styloagent.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="Styloagent Cockpit"
@@ -39,6 +40,28 @@
                         ToolTip.Tip="Collapse side panel">
             <ic:SymbolIcon Symbol="PanelRight" FontSize="15" />
           </ToggleButton>
+          <Button Padding="6,3" ToolTip.Tip="Settings">
+            <ic:SymbolIcon Symbol="Settings" FontSize="15" />
+            <Button.Flyout>
+              <Flyout>
+                <StackPanel Width="210" Margin="4" Spacing="8">
+                  <TextBlock Text="Terminal theme (all agents)" FontWeight="SemiBold" FontSize="12"
+                             Foreground="#9D7FE0" />
+                  <ComboBox ItemsSource="{Binding TerminalThemes}"
+                            SelectedItem="{Binding GlobalTerminalTheme}"
+                            HorizontalAlignment="Stretch">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="terminal:TerminalTheme">
+                        <TextBlock Text="{Binding Name}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <TextBlock Text="Each agent's terminal can also be themed from its own toolbar."
+                             FontSize="10" Foreground="#7A7AA0" TextWrapping="Wrap" />
+                </StackPanel>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
         </StackPanel>
       </Grid>
     </Border>

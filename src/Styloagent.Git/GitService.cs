@@ -9,7 +9,7 @@ namespace Styloagent.Git;
 /// Never throws: failures surface as a failed <see cref="GitResult"/> carrying git's stderr.
 /// Mirrors GitCliReader's process pattern.
 /// </summary>
-public sealed class GitService : IGitService, IGitLog
+public sealed class GitService : IGitService, IGitLog, IGitDiff
 {
     public async Task<GitResult<GitStatus>> GetStatusAsync(string worktreePath, CancellationToken ct = default)
     {
@@ -48,6 +48,17 @@ public sealed class GitService : IGitService, IGitLog
         return r.Ok
             ? GitResult<IReadOnlyList<Commit>>.Success(CommitLogParser.Parse(r.Stdout))
             : GitResult<IReadOnlyList<Commit>>.Fail(r.Stderr);
+    }
+
+    public async Task<GitResult<FileDiff>> GetDiffAsync(string worktreePath, string relativePath, bool staged, CancellationToken ct = default)
+    {
+        var args = staged
+            ? new[] { "diff", "--staged", "--no-color", "--", relativePath }
+            : new[] { "diff", "--no-color", "--", relativePath };
+        var r = await RunAsync(worktreePath, ct, args).ConfigureAwait(false);
+        return r.Ok
+            ? GitResult<FileDiff>.Success(UnifiedDiffParser.Parse(relativePath, r.Stdout))
+            : GitResult<FileDiff>.Fail(r.Stderr);
     }
 
     private static GitResult ToResult(ProcOutcome p) => p.Ok ? GitResult.Success() : GitResult.Fail(p.Stderr);

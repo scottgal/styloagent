@@ -66,6 +66,26 @@ public class GitServiceIntegrationTests
         finally { TryDeleteRepo(repo); }
     }
 
+    [Fact]
+    public async Task GetDiff_reports_an_unstaged_change()
+    {
+        if (!GitAvailable()) return;
+        var repo = Path.Combine(Path.GetTempPath(), "gitdiff-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(repo);
+        try
+        {
+            Run(repo, "init -b main"); Run(repo, "config user.email t@t.t"); Run(repo, "config user.name t");
+            File.WriteAllText(Path.Combine(repo, "a.txt"), "one\n"); Run(repo, "add -A"); Run(repo, "commit -m init");
+            File.WriteAllText(Path.Combine(repo, "a.txt"), "two\n");
+
+            var git = new Styloagent.Git.GitService();
+            var result = await git.GetDiffAsync(repo, "a.txt", staged: false);
+            Assert.True(result.Ok, result.Error);
+            Assert.Contains(result.Value!.Lines, l => l.Content == "two");
+        }
+        finally { TryDeleteRepo(repo); }
+    }
+
     private static void TryDeleteRepo(string repo)
     {
         try { if (Directory.Exists(repo)) Directory.Delete(repo, recursive: true); } catch { }

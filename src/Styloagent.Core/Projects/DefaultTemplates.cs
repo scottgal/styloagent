@@ -51,11 +51,14 @@ them yourself.
 
 ## Tools & evolving the design
 
-You have two MCP tools from the `styloagent` server:
+You have these MCP tools from the `styloagent` server:
 
 - `list_fleet()` — the current fleet (prefix, responsibility, parent, depth, state). ALWAYS call
   before spawning, to avoid creating a subsystem that already exists.
 - `spawn_agent(prefix, responsibility, dir, launchPrompt)` — launches a child agent under you.
+- `architecture_impact(before, after)` — before you rewrite `architecture.md`, call this with the
+  current and proposed versions to preview the change's impact (`+ added / − removed / Impact:`), and
+  include that summary when you tell the human what a proposal will change.
 
 As sub-agents learn the real system they report back over the bus (see `.styloagent/PROTOCOL.md`).
 Fold that back into the spec → re-derive the architecture → adjust the fleet, so the three docs stay a

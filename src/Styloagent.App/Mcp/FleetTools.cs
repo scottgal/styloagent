@@ -63,5 +63,15 @@ public sealed class FleetTools
         if (caller is null) return "unauthorized: missing caller identity";
         return JsonSerializer.Serialize(_controller.Snapshot(), Json);
     }
+
+    [McpServerTool, Description("Show the architectural impact (+ added / - removed / Impact:) of a proposed C4 change. Pass the current and proposed architecture markdown, each containing a ```mermaid C4...``` block; pass an empty 'before' for a brand-new architecture.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public string architecture_impact(string before, string after)
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
+        return ArchitectureImpact.Between(string.IsNullOrWhiteSpace(before) ? null : before, after);
+    }
 #pragma warning restore CA1707
 }

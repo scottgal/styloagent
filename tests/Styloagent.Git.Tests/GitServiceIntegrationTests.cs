@@ -67,6 +67,29 @@ public class GitServiceIntegrationTests
     }
 
     [Fact]
+    public async Task Push_to_a_local_bare_remote()
+    {
+        if (!GitAvailable()) return;
+        var root = Path.Combine(Path.GetTempPath(), "gitpush-" + Guid.NewGuid().ToString("N"));
+        var bare = Path.Combine(root, "remote.git");
+        var work = Path.Combine(root, "work");
+        Directory.CreateDirectory(bare); Directory.CreateDirectory(work);
+        try
+        {
+            Run(bare, "init --bare -b main");
+            Run(work, "init -b main"); Run(work, "config user.email t@t.t"); Run(work, "config user.name t");
+            File.WriteAllText(Path.Combine(work, "a.txt"), "one\n"); Run(work, "add -A"); Run(work, "commit -m init");
+            Run(work, $"remote add origin \"{bare}\"");
+            Run(work, "push -u origin main");
+            File.WriteAllText(Path.Combine(work, "a.txt"), "two\n"); Run(work, "commit -am second");
+
+            var git = new Styloagent.Git.GitService();
+            Assert.True((await git.PushAsync(work)).Ok, "push should succeed to the configured upstream");
+        }
+        finally { TryDeleteRepo(root); }
+    }
+
+    [Fact]
     public async Task GetDiff_reports_an_unstaged_change()
     {
         if (!GitAvailable()) return;

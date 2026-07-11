@@ -66,6 +66,17 @@
               <TextBlock Text="Rename" />
             </StackPanel>
           </Button>
+          <ComboBox Name="ThemePicker"
+                    ItemsSource="{Binding TerminalThemes}"
+                    SelectedItem="{Binding SelectedTerminalTheme}"
+                    VerticalAlignment="Center" MinWidth="92" FontSize="11"
+                    ToolTip.Tip="Terminal theme">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="terminal:TerminalTheme">
+                <TextBlock Text="{Binding Name}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
         </StackPanel>
 
         <!-- Terminal area -->

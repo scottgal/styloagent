@@ -39,6 +39,19 @@ public sealed partial class TerminalControl : UserControl
     /// <summary>Standard 256-colour ANSI palette (indices 0-255), built once.</summary>
     private static readonly uint[] Palette256 = BuildPalette();
 
+    // Per-instance default fg/bg (seeded from the consts) so each terminal can wear its own theme.
+    private uint _defaultFg = DefaultFgArgb;
+    private uint _defaultBg = DefaultBgArgb;
+
+    /// <summary>Applies a per-terminal colour theme (default fg/bg + the control background).</summary>
+    public void ApplyTheme(TerminalTheme theme)
+    {
+        _defaultFg = theme.Foreground;
+        _defaultBg = theme.Background;
+        Background = BrushFor(_defaultBg);
+        Dispatcher.UIThread.Post(RebuildRows, DispatcherPriority.Render);
+    }
+
     /// <summary>Cache of colour → brush so we don't allocate a brush per cell per repaint.</summary>
     private readonly Dictionary<uint, IBrush> _brushCache = new();
 
@@ -335,11 +348,11 @@ public sealed partial class TerminalControl : UserControl
                 BufferCell c = line![col];
                 (_, uint bg, _) = ResolveCell(c.Attributes);
                 bool blank = string.IsNullOrEmpty(c.Content) || c.Content == " ";
-                if (!blank || bg != DefaultBgArgb) { lastVisible = col; break; }
+                if (!blank || bg != _defaultBg) { lastVisible = col; break; }
             }
 
             runText.Clear();
-            uint runFg = DefaultFgArgb, runBg = DefaultBgArgb;
+            uint runFg = _defaultFg, runBg = _defaultBg;
             bool runBold = false, runOpen = false;
 
             for (int col = 0; col <= lastVisible; col++)
@@ -377,7 +390,7 @@ public sealed partial class TerminalControl : UserControl
         var run = new Run(text.ToString()) { Foreground = BrushFor(fg) };
         // Only paint a background when it differs from the terminal default (keeps the control's
         // own dark background showing through for ordinary cells).
-        if (bg != DefaultBgArgb) run.Background = BrushFor(bg);
+        if (bg != _defaultBg) run.Background = BrushFor(bg);
         if (bold) run.FontWeight = FontWeight.Bold;
         inlines.Add(run);
         text.Clear();
@@ -393,7 +406,7 @@ public sealed partial class TerminalControl : UserControl
     /// Resolves an XTerm cell to (foreground, background, bold), applying inverse video by swapping
     /// foreground and background.
     /// </summary>
-    private static (uint fg, uint bg, bool bold) ResolveCell(AttributeData attr)
+    private (uint fg, uint bg, bool bold) ResolveCell(AttributeData attr)
     {
         uint fg = ResolveColor(attr.GetFgColorMode(), attr.GetFgColor(), isForeground: true);
         uint bg = ResolveColor(attr.GetBgColorMode(), attr.GetBgColor(), isForeground: false);
@@ -405,11 +418,11 @@ public sealed partial class TerminalControl : UserControl
     /// Resolves an XTerm colour to packed 0xAARRGGBB. Mode 1 = 24-bit truecolor (packed RGB);
     /// mode 0 with index 0-255 = palette; 256 = default fg, 257 = default bg → the matching default.
     /// </summary>
-    private static uint ResolveColor(int mode, int c, bool isForeground)
+    private uint ResolveColor(int mode, int c, bool isForeground)
     {
         if (mode == 1) return 0xFF000000u | (uint)(c & 0xFFFFFF);
         if (c >= 0 && c <= 255) return Palette256[c];
-        return isForeground ? DefaultFgArgb : DefaultBgArgb;
+        return isForeground ? _defaultFg : _defaultBg;
     }
 
     /// <summary>

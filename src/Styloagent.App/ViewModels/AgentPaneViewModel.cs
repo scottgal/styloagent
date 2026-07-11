@@ -4,6 +4,7 @@ using Dock.Model.Mvvm.Controls;
 using Styloagent.Core.Hooks;
 using Styloagent.Core.Model;
 using Styloagent.Core.Sessions;
+using Styloagent.Terminal;
 
 namespace Styloagent.App.ViewModels;
 
@@ -27,6 +28,15 @@ public sealed partial class AgentPaneViewModel : Document
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectionBrushHex))]
     private string _borderColorHex;
+
+    /// <summary>Available per-terminal colour themes (for the pane's theme picker).</summary>
+#pragma warning disable CA1822 // instance property so XAML can bind {Binding TerminalThemes}
+    public IReadOnlyList<TerminalTheme> TerminalThemes => TerminalTheme.All;
+#pragma warning restore CA1822
+
+    /// <summary>The colour theme applied to this agent's terminal.</summary>
+    [ObservableProperty]
+    private TerminalTheme _selectedTerminalTheme = TerminalTheme.Default;
 
     [ObservableProperty]
     private SessionState _state;

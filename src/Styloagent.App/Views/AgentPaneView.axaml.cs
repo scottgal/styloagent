@@ -43,6 +43,10 @@ public partial class AgentPaneView : UserControl
         if (Color.TryParse(_vm.BorderColorHex, out var color))
             PaneBorder.BorderBrush = new SolidColorBrush(color);
 
+        // Apply + track this pane's terminal colour theme.
+        _vm.PropertyChanged += OnVmPropertyChanged;
+        Terminal.ApplyTheme(_vm.SelectedTerminalTheme);
+
         // If a session is already live (e.g. VM was created before this view),
         // attach immediately.
         if (_vm.CurrentPty is { } existing)
@@ -67,8 +71,17 @@ public partial class AgentPaneView : UserControl
     private void UnsubscribeVm()
     {
         if (_vm is not null)
+        {
             _vm.PtyStarted -= OnPtyStarted;
+            _vm.PropertyChanged -= OnVmPropertyChanged;
+        }
         Terminal.UserInteracted -= OnTerminalUserInteracted;
+    }
+
+    private void OnVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(AgentPaneViewModel.SelectedTerminalTheme) && _vm is not null)
+            Terminal.ApplyTheme(_vm.SelectedTerminalTheme);
     }
 
     private void OnTerminalUserInteracted(object? sender, EventArgs e)

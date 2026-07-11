@@ -78,6 +78,21 @@ public class ChangesWriteViewTests(HeadlessAvaloniaFixture fx) : IDisposable
             => Task.FromResult(GitResult.Success());
     }
 
+    private sealed class FakeStash : IGitStash
+    {
+        public Task<GitResult> StashAsync(string w, string? message, CancellationToken ct = default)
+            => Task.FromResult(GitResult.Success());
+
+        public Task<GitResult> StashPopAsync(string w, CancellationToken ct = default)
+            => Task.FromResult(GitResult.Success());
+
+        public Task<GitResult<IReadOnlyList<string>>> ListStashesAsync(string w, CancellationToken ct = default)
+        {
+            IReadOnlyList<string> list = Array.Empty<string>();
+            return Task.FromResult(GitResult<IReadOnlyList<string>>.Success(list));
+        }
+    }
+
     public void Dispose() { }
 
     // ── render test ──────────────────────────────────────────────────────────
@@ -87,7 +102,7 @@ public class ChangesWriteViewTests(HeadlessAvaloniaFixture fx) : IDisposable
     {
         return fx.DispatchAsync(async () =>
         {
-            var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch());
+            var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash());
             await vm.LoadAsync("/wt");
 
             var view   = new ChangesView { DataContext = vm };
@@ -117,6 +132,8 @@ public class ChangesWriteViewTests(HeadlessAvaloniaFixture fx) : IDisposable
             Assert.Contains(buttons, b => b == "Commit");
             Assert.Contains(buttons, b => b == "Push");
             Assert.Contains(buttons, b => b == "Pull");
+            Assert.Contains(buttons, b => b == "Stash");
+            Assert.Contains(buttons, b => b == "Pop");
 
             await ScreenshotCapture.CaptureControlAsync(window, view, "/tmp/styloagent-changes.png");
             window.Close();

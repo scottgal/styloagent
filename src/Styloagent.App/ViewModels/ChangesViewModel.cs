@@ -17,6 +17,7 @@ public sealed partial class ChangesViewModel : ObservableObject
     private readonly IGitDiff _diff;
     private readonly IGitWrite _write;
     private readonly IGitBranch _branch;
+    private readonly IGitStash _stash;
     private string _worktreePath = string.Empty;
 
     [ObservableProperty]
@@ -47,18 +48,20 @@ public sealed partial class ChangesViewModel : ObservableObject
     public ObservableCollection<GitChange> StagedFiles  { get; } = new();
     public ObservableCollection<GitChange> UnstagedFiles { get; } = new();
     public ObservableCollection<GitBranch> Branches     { get; } = new();
+    public ObservableCollection<string>    Stashes      { get; } = new();
 
     public DiffViewModel Diff { get; } = new();
 
     /// <summary>True when there is at least one staged file and a non-empty commit message.</summary>
     public bool CanCommit => StagedFiles.Count > 0 && !string.IsNullOrWhiteSpace(CommitMessage);
 
-    public ChangesViewModel(IGitService git, IGitDiff diff, IGitWrite write, IGitBranch branch)
+    public ChangesViewModel(IGitService git, IGitDiff diff, IGitWrite write, IGitBranch branch, IGitStash stash)
     {
         _git    = git;
         _diff   = diff;
         _write  = write;
         _branch = branch;
+        _stash  = stash;
     }
 
     private void Report(GitResult r) => WriteError = r.Ok ? null : r.Error;
@@ -82,6 +85,7 @@ public sealed partial class ChangesViewModel : ObservableObject
         Files.Clear();
         StagedFiles.Clear();
         UnstagedFiles.Clear();
+        Stashes.Clear();
         Diff.File = null;
     }
 
@@ -102,6 +106,7 @@ public sealed partial class ChangesViewModel : ObservableObject
         {
             OnPropertyChanged(nameof(CanCommit));
             await LoadBranchesAsync();
+            await LoadStashesAsync();
             return;
         }
 
@@ -114,6 +119,18 @@ public sealed partial class ChangesViewModel : ObservableObject
 
         OnPropertyChanged(nameof(CanCommit));
         await LoadBranchesAsync();
+        await LoadStashesAsync();
+    }
+
+    /// <summary>Fetches the stash list and repopulates <see cref="Stashes"/>.</summary>
+    private async Task LoadStashesAsync()
+    {
+        var r = await _stash.ListStashesAsync(_worktreePath);
+        if (!r.Ok || r.Value is null) return;
+
+        Stashes.Clear();
+        foreach (var entry in r.Value)
+            Stashes.Add(entry);
     }
 
     /// <summary>Fetches the branch list and updates <see cref="Branches"/>, <see cref="CurrentBranch"/>, and <see cref="SelectedBranch"/>.</summary>
@@ -215,6 +232,26 @@ public sealed partial class ChangesViewModel : ObservableObject
     public async Task PullAsync()
     {
         Report(await _write.PullAsync(_worktreePath));
+        await LoadAsync(_worktreePath);
+    }
+
+    /// <summary>
+    /// Stashes the current working-tree changes, using <see cref="CommitMessage"/> as the optional
+    /// stash label when non-empty, then reloads.
+    /// </summary>
+    [RelayCommand]
+    public async Task StashAsync()
+    {
+        var label = string.IsNullOrWhiteSpace(CommitMessage) ? null : CommitMessage;
+        Report(await _stash.StashAsync(_worktreePath, label));
+        await LoadAsync(_worktreePath);
+    }
+
+    /// <summary>Pops the most recent stash entry then reloads.</summary>
+    [RelayCommand]
+    public async Task StashPopAsync()
+    {
+        Report(await _stash.StashPopAsync(_worktreePath));
         await LoadAsync(_worktreePath);
     }
 }

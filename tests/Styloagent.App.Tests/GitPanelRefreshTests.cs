@@ -68,6 +68,21 @@ public class GitPanelRefreshTests
             => Task.FromResult(GitResult.Success());
     }
 
+    private sealed class FakeStash : IGitStash
+    {
+        public Task<GitResult> StashAsync(string w, string? message, CancellationToken ct = default)
+            => Task.FromResult(GitResult.Success());
+
+        public Task<GitResult> StashPopAsync(string w, CancellationToken ct = default)
+            => Task.FromResult(GitResult.Success());
+
+        public Task<GitResult<IReadOnlyList<string>>> ListStashesAsync(string w, CancellationToken ct = default)
+        {
+            IReadOnlyList<string> list = Array.Empty<string>();
+            return Task.FromResult(GitResult<IReadOnlyList<string>>.Success(list));
+        }
+    }
+
     [Fact]
     public async Task GitGraph_Clear_blanks_the_graph()
     {
@@ -82,7 +97,7 @@ public class GitPanelRefreshTests
     [Fact]
     public async Task Changes_Clear_empties_files_and_diff()
     {
-        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch());
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash());
         await vm.LoadAsync("/wt");
         Assert.Equal(2, vm.Files.Count);
         await vm.SelectFileAsync(vm.Files[0]);
@@ -107,7 +122,7 @@ public class GitPanelRefreshTests
         await graph.LoadAsync("/some-worktree");
         Assert.NotNull(graph.Graph); // precondition: data loaded
 
-        var changes = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch());
+        var changes = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash());
         await changes.LoadAsync("/some-worktree");
         Assert.NotEmpty(changes.Files); // precondition: data loaded
 

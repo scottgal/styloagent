@@ -130,8 +130,8 @@
         </ListBox.ItemTemplate>
       </ListBox>
 
-      <!-- ── Commit bar + push/pull actions ───────────────────────────────── -->
-      <Grid Grid.Row="5" RowDefinitions="Auto,Auto,Auto,*">
+      <!-- ── Commit bar + push/pull/stash actions ─────────────────────────── -->
+      <Grid Grid.Row="5" RowDefinitions="Auto,Auto,Auto,Auto,*">
 
         <!-- Error banner -->
         <Border Grid.Row="0"
@@ -172,7 +172,7 @@
         <StackPanel Grid.Row="2"
                     Orientation="Horizontal"
                     Spacing="6"
-                    Margin="6,4,6,6">
+                    Margin="6,4,6,0">
           <Button Content="Push"
                   FontSize="11" Padding="8,4"
                   Command="{Binding PushCommand}" />
@@ -181,8 +181,35 @@
                   Command="{Binding PullCommand}" />
         </StackPanel>
 
+        <!-- Stash row -->
+        <Grid Grid.Row="3" ColumnDefinitions="Auto,Auto,*" Margin="6,4,6,6">
+          <Button Grid.Column="0"
+                  Content="Stash"
+                  FontSize="11" Padding="8,4"
+                  Margin="0,0,4,0"
+                  ToolTip.Tip="Stash working-tree changes"
+                  Command="{Binding StashCommand}" />
+          <Button Grid.Column="1"
+                  Content="Pop"
+                  FontSize="11" Padding="8,4"
+                  Margin="0,0,6,0"
+                  ToolTip.Tip="Pop the most recent stash"
+                  Command="{Binding StashPopCommand}" />
+          <TextBlock Grid.Column="2"
+                     FontSize="10"
+                     Foreground="{DynamicResource MutedTextBrush}"
+                     VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis">
+            <TextBlock.Text>
+              <MultiBinding StringFormat="{}{0} stashed">
+                <Binding Path="Stashes.Count" />
+              </MultiBinding>
+            </TextBlock.Text>
+          </TextBlock>
+        </Grid>
+
         <!-- Diff panel -->
-        <views:DiffView Grid.Row="3" DataContext="{Binding Diff}" />
+        <views:DiffView Grid.Row="4" DataContext="{Binding Diff}" />
 
       </Grid>
 

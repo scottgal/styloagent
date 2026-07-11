@@ -4,6 +4,34 @@ using Styloagent.Git;
 
 public class ChangesViewModelTests
 {
+    private sealed class FakeStash : IGitStash
+    {
+        public bool StashCalled;
+        public bool StashPopCalled;
+        public string? LastStashMessage;
+        public bool NextFails;
+
+        public Task<GitResult> StashAsync(string w, string? message, CancellationToken ct = default)
+        {
+            StashCalled = true;
+            LastStashMessage = message;
+            return Task.FromResult(NextFails ? GitResult.Fail("stash-error") : GitResult.Success());
+        }
+
+        public Task<GitResult> StashPopAsync(string w, CancellationToken ct = default)
+        {
+            StashPopCalled = true;
+            return Task.FromResult(NextFails ? GitResult.Fail("pop-error") : GitResult.Success());
+        }
+
+        public Task<GitResult<IReadOnlyList<string>>> ListStashesAsync(string w, CancellationToken ct = default)
+        {
+            IReadOnlyList<string> list = new[] { "stash@{0}: On main: wip" };
+            return Task.FromResult(GitResult<IReadOnlyList<string>>.Success(list));
+        }
+    }
+
+
     private sealed class FakeBranch : IGitBranch
     {
         public string? LastSwitched;
@@ -92,12 +120,12 @@ public class ChangesViewModelTests
             => Task.FromResult(NextFails ? GitResult.Fail("boom") : GitResult.Success());
     }
 
-    // ── existing tests (updated to 4-arg ctor) ───────────────────────────────
+    // ── existing tests (updated to 5-arg ctor) ───────────────────────────────
 
     [Fact]
     public async Task Load_lists_files_and_selecting_one_loads_its_diff()
     {
-        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch());
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash());
         await vm.LoadAsync("/wt");
         Assert.Equal(2, vm.Files.Count);
 
@@ -111,7 +139,7 @@ public class ChangesViewModelTests
     [Fact]
     public async Task LoadAsync_splits_files_into_staged_and_unstaged_sections()
     {
-        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch());
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash());
         await vm.LoadAsync("/wt");
 
         Assert.Equal(1, vm.StagedFiles.Count);
@@ -126,7 +154,7 @@ public class ChangesViewModelTests
     [Fact]
     public async Task CanCommit_false_when_message_empty()
     {
-        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch());
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash());
         await vm.LoadAsync("/wt");
         vm.CommitMessage = "";
         Assert.False(vm.CanCommit);
@@ -135,7 +163,7 @@ public class ChangesViewModelTests
     [Fact]
     public async Task CanCommit_true_when_staged_files_and_message_present()
     {
-        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch());
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash());
         await vm.LoadAsync("/wt");
         vm.CommitMessage = "my commit";
         Assert.True(vm.CanCommit);
@@ -147,7 +175,7 @@ public class ChangesViewModelTests
     public async Task StageAsync_calls_write_with_correct_path_and_reloads()
     {
         var write = new FakeWrite();
-        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), write, new FakeBranch());
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), write, new FakeBranch(), new FakeStash());
         await vm.LoadAsync("/wt");
 
         var unstaged = vm.UnstagedFiles[0];
@@ -165,7 +193,7 @@ public class ChangesViewModelTests
     public async Task CommitAsync_calls_write_with_message_and_clears_it_on_success()
     {
         var write = new FakeWrite();
-        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), write, new FakeBranch());
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), write, new FakeBranch(), new FakeStash());
         await vm.LoadAsync("/wt");
         vm.CommitMessage = "feat: new thing";
 
@@ -179,7 +207,7 @@ public class ChangesViewModelTests
     public async Task CommitAsync_does_nothing_when_CanCommit_false()
     {
         var write = new FakeWrite();
-        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), write, new FakeBranch());
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), write, new FakeBranch(), new FakeStash());
         await vm.LoadAsync("/wt");
         vm.CommitMessage = ""; // CanCommit == false
 
@@ -193,7 +221,7 @@ public class ChangesViewModelTests
     [Fact]
     public async Task Clear_empties_all_collections_and_resets_commit_message()
     {
-        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch());
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash());
         await vm.LoadAsync("/wt");
         vm.CommitMessage = "wip";
 
@@ -211,7 +239,7 @@ public class ChangesViewModelTests
     public async Task Failed_write_op_surfaces_the_error_then_clears_on_success()
     {
         var write = new FakeWrite { NextFails = true };
-        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), write, new FakeBranch());
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), write, new FakeBranch(), new FakeStash());
         await vm.LoadAsync("/wt");
 
         await vm.PushAsync();
@@ -229,7 +257,7 @@ public class ChangesViewModelTests
     [Fact]
     public async Task LoadAsync_populates_branches_and_sets_current_branch()
     {
-        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch());
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash());
         await vm.LoadAsync("/wt");
 
         Assert.Equal(2, vm.Branches.Count);
@@ -242,7 +270,7 @@ public class ChangesViewModelTests
     public async Task SwitchAsync_calls_SwitchBranchAsync_with_branch_name()
     {
         var branch = new FakeBranch();
-        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), branch);
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), branch, new FakeStash());
         await vm.LoadAsync("/wt");
 
         var target = vm.Branches.First(b => !b.IsCurrent);
@@ -257,7 +285,7 @@ public class ChangesViewModelTests
     public async Task CreateBranch_calls_CreateBranchAsync_and_clears_name_on_success()
     {
         var branch = new FakeBranch();
-        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), branch);
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), branch, new FakeStash());
         await vm.LoadAsync("/wt");
 
         vm.NewBranchName = "my-new-branch";
@@ -273,7 +301,7 @@ public class ChangesViewModelTests
     public async Task Selecting_a_non_current_branch_switches_but_load_does_not()
     {
         var branch = new FakeBranch();
-        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), branch);
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), branch, new FakeStash());
         await vm.LoadAsync("/wt");
 
         // After load the current branch is selected — no switch should have fired
@@ -294,7 +322,7 @@ public class ChangesViewModelTests
     public async Task CreateBranch_does_nothing_when_name_is_whitespace()
     {
         var branch = new FakeBranch();
-        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), branch);
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), branch, new FakeStash());
         await vm.LoadAsync("/wt");
 
         vm.NewBranchName = "   ";
@@ -307,7 +335,7 @@ public class ChangesViewModelTests
     public async Task CreateBranch_failure_surfaces_via_WriteError_and_does_not_clear_name()
     {
         var branch = new FakeBranch { NextFails = true };
-        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), branch);
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), branch, new FakeStash());
         await vm.LoadAsync("/wt");
 
         vm.NewBranchName = "bad-branch";
@@ -323,7 +351,7 @@ public class ChangesViewModelTests
     [Fact]
     public async Task Clear_also_clears_branches_and_current_branch()
     {
-        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch());
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash());
         await vm.LoadAsync("/wt");
 
         vm.NewBranchName = "wip-branch";
@@ -332,5 +360,103 @@ public class ChangesViewModelTests
         Assert.Empty(vm.Branches);
         Assert.Null(vm.CurrentBranch);
         Assert.Equal("", vm.NewBranchName);
+    }
+
+    // ── Stash: LoadAsync fills Stashes ────────────────────────────────────────
+
+    [Fact]
+    public async Task LoadAsync_fills_Stashes_from_list()
+    {
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash());
+        await vm.LoadAsync("/wt");
+
+        Assert.Equal(1, vm.Stashes.Count);
+        Assert.Equal("stash@{0}: On main: wip", vm.Stashes[0]);
+    }
+
+    // ── Stash: Stash() calls StashAsync ──────────────────────────────────────
+
+    [Fact]
+    public async Task StashCommand_calls_stash_StashAsync()
+    {
+        var stash = new FakeStash();
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), stash);
+        await vm.LoadAsync("/wt");
+        vm.CommitMessage = "my stash label";
+
+        await vm.StashAsync();
+
+        Assert.True(stash.StashCalled);
+        Assert.Equal("my stash label", stash.LastStashMessage);
+    }
+
+    [Fact]
+    public async Task StashCommand_passes_null_when_commit_message_is_empty()
+    {
+        var stash = new FakeStash();
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), stash);
+        await vm.LoadAsync("/wt");
+        vm.CommitMessage = "";
+
+        await vm.StashAsync();
+
+        Assert.True(stash.StashCalled);
+        Assert.Null(stash.LastStashMessage);
+    }
+
+    // ── Stash: StashPop() calls StashPopAsync ─────────────────────────────────
+
+    [Fact]
+    public async Task StashPopCommand_calls_stash_StashPopAsync()
+    {
+        var stash = new FakeStash();
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), stash);
+        await vm.LoadAsync("/wt");
+
+        await vm.StashPopAsync();
+
+        Assert.True(stash.StashPopCalled);
+    }
+
+    // ── Stash: failure surfaces via WriteError ────────────────────────────────
+
+    [Fact]
+    public async Task Failed_stash_surfaces_via_WriteError()
+    {
+        var stash = new FakeStash { NextFails = true };
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), stash);
+        await vm.LoadAsync("/wt");
+
+        await vm.StashAsync();
+
+        Assert.True(vm.HasWriteError);
+        Assert.Equal("stash-error", vm.WriteError);
+    }
+
+    [Fact]
+    public async Task Failed_stash_pop_surfaces_via_WriteError()
+    {
+        var stash = new FakeStash { NextFails = true };
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), stash);
+        await vm.LoadAsync("/wt");
+
+        await vm.StashPopAsync();
+
+        Assert.True(vm.HasWriteError);
+        Assert.Equal("pop-error", vm.WriteError);
+    }
+
+    // ── Stash: Clear also clears Stashes ─────────────────────────────────────
+
+    [Fact]
+    public async Task Clear_also_clears_Stashes()
+    {
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash());
+        await vm.LoadAsync("/wt");
+        Assert.Equal(1, vm.Stashes.Count);
+
+        vm.Clear();
+
+        Assert.Empty(vm.Stashes);
     }
 }

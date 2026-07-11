@@ -7,6 +7,7 @@ using Dock.Model.Mvvm.Controls;
 using Styloagent.App.Config;
 using Styloagent.App.Dock;
 using Styloagent.App.Mcp;
+using Styloagent.App.Router;
 using Styloagent.App.Services;
 using Styloagent.Core.Abstractions;
 using Styloagent.Core.Attention;
@@ -105,6 +106,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private WorktreeGitWatcher? _gitWatcher;
 
     private ProjectConfig? _project;
+    private RouterHost? _routerHost;
 
     private IFactory? _factory;
     private StyloagentDockFactory? _dockFactory;
@@ -511,6 +513,29 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         ProposedTeam?.Dispose();
         ProposedTeam = new ProposedTeamViewModel(project.ProposedAgentsPath, SpawnProposed);
         Issues = new IssuesViewModel(project.IssuesDir);
+
+        // Start (or restart) the RouterHost whenever a project is attached so the coordinator
+        // drives the ledger at project.RouterRoot.  Dispose the previous host first (idempotent).
+        _routerHost?.Dispose();
+        _routerHost = new RouterHost(
+            project.RouterRoot,
+            d => Dispatcher.UIThread.Post(() => OnRouterDecision(d)));
+    }
+
+    /// <summary>
+    /// Called on the UI thread for each <see cref="Styloagent.Core.Router.RouterDecision"/> applied
+    /// by <see cref="RouterHost"/>.  Task 6 will add <c>Router?.Refresh()</c> here once the
+    /// Router panel VM exists.  Stub is intentionally minimal and never throws.
+    /// </summary>
+    private void OnRouterDecision(Styloagent.Core.Router.RouterDecision d)
+    {
+        try
+        {
+            // TODO(Task 6): Router?.Refresh() — refresh the Router panel VM when it exists.
+            var root = _project?.RouterRoot ?? string.Empty;
+            System.Diagnostics.Trace.WriteLine($"[Router:{root}] {d.Action} {d.Prefix} on {d.Env}/{d.Name}");
+        }
+        catch { /* must never propagate */ }
     }
 
     /// <summary>
@@ -1118,6 +1143,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     public void Dispose()
     {
+        _routerHost?.Dispose();
+        _routerHost = null;
+
         _gitWatcher?.Dispose();
         _gitWatcher = null;
 

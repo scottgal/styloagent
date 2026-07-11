@@ -685,17 +685,32 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         ActivateDocumentFor(pane);
     }
 
-    /// <summary>Keeps each pane's <see cref="AgentPaneViewModel.IsSelected"/> in sync so the roster
-    /// outlines only the active agent. Also loads the worktree graph when the new pane has a path.</summary>
-    partial void OnSelectedPaneChanged(AgentPaneViewModel? oldValue, AgentPaneViewModel? newValue)
+    /// <summary>
+    /// Single place that re-syncs the Git panel (History + Changes + roster badge) to a pane's
+    /// worktree — clearing everything when the pane has no worktree. Fire-and-forget; never blocks.
+    /// </summary>
+    public void RefreshGitPanelFor(AgentPaneViewModel? pane)
     {
-        if (oldValue is not null) oldValue.IsSelected = false;
-        if (newValue is not null) newValue.IsSelected = true;
-        if (newValue?.WorktreePath is { } path)
+        if (pane?.WorktreePath is { } path)
         {
             if (GitGraph is not null) _ = GitGraph.LoadAsync(path);
             if (Changes is not null) _ = Changes.LoadAsync(path);
         }
+        else
+        {
+            GitGraph?.Clear();
+            Changes?.Clear();
+        }
+        if (pane is not null && _git is not null) _ = pane.RefreshGitStatusAsync(_git);
+    }
+
+    /// <summary>Keeps each pane's <see cref="AgentPaneViewModel.IsSelected"/> in sync so the roster
+    /// outlines only the active agent. Also refreshes the Git panel for the new pane.</summary>
+    partial void OnSelectedPaneChanged(AgentPaneViewModel? oldValue, AgentPaneViewModel? newValue)
+    {
+        if (oldValue is not null) oldValue.IsSelected = false;
+        if (newValue is not null) newValue.IsSelected = true;
+        RefreshGitPanelFor(newValue);
     }
 
     /// <summary>Brings the dock document for <paramref name="pane"/> to the front. The pane IS a

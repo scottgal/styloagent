@@ -23,6 +23,14 @@ public sealed partial class GitGraphViewModel : ObservableObject
 
     public GitGraphViewModel(IGitLog log) => _log = log;
 
+    /// <summary>Blanks the graph (no worktree selected).</summary>
+    public void Clear()
+    {
+        Graph = null;
+        Layout = null;
+        CommitCount = 0;
+    }
+
     public async Task LoadAsync(string worktreePath)
     {
         var result = await _log.GetCommitsAsync(worktreePath);

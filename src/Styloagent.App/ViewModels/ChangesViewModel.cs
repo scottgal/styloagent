@@ -28,6 +28,15 @@ public sealed partial class ChangesViewModel : ObservableObject
         _diff = diff;
     }
 
+    /// <summary>Clears the file list and diff (no worktree selected).</summary>
+    public void Clear()
+    {
+        _worktreePath = string.Empty;
+        SelectedFile = null;
+        Files.Clear();
+        Diff.File = null;
+    }
+
     /// <summary>
     /// Fetches the worktree status and populates <see cref="Files"/>.
     /// </summary>

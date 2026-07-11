@@ -14,3 +14,9 @@ publish/
 
 # SDD scratch (briefs, reports, ledger)
 .superpowers/
+
+# Test runner output
+**/TestResults/
+
+# Rider/ReSharper per-solution settings
+*.sln.DotSettings

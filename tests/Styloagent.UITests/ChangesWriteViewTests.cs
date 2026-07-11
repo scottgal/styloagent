@@ -65,6 +65,19 @@ public class ChangesWriteViewTests(HeadlessAvaloniaFixture fx) : IDisposable
             => Task.FromResult(GitResult.Success());
     }
 
+    private sealed class FakeBranch : IGitBranch
+    {
+        public Task<GitResult<IReadOnlyList<GitBranch>>> ListBranchesAsync(string w, CancellationToken ct = default)
+            => Task.FromResult(GitResult<IReadOnlyList<GitBranch>>.Success(
+                new List<GitBranch> { new GitBranch("main", IsCurrent: true) }));
+
+        public Task<GitResult> CreateBranchAsync(string w, string name, CancellationToken ct = default)
+            => Task.FromResult(GitResult.Success());
+
+        public Task<GitResult> SwitchBranchAsync(string w, string name, CancellationToken ct = default)
+            => Task.FromResult(GitResult.Success());
+    }
+
     public void Dispose() { }
 
     // ── render test ──────────────────────────────────────────────────────────
@@ -74,7 +87,7 @@ public class ChangesWriteViewTests(HeadlessAvaloniaFixture fx) : IDisposable
     {
         return fx.DispatchAsync(async () =>
         {
-            var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite());
+            var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch());
             await vm.LoadAsync("/wt");
 
             var view   = new ChangesView { DataContext = vm };

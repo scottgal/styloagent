@@ -7,15 +7,58 @@
              x:DataType="vm:ChangesViewModel">
 
   <Border Background="{DynamicResource PanelBgBrush}" CornerRadius="4">
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
+
+      <!-- ── Branch bar ─────────────────────────────────────────────────────── -->
+      <Border Grid.Row="0" Background="{DynamicResource PanelHeaderBgBrush}" Padding="6,4">
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+          <!-- Current-branch label -->
+          <TextBlock Grid.Column="0"
+                     Text="Branch:"
+                     FontSize="11"
+                     Foreground="{DynamicResource MutedTextBrush}"
+                     VerticalAlignment="Center"
+                     Margin="0,0,4,0" />
+          <!-- Branch switcher -->
+          <ComboBox Grid.Column="1"
+                    ItemsSource="{Binding Branches}"
+                    FontSize="11"
+                    Padding="4,2"
+                    x:Name="BranchComboBox"
+                    SelectionChanged="OnBranchSelectionChanged">
+            <ComboBox.ItemTemplate>
+              <DataTemplate DataType="git:GitBranch">
+                <TextBlock Text="{Binding Name}"
+                           FontSize="11" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <!-- New branch text box -->
+          <TextBox Grid.Column="2"
+                   Text="{Binding NewBranchName}"
+                   Watermark="new branch"
+                   FontSize="11"
+                   Padding="4,2"
+                   Width="110"
+                   Margin="6,0,0,0" />
+          <!-- Create branch button -->
+          <Button Grid.Column="3"
+                  Content="+"
+                  FontSize="11"
+                  Padding="6,2"
+                  Margin="4,0,0,0"
+                  ToolTip.Tip="Create branch"
+                  Command="{Binding CreateBranchCommand}" />
+        </Grid>
+      </Border>
 
       <!-- ── Unstaged section ──────────────────────────────────────────────── -->
-      <Border Grid.Row="0" Background="{DynamicResource PanelHeaderBgBrush}" Padding="8,5">
+      <Border Grid.Row="1" Background="{DynamicResource PanelHeaderBgBrush}" Padding="8,5">
         <TextBlock Text="Unstaged" FontSize="11" FontWeight="SemiBold"
                    Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
       </Border>
 
-      <ListBox Grid.Row="1"
+      <ListBox Grid.Row="2"
                ItemsSource="{Binding UnstagedFiles}"
                SelectedItem="{Binding SelectedFile}"
                SelectionChanged="OnFileSelectionChanged"
@@ -49,12 +92,12 @@
       </ListBox>
 
       <!-- ── Staged section ───────────────────────────────────────────────── -->
-      <Border Grid.Row="2" Background="{DynamicResource PanelHeaderBgBrush}" Padding="8,5" Margin="0,4,0,0">
+      <Border Grid.Row="3" Background="{DynamicResource PanelHeaderBgBrush}" Padding="8,5" Margin="0,4,0,0">
         <TextBlock Text="Staged" FontSize="11" FontWeight="SemiBold"
                    Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
       </Border>
 
-      <ListBox Grid.Row="3"
+      <ListBox Grid.Row="4"
                ItemsSource="{Binding StagedFiles}"
                SelectedItem="{Binding SelectedFile}"
                SelectionChanged="OnFileSelectionChanged"
@@ -88,7 +131,7 @@
       </ListBox>
 
       <!-- ── Commit bar + push/pull actions ───────────────────────────────── -->
-      <Grid Grid.Row="4" RowDefinitions="Auto,Auto,Auto,*">
+      <Grid Grid.Row="5" RowDefinitions="Auto,Auto,Auto,*">
 
         <!-- Error banner -->
         <Border Grid.Row="0"

@@ -9,13 +9,14 @@ namespace Styloagent.App.ViewModels;
 /// <summary>
 /// Lists the changed files in a worktree, splits them into staged / unstaged sections,
 /// loads the per-file diff into <see cref="Diff"/> when a file is selected, and exposes
-/// awaitable write commands (stage, unstage, commit, push, pull).
+/// awaitable write commands (stage, unstage, commit, push, pull, switch branch, create branch).
 /// </summary>
 public sealed partial class ChangesViewModel : ObservableObject
 {
     private readonly IGitService _git;
     private readonly IGitDiff _diff;
     private readonly IGitWrite _write;
+    private readonly IGitBranch _branch;
     private string _worktreePath = string.Empty;
 
     [ObservableProperty]
@@ -29,42 +30,54 @@ public sealed partial class ChangesViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasWriteError))]
     private string? _writeError;
 
+    [ObservableProperty]
+    private string? _currentBranch;
+
+    [ObservableProperty]
+    private string _newBranchName = "";
+
     public bool HasWriteError => !string.IsNullOrEmpty(WriteError);
 
     public ObservableCollection<GitChange> Files        { get; } = new();
     public ObservableCollection<GitChange> StagedFiles  { get; } = new();
     public ObservableCollection<GitChange> UnstagedFiles { get; } = new();
+    public ObservableCollection<GitBranch> Branches     { get; } = new();
 
     public DiffViewModel Diff { get; } = new();
 
     /// <summary>True when there is at least one staged file and a non-empty commit message.</summary>
     public bool CanCommit => StagedFiles.Count > 0 && !string.IsNullOrWhiteSpace(CommitMessage);
 
-    public ChangesViewModel(IGitService git, IGitDiff diff, IGitWrite write)
+    public ChangesViewModel(IGitService git, IGitDiff diff, IGitWrite write, IGitBranch branch)
     {
-        _git   = git;
-        _diff  = diff;
-        _write = write;
+        _git    = git;
+        _diff   = diff;
+        _write  = write;
+        _branch = branch;
     }
 
     private void Report(GitResult r) => WriteError = r.Ok ? null : r.Error;
 
-    /// <summary>Clears all file lists, the diff, the commit message, and any write error.</summary>
+    /// <summary>Clears all file lists, the diff, the commit message, branch state, and any write error.</summary>
     public void Clear()
     {
         _worktreePath = string.Empty;
         SelectedFile  = null;
         CommitMessage = "";
         WriteError    = null;
+        CurrentBranch = null;
+        NewBranchName = "";
         Files.Clear();
         StagedFiles.Clear();
         UnstagedFiles.Clear();
+        Branches.Clear();
         Diff.File = null;
     }
 
     /// <summary>
     /// Fetches the worktree status and populates <see cref="Files"/>,
     /// <see cref="StagedFiles"/>, and <see cref="UnstagedFiles"/>.
+    /// Also refreshes <see cref="Branches"/> and <see cref="CurrentBranch"/>.
     /// </summary>
     public async Task LoadAsync(string worktreePath)
     {
@@ -77,6 +90,7 @@ public sealed partial class ChangesViewModel : ObservableObject
         if (!result.Ok || result.Value is null)
         {
             OnPropertyChanged(nameof(CanCommit));
+            await LoadBranchesAsync();
             return;
         }
 
@@ -88,6 +102,39 @@ public sealed partial class ChangesViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(CanCommit));
+        await LoadBranchesAsync();
+    }
+
+    /// <summary>Fetches the branch list and updates <see cref="Branches"/> and <see cref="CurrentBranch"/>.</summary>
+    private async Task LoadBranchesAsync()
+    {
+        var r = await _branch.ListBranchesAsync(_worktreePath);
+        if (!r.Ok || r.Value is null) return;
+
+        Branches.Clear();
+        foreach (var b in r.Value)
+            Branches.Add(b);
+
+        CurrentBranch = r.Value.FirstOrDefault(b => b.IsCurrent)?.Name;
+    }
+
+    /// <summary>Switches to <paramref name="b"/> then reloads.</summary>
+    [RelayCommand]
+    public async Task SwitchAsync(GitBranch b)
+    {
+        Report(await _branch.SwitchBranchAsync(_worktreePath, b.Name));
+        await LoadAsync(_worktreePath);
+    }
+
+    /// <summary>Creates a new branch from <see cref="NewBranchName"/> then reloads. No-ops on whitespace.</summary>
+    [RelayCommand]
+    public async Task CreateBranchAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NewBranchName)) return;
+        var r = await _branch.CreateBranchAsync(_worktreePath, NewBranchName.Trim());
+        Report(r);
+        if (r.Ok) NewBranchName = "";
+        await LoadAsync(_worktreePath);
     }
 
     /// <summary>

@@ -6,6 +6,10 @@
 - License: MIT
 - Vendored commit SHA: 8b1b6b2b38fae33496fb2deacd01b9b490fe98bb
 
+### Derived logic
+
+- `UnifiedDiffParser.cs` — unified-diff line classification derived from SourceGit's `src/Commands/Diff.cs` (no verbatim copy).
+
 ### Vendored files
 
 - `src/Styloagent.Git/Vendored/Models/Commit.cs` (adapted from `src/Models/Commit.cs`)

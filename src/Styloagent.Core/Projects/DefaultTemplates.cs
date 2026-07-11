@@ -71,6 +71,12 @@ You have these MCP tools from the `styloagent` server:
 - `wrap_up()` — when your branch is committed and the work is done, call this to hand off: Styloagent
   runs the project's tests, merges your branch to main and removes your worktree, or (on failure) keeps
   the worktree and files an issue for triage. Only agents spawned with a worktree can wrap up.
+- **Environment routing** — before touching a shared environment (an SSH host, a deploy target, a
+  test box), coordinate access so agents don't collide or trip account lockouts: `claim(env, resource,
+  purpose)` → poll `router_status(env)` until you hold it → connect → `log_attempt(env, account, ok)`
+  after each auth → `heartbeat(env, resource)` while working → `release(env, resource)` when done. The
+  router serialises access (one holder per account, or N test slots) and cools an account after
+  repeated auth failures. Deterministic; no need to reason about the queue — just claim and wait.
 
 As sub-agents learn the real system they report back over the bus (see `.styloagent/PROTOCOL.md`).
 Fold that back into the spec → re-derive the architecture → adjust the fleet, so the three docs stay a

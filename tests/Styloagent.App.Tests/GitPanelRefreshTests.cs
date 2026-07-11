@@ -4,6 +4,8 @@ using Styloagent.Git;
 using Styloagent.Git.Vendored.Models;
 using Xunit;
 
+namespace Styloagent.App.Tests;
+
 public class GitPanelRefreshTests
 {
     private sealed class FakeLog : IGitLog
@@ -68,5 +70,55 @@ public class GitPanelRefreshTests
 
         Assert.Empty(vm.Files);
         Assert.Null(vm.Diff.File);
+    }
+
+    /// <summary>
+    /// After a merge removes a worktree (WorktreePath becomes null), RefreshGitPanelFor clears
+    /// both the History graph and the Changes list synchronously — the same code path WrapUp now
+    /// calls when the wrapped pane is the selected pane.
+    /// </summary>
+    [Fact]
+    public async Task RefreshGitPanelFor_NullWorktreePath_ClearsGraphAndChanges()
+    {
+        // Build the sub-VMs with data so we can verify they get cleared.
+        var graph = new GitGraphViewModel(new FakeLog());
+        await graph.LoadAsync("/some-worktree");
+        Assert.NotNull(graph.Graph); // precondition: data loaded
+
+        var changes = new ChangesViewModel(new FakeGit(), new FakeDiff());
+        await changes.LoadAsync("/some-worktree");
+        Assert.NotEmpty(changes.Files); // precondition: data loaded
+
+        // Set up a channel root and get a MainWindowViewModel instance.
+        var channelRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var savedContext = Path.Combine(channelRoot, "saved-context");
+        Directory.CreateDirectory(savedContext);
+        File.WriteAllText(Path.Combine(savedContext, "agent-context.md"), "# agent");
+        try
+        {
+            var vm = await MainWindowViewModel.InitializeAsync(
+                channelRoot, new FakeLauncher(), new FakeWatcher());
+
+            // Wire the pre-loaded sub-VMs into the main VM.
+            vm.GitGraph = graph;
+            vm.Changes = changes;
+
+            // Pane.WorktreePath is null by default (no worktree was assigned at init);
+            // this mirrors the post-merge state that WrapUp now produces.
+            Assert.Null(vm.Pane!.WorktreePath);
+
+            // Act — the selected pane has no worktree; RefreshGitPanelFor takes the sync else-branch.
+            vm.RefreshGitPanelFor(vm.Pane);
+
+            // Assert — graph and changes are cleared.
+            Assert.Null(vm.GitGraph.Graph);
+            Assert.Equal(0, vm.GitGraph.CommitCount);
+            Assert.Empty(vm.Changes.Files);
+        }
+        finally
+        {
+            if (Directory.Exists(channelRoot))
+                Directory.Delete(channelRoot, recursive: true);
+        }
     }
 }

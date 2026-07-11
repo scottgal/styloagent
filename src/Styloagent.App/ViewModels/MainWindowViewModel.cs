@@ -551,6 +551,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             pane.WorktreePath = null;
             pane.WorktreeBranch = null;
         }
+        if (pane == SelectedPane) RefreshGitPanelFor(pane);
+        else if (_git is not null) _ = pane.RefreshGitStatusAsync(_git);
         return outcome;
     }
 

@@ -12,7 +12,9 @@ public static class RouterResolver
         var decisions = new List<RouterDecision>();
         foreach (var r in state.Resources)
         {
-            // Live grants only (lease not expired). Expiry decisions come in Task 4.
+            foreach (var g in r.Grants.Where(g => IsExpired(g, r.Policy.LeaseTtl, now)))
+                decisions.Add(new RouterDecision(RouterAction.Expire, r.Env, r.Kind, r.Name, g.Prefix, null));
+
             var liveGrants = r.Grants.Where(g => !IsExpired(g, r.Policy.LeaseTtl, now)).ToList();
             var heldPrefixes = new HashSet<string>(liveGrants.Select(g => g.Prefix), StringComparer.Ordinal);
 

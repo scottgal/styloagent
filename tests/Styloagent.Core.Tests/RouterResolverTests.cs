@@ -55,4 +55,28 @@ public class RouterResolverTests
         var decisions = RouterResolver.Resolve(new RouterState(new[] { r }), T(10));
         Assert.Empty(decisions);
     }
+
+    [Fact]
+    public void Expired_grant_is_expired_and_the_queue_head_promoted()
+    {
+        var r = Account("deploy", capacity: 1,
+            claims: new[] { new Claim("b-", T(5), "") },
+            grants: new[] { new Grant("a-", T(1), T(1), T(0)) });   // heartbeat at T(1)
+        // leaseTtl = 2m; at T(200) => 199s since heartbeat >= 120s => expired
+        var decisions = RouterResolver.Resolve(new RouterState(new[] { r }),
+            new DateTimeOffset(2026, 7, 11, 12, 3, 20, TimeSpan.Zero));
+
+        Assert.Contains(decisions, d => d.Action == RouterAction.Expire && d.Prefix == "a-");
+        Assert.Contains(decisions, d => d.Action == RouterAction.Grant && d.Prefix == "b-");
+    }
+
+    [Fact]
+    public void Live_grant_is_not_expired()
+    {
+        var r = Account("deploy", capacity: 1,
+            claims: System.Array.Empty<Claim>(),
+            grants: new[] { new Grant("a-", T(1), T(9), T(0)) });   // heartbeat T(9), now T(10)
+        var decisions = RouterResolver.Resolve(new RouterState(new[] { r }), T(10));
+        Assert.Empty(decisions);
+    }
 }

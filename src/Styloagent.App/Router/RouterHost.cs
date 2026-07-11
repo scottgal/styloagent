@@ -84,7 +84,13 @@ public sealed class RouterHost : IDisposable
 
     private void RunTick()
     {
-        if (_disposed) return;
+        // Read the disposed flag under the lock, matching ResetDebounce's discipline, so a Dispose
+        // racing the timer callback is visible before we start a tick. (The callback is tolerant and
+        // the tick is idempotent, so the residual window is harmless, but keep the pattern uniform.)
+        lock (_lock)
+        {
+            if (_disposed) return;
+        }
         try
         {
             foreach (var d in RouterCoordinator.Tick(_root, DateTimeOffset.UtcNow))

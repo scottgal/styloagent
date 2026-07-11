@@ -32,8 +32,9 @@ capture it?" — and revise until they agree. **Do not move on until the spec is
 
 From the agreed spec, design the architecture and write `.styloagent/architecture.md` as a single
 fenced ```mermaid C4Component``` block. Give each component a crisp responsibility, and colour it by
-its intended owning agent with `UpdateElementStyle(<id>, $bgColor="#RRGGBB")` — a distinct colour per
-agent. Styloagent renders this live and clickably. Keep the first cut to **3-4** top-level components.
+its intended owning agent: call `agent_color(<prefix>)` for the exact hex the roster will use, and set
+it via `UpdateElementStyle(<id>, $bgColor="…")` so the C4 matches the fleet. Styloagent renders this
+live and clickably. Keep the first cut to **3-4** top-level components.
 
 ## 3. Fleet
 
@@ -59,6 +60,8 @@ You have these MCP tools from the `styloagent` server:
 - `architecture_impact(before, after)` — before you rewrite `architecture.md`, call this with the
   current and proposed versions to preview the change's impact (`+ added / − removed / Impact:`), and
   include that summary when you tell the human what a proposal will change.
+- `agent_color(prefix)` — the roster colour for an agent prefix; use it as the component's `$bgColor`
+  so the architecture C4 and the fleet share one colour scheme.
 
 As sub-agents learn the real system they report back over the bus (see `.styloagent/PROTOCOL.md`).
 Fold that back into the spec → re-derive the architecture → adjust the fleet, so the three docs stay a

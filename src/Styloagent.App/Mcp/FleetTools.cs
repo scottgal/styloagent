@@ -73,5 +73,15 @@ public sealed class FleetTools
         if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
         return ArchitectureImpact.Between(string.IsNullOrWhiteSpace(before) ? null : before, after);
     }
+
+    [McpServerTool, Description("Return the identity colour (hex, e.g. #4CDB6E) an agent with this prefix will have in the roster. Use it as the component's $bgColor in architecture.md so the C4 colours match the fleet exactly.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public string agent_color(string prefix)
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
+        return Styloagent.App.Config.PresentationStore.DefaultColorFor(prefix);
+    }
 #pragma warning restore CA1707
 }

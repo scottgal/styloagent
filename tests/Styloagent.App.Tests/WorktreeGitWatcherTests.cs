@@ -73,9 +73,10 @@ public class WorktreeGitWatcherTests : IDisposable
         // Wait long enough for the debounce timer (300 ms) + propagation slack.
         await Task.Delay(TimeSpan.FromSeconds(2));
 
-        // Either fired (≥1) or platform-unsupported (0). Never > 2 per two writes ideally,
-        // but we only assert ≥0 here to keep the test tolerance-first.
-        Assert.True(count >= 0, $"Unexpected negative count: {count}");
+        // FileSystemWatcher may be unsupported on the platform (count == 0); if it fired at all,
+        // the debounce must have coalesced the two rapid writes into a small number of events.
+        if (count > 0)
+            Assert.True(count <= 2, $"expected debounce to coalesce rapid writes; got {count} events");
     }
 
     /// <summary>

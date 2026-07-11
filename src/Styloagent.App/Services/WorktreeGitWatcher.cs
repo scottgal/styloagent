@@ -18,6 +18,7 @@ public sealed class WorktreeGitWatcher : IDisposable
     private System.Threading.Timer? _debounceTimer;
     private const int DebounceMs = 300;
     private readonly object _lock = new();
+    private volatile bool _disposed;
 
     /// <summary>
     /// Points the watcher at the given worktree path, replacing any previous watch.
@@ -29,6 +30,8 @@ public sealed class WorktreeGitWatcher : IDisposable
     {
         lock (_lock)
         {
+            if (_disposed) return;
+
             DisposeInternals();
 
             if (worktreePath is null) return;
@@ -39,7 +42,7 @@ public sealed class WorktreeGitWatcher : IDisposable
                 if (gitDir is null) return;
 
                 _debounceTimer = new System.Threading.Timer(
-                    _ => Changed?.Invoke(this, EventArgs.Empty),
+                    _ => { if (!_disposed) Changed?.Invoke(this, EventArgs.Empty); },
                     state: null,
                     dueTime: Timeout.Infinite,
                     period: Timeout.Infinite);
@@ -145,6 +148,7 @@ public sealed class WorktreeGitWatcher : IDisposable
     {
         lock (_lock)
         {
+            _disposed = true;
             DisposeInternals();
         }
     }

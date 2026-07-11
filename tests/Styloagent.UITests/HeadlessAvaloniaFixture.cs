@@ -89,6 +89,14 @@ public sealed class TestApp : Application
             Source = new Uri("avares://Dock.Avalonia.Themes.Fluent/DockFluentTheme.axaml"),
         });
 
+        // The shared theme tokens (CockpitBgBrush etc.) the real App.axaml merges — so headless
+        // renders resolve them (and so light/dark is faithful in screenshots).
+        Resources.MergedDictionaries.Add(
+            new Avalonia.Markup.Xaml.Styling.ResourceInclude(new Uri("avares://Styloagent.App/App.axaml"))
+            {
+                Source = new Uri("avares://Styloagent.App/Themes/ThemeTokens.axaml"),
+            });
+
         // Application-level DataTemplates, exactly as App.axaml declares them, so dock-hosted
         // content resolves its view the same way it does in the real app.
         DataTemplates.Add(new FuncDataTemplate<AgentPaneViewModel>((_, _) => new AgentPaneView(), true));

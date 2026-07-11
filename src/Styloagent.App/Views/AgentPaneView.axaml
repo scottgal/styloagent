@@ -26,13 +26,13 @@
                     Orientation="Horizontal"
                     Spacing="4"
                     Margin="4"
-                    Background="#1A1A2E">
+                    Background="{DynamicResource PanelHeaderBgBrush}">
           <TextBlock Name="AgentDisplayName"
                      Text="{Binding DisplayName}"
                      VerticalAlignment="Center"
                      Margin="4,0,8,0"
                      FontWeight="SemiBold"
-                     Foreground="#E0E0FF" />
+                     Foreground="{DynamicResource PrimaryTextBrush}" />
           <Button Name="SpawnButton"
                   Command="{Binding SpawnCommand}"
                   ToolTip.Tip="Spawn agent">

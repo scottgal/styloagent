@@ -1,0 +1,29 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <ResourceDictionary.ThemeDictionaries>
+    <!-- Structural chrome colours that invert between dark and light. -->
+    <ResourceDictionary x:Key="Dark">
+      <SolidColorBrush x:Key="CockpitBgBrush" Color="#0C0C0C"/>
+      <SolidColorBrush x:Key="PanelBgBrush" Color="#0D0D1A"/>
+      <SolidColorBrush x:Key="PanelHeaderBgBrush" Color="#1A1A2E"/>
+      <SolidColorBrush x:Key="RowBgBrush" Color="#111122"/>
+      <SolidColorBrush x:Key="PrimaryTextBrush" Color="#E0E0FF"/>
+      <SolidColorBrush x:Key="MutedTextBrush" Color="#7A7AA0"/>
+      <SolidColorBrush x:Key="SubtleBorderBrush" Color="#222226"/>
+    </ResourceDictionary>
+    <ResourceDictionary x:Key="Light">
+      <SolidColorBrush x:Key="CockpitBgBrush" Color="#F1F1F5"/>
+      <SolidColorBrush x:Key="PanelBgBrush" Color="#FFFFFF"/>
+      <SolidColorBrush x:Key="PanelHeaderBgBrush" Color="#E7E7EF"/>
+      <SolidColorBrush x:Key="RowBgBrush" Color="#EFEFF5"/>
+      <SolidColorBrush x:Key="PrimaryTextBrush" Color="#1A1A2E"/>
+      <SolidColorBrush x:Key="MutedTextBrush" Color="#5C5C78"/>
+      <SolidColorBrush x:Key="SubtleBorderBrush" Color="#D6D6E0"/>
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+
+  <!-- Brand accents — the same in both variants (read well on either). -->
+  <SolidColorBrush x:Key="CockpitAccentBrush" Color="#7C5CBF"/>
+  <SolidColorBrush x:Key="AccentBrush" Color="#9D7FE0"/>
+  <SolidColorBrush x:Key="AttentionBrush" Color="#E5A05A"/>
+</ResourceDictionary>

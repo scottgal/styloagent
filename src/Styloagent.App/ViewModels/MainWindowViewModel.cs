@@ -70,6 +70,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             pane.SelectedTerminalTheme = value;
     }
 
+    /// <summary>App-wide light/dark toggle — swaps the structural theme tokens (Fluent variant).</summary>
+    [ObservableProperty]
+    private bool _isLightTheme;
+
+    partial void OnIsLightThemeChanged(bool value)
+    {
+        if (Avalonia.Application.Current is { } app)
+            app.RequestedThemeVariant = value
+                ? Avalonia.Styling.ThemeVariant.Light
+                : Avalonia.Styling.ThemeVariant.Dark;
+    }
+
     [ObservableProperty]
     private IRootDock? _layout;
 

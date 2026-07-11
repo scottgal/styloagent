@@ -5,10 +5,10 @@
              x:Class="Styloagent.App.Views.DocLibraryView"
              x:DataType="vm:DocLibraryViewModel">
 
-  <Border Background="#0D0D1A" CornerRadius="4">
+  <Border Background="{DynamicResource PanelBgBrush}" CornerRadius="4">
     <Grid RowDefinitions="Auto,*">
 
-      <Border Grid.Row="0" Background="#1A1A2E" Padding="8,6">
+      <Border Grid.Row="0" Background="{DynamicResource PanelHeaderBgBrush}" Padding="8,6">
         <StackPanel Orientation="Horizontal" Spacing="6">
           <Button Content="System Map" FontSize="10" Padding="6,1"
                   Command="{Binding ShowSystemMapCommand}" />
@@ -26,7 +26,7 @@
               <StackPanel>
                 <Border Background="#15152A" Padding="8,4" Margin="0,4,0,0">
                   <TextBlock Text="{Binding Header}" FontSize="10" FontWeight="SemiBold"
-                             Foreground="#7A7AA0" LetterSpacing="1" />
+                             Foreground="{DynamicResource MutedTextBrush}" LetterSpacing="1" />
                 </Border>
                 <ItemsControl ItemsSource="{Binding Entries}">
                   <ItemsControl.ItemTemplate>

@@ -20,7 +20,7 @@
 
     <!-- One thread row: glyph + colour stripe + subject + participants + time; click expands. -->
     <DataTemplate x:Key="ThreadTemplate" DataType="vm:BusThreadItem">
-      <Border Margin="0,1,0,0" Background="#111122">
+      <Border Margin="0,1,0,0" Background="{DynamicResource RowBgBrush}">
         <StackPanel>
           <Button Background="Transparent" BorderThickness="0" Padding="0"
                   HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
@@ -47,7 +47,7 @@
     </DataTemplate>
   </UserControl.Resources>
 
-  <Border Background="#0D0D1A" CornerRadius="4">
+  <Border Background="{DynamicResource PanelBgBrush}" CornerRadius="4">
     <Grid RowDefinitions="*">
 
       <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
@@ -58,8 +58,8 @@
           <Border Background="#2A1A1A" Padding="8,4">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <TextBlock Text="NEEDS ATTENTION" FontSize="10" FontWeight="SemiBold"
-                         Foreground="#E5A05A" LetterSpacing="1" />
-              <TextBlock Text="{Binding AttentionThreads.Count}" FontSize="10" Foreground="#E5A05A" />
+                         Foreground="{DynamicResource AttentionBrush}" LetterSpacing="1" />
+              <TextBlock Text="{Binding AttentionThreads.Count}" FontSize="10" Foreground="{DynamicResource AttentionBrush}" />
             </StackPanel>
           </Border>
           <ItemsControl ItemsSource="{Binding AttentionThreads}" ItemTemplate="{StaticResource ThreadTemplate}" />
@@ -67,8 +67,8 @@
           <Border Background="#15152A" Padding="8,4" Margin="0,6,0,0">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <TextBlock Text="RECENT" FontSize="10" FontWeight="SemiBold"
-                         Foreground="#7A7AA0" LetterSpacing="1" />
-              <TextBlock Text="{Binding RecentThreads.Count}" FontSize="10" Foreground="#7A7AA0" />
+                         Foreground="{DynamicResource MutedTextBrush}" LetterSpacing="1" />
+              <TextBlock Text="{Binding RecentThreads.Count}" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" />
             </StackPanel>
           </Border>
           <ItemsControl ItemsSource="{Binding RecentThreads}" ItemTemplate="{StaticResource ThreadTemplate}" />

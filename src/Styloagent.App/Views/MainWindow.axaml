@@ -12,7 +12,7 @@
         Icon="/icon.png"
         Width="1200"
         Height="800"
-        Background="#0C0C0C">
+        Background="{DynamicResource CockpitBgBrush}">
 
   <Window.KeyBindings>
     <KeyBinding Gesture="Alt+Right" Command="{Binding JumpToNextWaitingCommand}" />
@@ -45,8 +45,12 @@
             <Button.Flyout>
               <Flyout>
                 <StackPanel Width="210" Margin="4" Spacing="8">
+                  <TextBlock Text="Appearance" FontWeight="SemiBold" FontSize="12"
+                             Foreground="{DynamicResource AccentBrush}" />
+                  <ToggleSwitch Content="Light theme" IsChecked="{Binding IsLightTheme}" />
+                  <Border Height="1" Background="{DynamicResource SubtleBorderBrush}" />
                   <TextBlock Text="Terminal theme (all agents)" FontWeight="SemiBold" FontSize="12"
-                             Foreground="#9D7FE0" />
+                             Foreground="{DynamicResource AccentBrush}" />
                   <ComboBox ItemsSource="{Binding TerminalThemes}"
                             SelectedItem="{Binding GlobalTerminalTheme}"
                             HorizontalAlignment="Stretch">
@@ -57,7 +61,7 @@
                     </ComboBox.ItemTemplate>
                   </ComboBox>
                   <TextBlock Text="Each agent's terminal can also be themed from its own toolbar."
-                             FontSize="10" Foreground="#7A7AA0" TextWrapping="Wrap" />
+                             FontSize="10" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" />
                 </StackPanel>
               </Flyout>
             </Button.Flyout>
@@ -85,10 +89,10 @@
                         Layout="{Binding Layout}"
                         InitializeLayout="False"
                         InitializeFactory="False"
-                        Background="#0C0C0C" />
+                        Background="{DynamicResource CockpitBgBrush}" />
 
       <GridSplitter Grid.Column="3" Background="#222" IsVisible="{Binding !IsSidePanelCollapsed}" />
-      <TabControl Grid.Column="4" Background="#0D0D1A" IsVisible="{Binding !IsSidePanelCollapsed}">
+      <TabControl Grid.Column="4" Background="{DynamicResource PanelBgBrush}" IsVisible="{Binding !IsSidePanelCollapsed}">
         <TabControl.Styles>
           <!-- Match the roster header typography so left/right titles read consistently. -->
           <Style Selector="TabItem">

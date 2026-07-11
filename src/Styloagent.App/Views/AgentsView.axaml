@@ -54,22 +54,22 @@
     </DataTemplate>
   </UserControl.Resources>
 
-  <Border Background="#0D0D1A" CornerRadius="4">
+  <Border Background="{DynamicResource PanelBgBrush}" CornerRadius="4">
     <Grid RowDefinitions="Auto,*">
 
-      <Border Grid.Row="0" Background="#1A1A2E" Padding="8,6">
+      <Border Grid.Row="0" Background="{DynamicResource PanelHeaderBgBrush}" Padding="8,6">
         <Grid ColumnDefinitions="*,Auto">
           <StackPanel Orientation="Horizontal" Spacing="6">
-            <ic:SymbolIcon Symbol="People" FontSize="16" Foreground="#9D7FE0" VerticalAlignment="Center" />
+            <ic:SymbolIcon Symbol="People" FontSize="16" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
             <StackPanel>
-              <TextBlock Text="Agents" FontWeight="Bold" FontSize="13" Foreground="#9D7FE0" LetterSpacing="1" />
-              <TextBlock Text="{Binding FleetHudText}" FontSize="10" Foreground="#7A7AA0" />
+              <TextBlock Text="Agents" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource AccentBrush}" LetterSpacing="1" />
+              <TextBlock Text="{Binding FleetHudText}" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" />
             </StackPanel>
           </StackPanel>
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
                         IsVisible="{Binding WaitingCount, Converter={x:Static conv:CountToBoolConverter.Instance}}">
-              <TextBlock Text="{Binding AttentionHudText}" FontSize="10" Foreground="#E5A05A" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding AttentionHudText}" FontSize="10" Foreground="{DynamicResource AttentionBrush}" VerticalAlignment="Center" />
               <Button Content="Jump ⌥→" FontSize="10" Padding="6,1" Command="{Binding JumpToNextWaitingCommand}" />
             </StackPanel>
             <ToggleButton VerticalAlignment="Center" FontSize="10" Padding="6,2"
@@ -86,7 +86,7 @@
           <StackPanel IsVisible="{Binding ProposedTeam.Proposals.Count, Converter={x:Static conv:CountToBoolConverter.Instance}}">
             <Border Background="#2A1A1A" Padding="8,4">
               <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Text="PROPOSED" FontSize="10" FontWeight="SemiBold" Foreground="#E5A05A" LetterSpacing="1" />
+                <TextBlock Text="PROPOSED" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AttentionBrush}" LetterSpacing="1" />
                 <Button Grid.Column="1" Content="Spawn all" FontSize="10" Padding="6,1"
                         Command="{Binding ProposedTeam.SpawnAllCommand}" />
               </Grid>
@@ -94,7 +94,7 @@
             <ItemsControl ItemsSource="{Binding ProposedTeam.Proposals}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate DataType="vm:ProposedAgentItem">
-                  <Border Background="#111122" Margin="0,1,0,0">
+                  <Border Background="{DynamicResource RowBgBrush}" Margin="0,1,0,0">
                     <Grid ColumnDefinitions="4,*,Auto">
                       <Border Grid.Column="0" Background="{Binding ColorHex}" Width="4" />
                       <StackPanel Grid.Column="1" Margin="8,5" Spacing="1">

@@ -7,7 +7,11 @@
              RequestedThemeVariant="Dark">
 
   <Application.Resources>
-    <SolidColorBrush x:Key="CockpitAccentBrush" Color="#7C5CBF"/>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://Styloagent.App/Themes/ThemeTokens.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
   </Application.Resources>
 
   <Application.Styles>

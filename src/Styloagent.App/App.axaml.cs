@@ -74,7 +74,13 @@ public partial class App : Application
             }
             else
             {
-                var welcomeWindow = new Window { Title = "Styloagent", Width = 520, Height = 380 };
+                var welcomeWindow = new Window
+                {
+                    Title = "Styloagent",
+                    Icon = AppIcon(),
+                    Width = 520,
+                    Height = 380,
+                };
                 var welcome = new WelcomeViewModel(recents, recentsPath,
                     new StorageFolderPicker(welcomeWindow),
                     root => _ = OpenProjectAsync(root, welcomeWindow));
@@ -87,4 +93,8 @@ public partial class App : Application
 
         base.OnFrameworkInitializationCompleted();
     }
+
+    /// <summary>The stylo brand icon as a window icon (loaded from the embedded AvaloniaResource).</summary>
+    private static WindowIcon AppIcon()
+        => new(Avalonia.Platform.AssetLoader.Open(new Uri("avares://Styloagent.App/icon.png")));
 }

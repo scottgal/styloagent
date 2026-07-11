@@ -88,10 +88,23 @@
       </ListBox>
 
       <!-- ── Commit bar + push/pull actions ───────────────────────────────── -->
-      <Grid Grid.Row="4" RowDefinitions="Auto,Auto,*">
+      <Grid Grid.Row="4" RowDefinitions="Auto,Auto,Auto,*">
+
+        <!-- Error banner -->
+        <Border Grid.Row="0"
+                IsVisible="{Binding HasWriteError}"
+                Background="{DynamicResource AttentionBrush}"
+                CornerRadius="3"
+                Margin="6,6,6,0"
+                Padding="8,5">
+          <TextBlock Text="{Binding WriteError}"
+                     FontSize="11"
+                     TextWrapping="Wrap"
+                     Foreground="{DynamicResource PanelBgBrush}" />
+        </Border>
 
         <!-- Commit bar -->
-        <Border Grid.Row="0" Padding="6,6,6,0">
+        <Border Grid.Row="1" Padding="6,6,6,0">
           <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto">
             <TextBox Grid.Column="0"
                      Text="{Binding CommitMessage}"
@@ -113,7 +126,7 @@
         </Border>
 
         <!-- Push / Pull row -->
-        <StackPanel Grid.Row="1"
+        <StackPanel Grid.Row="2"
                     Orientation="Horizontal"
                     Spacing="6"
                     Margin="6,4,6,6">
@@ -126,7 +139,7 @@
         </StackPanel>
 
         <!-- Diff panel -->
-        <views:DiffView Grid.Row="2" DataContext="{Binding Diff}" />
+        <views:DiffView Grid.Row="3" DataContext="{Binding Diff}" />
 
       </Grid>
 

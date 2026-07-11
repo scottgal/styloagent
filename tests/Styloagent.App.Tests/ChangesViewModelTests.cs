@@ -41,27 +41,28 @@ public class ChangesViewModelTests
     {
         public string? LastStaged;
         public string? LastCommitMsg;
+        public bool NextFails;
 
         public Task<GitResult> StageAsync(string w, string p, CancellationToken ct = default)
         {
             LastStaged = p;
-            return Task.FromResult(GitResult.Success());
+            return Task.FromResult(NextFails ? GitResult.Fail("boom") : GitResult.Success());
         }
 
         public Task<GitResult> UnstageAsync(string w, string p, CancellationToken ct = default)
-            => Task.FromResult(GitResult.Success());
+            => Task.FromResult(NextFails ? GitResult.Fail("boom") : GitResult.Success());
 
         public Task<GitResult> CommitAsync(string w, string m, CancellationToken ct = default)
         {
             LastCommitMsg = m;
-            return Task.FromResult(GitResult.Success());
+            return Task.FromResult(NextFails ? GitResult.Fail("boom") : GitResult.Success());
         }
 
         public Task<GitResult> PushAsync(string w, CancellationToken ct = default)
-            => Task.FromResult(GitResult.Success());
+            => Task.FromResult(NextFails ? GitResult.Fail("boom") : GitResult.Success());
 
         public Task<GitResult> PullAsync(string w, CancellationToken ct = default)
-            => Task.FromResult(GitResult.Success());
+            => Task.FromResult(NextFails ? GitResult.Fail("boom") : GitResult.Success());
     }
 
     // ── existing test (updated to 3-arg ctor) ────────────────────────────────
@@ -175,5 +176,24 @@ public class ChangesViewModelTests
         Assert.Empty(vm.StagedFiles);
         Assert.Empty(vm.UnstagedFiles);
         Assert.Equal("", vm.CommitMessage);
+    }
+
+    // ── WriteError ───────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Failed_write_op_surfaces_the_error_then_clears_on_success()
+    {
+        var write = new FakeWrite { NextFails = true };
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), write);
+        await vm.LoadAsync("/wt");
+
+        await vm.PushAsync();
+        Assert.True(vm.HasWriteError);
+        Assert.Equal("boom", vm.WriteError);
+
+        write.NextFails = false;
+        await vm.PullAsync();
+        Assert.False(vm.HasWriteError);
+        Assert.Null(vm.WriteError);
     }
 }

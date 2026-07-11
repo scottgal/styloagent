@@ -25,6 +25,12 @@ public sealed partial class ChangesViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanCommit))]
     private string _commitMessage = "";
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasWriteError))]
+    private string? _writeError;
+
+    public bool HasWriteError => !string.IsNullOrEmpty(WriteError);
+
     public ObservableCollection<GitChange> Files        { get; } = new();
     public ObservableCollection<GitChange> StagedFiles  { get; } = new();
     public ObservableCollection<GitChange> UnstagedFiles { get; } = new();
@@ -41,12 +47,15 @@ public sealed partial class ChangesViewModel : ObservableObject
         _write = write;
     }
 
-    /// <summary>Clears all file lists, the diff, and the commit message.</summary>
+    private void Report(GitResult r) => WriteError = r.Ok ? null : r.Error;
+
+    /// <summary>Clears all file lists, the diff, the commit message, and any write error.</summary>
     public void Clear()
     {
         _worktreePath = string.Empty;
         SelectedFile  = null;
         CommitMessage = "";
+        WriteError    = null;
         Files.Clear();
         StagedFiles.Clear();
         UnstagedFiles.Clear();
@@ -95,7 +104,7 @@ public sealed partial class ChangesViewModel : ObservableObject
     [RelayCommand]
     public async Task StageAsync(GitChange change)
     {
-        await _write.StageAsync(_worktreePath, change.Path);
+        Report(await _write.StageAsync(_worktreePath, change.Path));
         await LoadAsync(_worktreePath);
     }
 
@@ -103,7 +112,7 @@ public sealed partial class ChangesViewModel : ObservableObject
     [RelayCommand]
     public async Task UnstageAsync(GitChange change)
     {
-        await _write.UnstageAsync(_worktreePath, change.Path);
+        Report(await _write.UnstageAsync(_worktreePath, change.Path));
         await LoadAsync(_worktreePath);
     }
 
@@ -117,6 +126,7 @@ public sealed partial class ChangesViewModel : ObservableObject
         if (!CanCommit) return;
 
         var r = await _write.CommitAsync(_worktreePath, CommitMessage);
+        Report(r);
         if (r.Ok) CommitMessage = "";
         await LoadAsync(_worktreePath);
     }
@@ -125,7 +135,7 @@ public sealed partial class ChangesViewModel : ObservableObject
     [RelayCommand]
     public async Task PushAsync()
     {
-        await _write.PushAsync(_worktreePath);
+        Report(await _write.PushAsync(_worktreePath));
         await LoadAsync(_worktreePath);
     }
 
@@ -133,7 +143,7 @@ public sealed partial class ChangesViewModel : ObservableObject
     [RelayCommand]
     public async Task PullAsync()
     {
-        await _write.PullAsync(_worktreePath);
+        Report(await _write.PullAsync(_worktreePath));
         await LoadAsync(_worktreePath);
     }
 }

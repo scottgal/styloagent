@@ -47,6 +47,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private AgentPaneViewModel? _selectedPane;
 
+    /// <summary>Collapse the left roster to give the centre terminals more width.</summary>
+    [ObservableProperty]
+    private bool _isRosterCollapsed;
+
+    /// <summary>Collapse the right bus/docs panel.</summary>
+    [ObservableProperty]
+    private bool _isSidePanelCollapsed;
+
     [ObservableProperty]
     private IRootDock? _layout;
 

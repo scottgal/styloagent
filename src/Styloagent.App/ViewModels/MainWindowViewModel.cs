@@ -729,6 +729,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>Applies a hook event synchronously on the calling thread (for unit tests — bypasses UIThread.Post).</summary>
     internal void DispatchHookForTest(HookEvent e) => ApplyHookEventOnUiThread(e);
 
+    /// <summary>Runs one delivery pass over the channel (for tests — the real path fires this on bus reload).</summary>
+    internal Task<int> PumpDeliveryForTest(CancellationToken ct = default)
+        => _deliveryCoordinator?.PumpAsync(ct) ?? Task.FromResult(0);
+
     /// <summary>
     /// The default directory to launch agents in when their worktree isn't configured.
     /// Overridable via the STYLOAGENT_WORKDIR environment variable; defaults to the

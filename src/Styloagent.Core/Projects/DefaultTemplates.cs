@@ -54,6 +54,30 @@ Each message begins with `**From:** <prefix>` and `**Timestamp:** <ISO-8601>`. K
 to the question. A thread is *replied* once its reply exists; unreplied inbox messages need
 attention.
 
+## Priority
+
+A message may add a `**Priority:** <level>` header. The level is a *hint*; how aggressively it
+interrupts the recipient is decided per project in `.styloagent/priority-policy.yaml`.
+
+- `urgent` — break in as soon as allowed (default: interrupts the recipient's current turn).
+- `normal` — the default when the header is absent (default: delivered at the recipient's next prompt).
+- `low` — no hurry (default: the recipient reads it when convenient).
+- `info` — FYI only, never actioned (default: shown, never delivered as work).
+
+Example:
+
+```
+**From:** overview-
+**Timestamp:** 2026-07-02T09:00:00Z
+**Priority:** urgent
+
+The build is broken on main — stop and look.
+```
+
+`priority-policy.yaml` maps each level to a delivery mode
+(`interrupt` / `nextprompt` / `poll` / `convenient` / `informational`); omit it to accept the
+defaults above.
+
 The overview agent proposes the team in `.styloagent/proposed-agents.yaml`; each specialist owns a
 responsibility and may later split into more focused agents.
 """;

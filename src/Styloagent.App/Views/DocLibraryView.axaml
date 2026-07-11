@@ -17,6 +17,8 @@
                     Command="{Binding ShowSystemMapCommand}" />
             <Button Content="Bus Sequence" FontSize="10" Padding="6,1"
                     Command="{Binding ShowBusSequenceCommand}" />
+            <Button Content="Architecture" FontSize="10" Padding="6,1"
+                    Command="{Binding ShowArchitectureCommand}" />
           </StackPanel>
         </StackPanel>
       </Border>

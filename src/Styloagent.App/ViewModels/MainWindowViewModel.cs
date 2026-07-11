@@ -351,6 +351,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             ShowSystemMapCommand = vm.ShowSystemMapCommand,
             ShowBusSequenceCommand = vm.ShowBusSequenceCommand,
+            ShowArchitectureCommand = vm.ShowArchitectureCommand,
         };
 
         return vm;

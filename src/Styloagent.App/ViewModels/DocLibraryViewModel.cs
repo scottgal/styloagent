@@ -40,6 +40,9 @@ public sealed partial class DocLibraryViewModel : ObservableObject
     /// </summary>
     public ICommand? ShowBusSequenceCommand { get; init; }
 
+    /// <summary>Pass-through for the live Architecture (C4) command on <see cref="MainWindowViewModel"/>.</summary>
+    public ICommand? ShowArchitectureCommand { get; init; }
+
     public DocLibraryViewModel(
         string? repoRoot,
         string? channelRoot,

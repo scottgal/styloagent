@@ -10,6 +10,9 @@
       <SolidColorBrush x:Key="PrimaryTextBrush" Color="#E0E0FF"/>
       <SolidColorBrush x:Key="MutedTextBrush" Color="#7A7AA0"/>
       <SolidColorBrush x:Key="SubtleBorderBrush" Color="#222226"/>
+      <SolidColorBrush x:Key="DiffAddedBgBrush" Color="#1E3A24"/>
+      <SolidColorBrush x:Key="DiffDeletedBgBrush" Color="#3A1E1E"/>
+      <SolidColorBrush x:Key="DiffHeaderBgBrush" Color="#2A2A3A"/>
     </ResourceDictionary>
     <ResourceDictionary x:Key="Light">
       <SolidColorBrush x:Key="CockpitBgBrush" Color="#F1F1F5"/>
@@ -19,6 +22,9 @@
       <SolidColorBrush x:Key="PrimaryTextBrush" Color="#1A1A2E"/>
       <SolidColorBrush x:Key="MutedTextBrush" Color="#5C5C78"/>
       <SolidColorBrush x:Key="SubtleBorderBrush" Color="#D6D6E0"/>
+      <SolidColorBrush x:Key="DiffAddedBgBrush" Color="#D6F0DD"/>
+      <SolidColorBrush x:Key="DiffDeletedBgBrush" Color="#F5D6D6"/>
+      <SolidColorBrush x:Key="DiffHeaderBgBrush" Color="#E6E6EE"/>
     </ResourceDictionary>
   </ResourceDictionary.ThemeDictionaries>
 

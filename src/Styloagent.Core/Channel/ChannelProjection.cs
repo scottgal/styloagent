@@ -42,7 +42,7 @@ public sealed class ChannelProjection
             foreach (var filePath in Directory.EnumerateFiles(dir, "*.md"))
             {
                 ct.ThrowIfCancellationRequested();
-                var msg = await ParseMessageAsync(filePath, isArchive, knownPrefixes, ct);
+                var msg = await ParseMessageAsync(filePath, isArchive, knownPrefixes, ct).ConfigureAwait(false);
                 if (msg is not null)
                     allMessages.Add(msg);
             }
@@ -160,8 +160,11 @@ public sealed class ChannelProjection
         // State defaults
         var state = isArchive ? BusMessageState.Archived : BusMessageState.New;
 
-        // Read body
-        string body = await File.ReadAllTextAsync(filePath, ct);
+        // Read body. ConfigureAwait(false): this is Core I/O — it must NOT capture a caller's
+        // SynchronizationContext. When invoked from the UI thread (BusViewModel.LoadAsync), a
+        // captured context makes every read continuation depend on the UI thread pumping it; under
+        // the shared single-threaded headless test session that pile-up deadlocks.
+        string body = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
 
         // Parse header
         string? from = null;

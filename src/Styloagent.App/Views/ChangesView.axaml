@@ -22,10 +22,10 @@
           <!-- Branch switcher -->
           <ComboBox Grid.Column="1"
                     ItemsSource="{Binding Branches}"
+                    SelectedItem="{Binding SelectedBranch}"
                     FontSize="11"
                     Padding="4,2"
-                    x:Name="BranchComboBox"
-                    SelectionChanged="OnBranchSelectionChanged">
+                    x:Name="BranchComboBox">
             <ComboBox.ItemTemplate>
               <DataTemplate DataType="git:GitBranch">
                 <TextBlock Text="{Binding Name}"

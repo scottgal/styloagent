@@ -267,6 +267,29 @@ public class ChangesViewModelTests
         Assert.Equal("", vm.NewBranchName);
     }
 
+    // ── Branch: SelectedBranch drives switch; load does NOT trigger switch ────
+
+    [Fact]
+    public async Task Selecting_a_non_current_branch_switches_but_load_does_not()
+    {
+        var branch = new FakeBranch();
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), branch);
+        await vm.LoadAsync("/wt");
+
+        // After load the current branch is selected — no switch should have fired
+        Assert.Null(branch.LastSwitched);
+        Assert.Equal("main", vm.SelectedBranch?.Name);
+
+        // User selects a different branch — switch should fire
+        var feature = vm.Branches.First(b => !b.IsCurrent);
+        vm.SelectedBranch = feature;
+        // OnSelectedBranchChanged fires synchronously, then SwitchAsync is fire-and-forget;
+        // yield control so the async operation has a chance to run
+        await Task.Yield();
+
+        Assert.Equal("feature", branch.LastSwitched);
+    }
+
     [Fact]
     public async Task CreateBranch_does_nothing_when_name_is_whitespace()
     {

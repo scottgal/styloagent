@@ -34,6 +34,11 @@ public sealed partial class ChangesViewModel : ObservableObject
     private string? _currentBranch;
 
     [ObservableProperty]
+    private GitBranch? _selectedBranch;
+
+    private bool _loadingBranches;
+
+    [ObservableProperty]
     private string _newBranchName = "";
 
     public bool HasWriteError => !string.IsNullOrEmpty(WriteError);
@@ -67,10 +72,16 @@ public sealed partial class ChangesViewModel : ObservableObject
         WriteError    = null;
         CurrentBranch = null;
         NewBranchName = "";
+        _loadingBranches = true;
+        try
+        {
+            SelectedBranch = null;
+            Branches.Clear();
+        }
+        finally { _loadingBranches = false; }
         Files.Clear();
         StagedFiles.Clear();
         UnstagedFiles.Clear();
-        Branches.Clear();
         Diff.File = null;
     }
 
@@ -105,17 +116,30 @@ public sealed partial class ChangesViewModel : ObservableObject
         await LoadBranchesAsync();
     }
 
-    /// <summary>Fetches the branch list and updates <see cref="Branches"/> and <see cref="CurrentBranch"/>.</summary>
+    /// <summary>Fetches the branch list and updates <see cref="Branches"/>, <see cref="CurrentBranch"/>, and <see cref="SelectedBranch"/>.</summary>
     private async Task LoadBranchesAsync()
     {
         var r = await _branch.ListBranchesAsync(_worktreePath);
         if (!r.Ok || r.Value is null) return;
 
-        Branches.Clear();
-        foreach (var b in r.Value)
-            Branches.Add(b);
+        _loadingBranches = true;
+        try
+        {
+            Branches.Clear();
+            foreach (var b in r.Value)
+                Branches.Add(b);
 
-        CurrentBranch = r.Value.FirstOrDefault(b => b.IsCurrent)?.Name;
+            CurrentBranch  = Branches.FirstOrDefault(b => b.IsCurrent)?.Name;
+            SelectedBranch = Branches.FirstOrDefault(b => b.IsCurrent);
+        }
+        finally { _loadingBranches = false; }
+    }
+
+    /// <summary>Fires a branch switch when the user selects a non-current branch; no-ops during data load.</summary>
+    partial void OnSelectedBranchChanged(GitBranch? value)
+    {
+        if (_loadingBranches || value is null || value.IsCurrent) return;
+        _ = SwitchAsync(value);
     }
 
     /// <summary>Switches to <paramref name="b"/> then reloads.</summary>

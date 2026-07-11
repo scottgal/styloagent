@@ -119,6 +119,21 @@
           </TabItem.Header>
           <views:DocLibraryView DataContext="{Binding DocLibrary}" />
         </TabItem>
+        <TabItem>
+          <TabItem.Header>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ic:SymbolIcon Symbol="Warning" FontSize="15" VerticalAlignment="Center" />
+              <TextBlock Text="Issues" VerticalAlignment="Center" />
+              <Border Background="#E5615A" CornerRadius="7" Padding="5,0" MinWidth="14"
+                      VerticalAlignment="Center"
+                      IsVisible="{Binding Issues.OpenCount, Converter={x:Static conv:CountToBoolConverter.Instance}}">
+                <TextBlock Text="{Binding Issues.OpenCount}" FontSize="9" FontWeight="Bold"
+                           Foreground="White" HorizontalAlignment="Center" />
+              </Border>
+            </StackPanel>
+          </TabItem.Header>
+          <views:IssuesView DataContext="{Binding Issues}" />
+        </TabItem>
       </TabControl>
 
     </Grid>

@@ -83,5 +83,18 @@ public sealed class FleetTools
         if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
         return Styloagent.App.Config.PresentationStore.DefaultColorFor(prefix);
     }
+
+    [McpServerTool, Description("File an issue you hit into the project's issues list so the human and other agents can triage it. severity is low | medium | high. Use for blockers, defects, and gaps you cannot resolve yourself — not for routine coordination (use the bus for that).")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> report_issue(string title, string detail, string severity)
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        var caller = McpAuth.CallerPrefix(ctx);
+        if (caller is null) return "unauthorized: missing caller identity";
+
+        var outcome = await _controller.ReportIssueAsync(new IssueRequest(caller, title, detail, severity));
+        return outcome.Filed ? outcome.Message : $"rejected: {outcome.Message}";
+    }
 #pragma warning restore CA1707
 }

@@ -91,6 +91,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private ProposedTeamViewModel? _proposedTeam;
 
+    [ObservableProperty]
+    private IssuesViewModel? _issues;
+
     private ProjectConfig? _project;
 
     private IFactory? _factory;
@@ -478,6 +481,30 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(FleetHudText));
         ProposedTeam?.Dispose();
         ProposedTeam = new ProposedTeamViewModel(project.ProposedAgentsPath, SpawnProposed);
+        Issues = new IssuesViewModel(project.IssuesDir);
+    }
+
+    /// <summary>
+    /// Files an issue an agent reported over MCP into the project's <c>.styloagent/issues/</c> and
+    /// refreshes the Issues panel. Runs on the UI thread (marshalled by the controller).
+    /// </summary>
+    public IssueOutcome ReportIssue(IssueRequest req)
+    {
+        if (_project is null) return IssueOutcome.Fail("no active project");
+        if (string.IsNullOrWhiteSpace(req.Title)) return IssueOutcome.Fail("title is required");
+
+        try
+        {
+            var issue = Styloagent.Core.Issues.IssueStore.Write(
+                _project.IssuesDir, req.Reporter, req.Title, req.Detail ?? string.Empty,
+                req.Severity ?? "medium", DateTimeOffset.Now);
+            Issues?.Refresh();
+            return IssueOutcome.Ok(issue.Id);
+        }
+        catch (Exception ex)
+        {
+            return IssueOutcome.Fail(ex.Message);
+        }
     }
 
     /// <summary>Turns a proposed subsystem into a live roster agent (mirrors AddAgent).</summary>

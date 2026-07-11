@@ -18,4 +18,7 @@ public sealed class FleetController : IFleetController
         => Dispatcher.UIThread.CheckAccess()
             ? _vm.BuildFleetSnapshot()
             : Dispatcher.UIThread.InvokeAsync(_vm.BuildFleetSnapshot).GetTask().GetAwaiter().GetResult();
+
+    public Task<IssueOutcome> ReportIssueAsync(IssueRequest req)
+        => Dispatcher.UIThread.InvokeAsync(() => _vm.ReportIssue(req)).GetTask();
 }

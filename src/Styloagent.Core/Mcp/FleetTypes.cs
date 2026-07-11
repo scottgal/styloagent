@@ -21,6 +21,16 @@ public sealed record SpawnOutcome(bool Spawned, string? Prefix, RejectReason? Re
     public static SpawnOutcome Reject(RejectReason reason, string message) => new(false, null, reason, message);
 }
 
+/// <summary>A report_issue request from an agent (reporter is the caller prefix).</summary>
+public sealed record IssueRequest(string Reporter, string Title, string Detail, string Severity);
+
+/// <summary>Result of filing an issue (never an exception).</summary>
+public sealed record IssueOutcome(bool Filed, string? Id, string Message)
+{
+    public static IssueOutcome Ok(string id) => new(true, id, $"filed {id}");
+    public static IssueOutcome Fail(string message) => new(false, null, message);
+}
+
 /// <summary>Governor verdict.</summary>
 public sealed record Decision(bool Allowed, RejectReason? Reason, string Message)
 {

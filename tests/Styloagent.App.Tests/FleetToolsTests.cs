@@ -11,9 +11,12 @@ public class FleetToolsTests
     {
         public SpawnRequest? LastReq;
         public SpawnOutcome Next = SpawnOutcome.Ok("foss-");
+        public IssueRequest? LastIssue;
+        public IssueOutcome NextIssue = IssueOutcome.Ok("some-issue");
         public Task<SpawnOutcome> SpawnAsync(SpawnRequest req) { LastReq = req; return Task.FromResult(Next); }
         public FleetSnapshot Snapshot() => new(
             new[] { new FleetMember("overview-", "the top", null, 0, "running") }, 12, 3, false);
+        public Task<IssueOutcome> ReportIssueAsync(IssueRequest req) { LastIssue = req; return Task.FromResult(NextIssue); }
     }
 
     private static IHttpContextAccessor AccessorWith(string? agent, string? auth)
@@ -65,6 +68,30 @@ public class FleetToolsTests
         var json = tools.list_fleet();
         Assert.Contains("overview-", json);
         Assert.Contains("\"maxFleet\"", json);
+    }
+
+    [Fact]
+    public async Task report_issue_files_with_the_caller_as_reporter()
+    {
+        var ctrl = new FakeController { NextIssue = IssueOutcome.Ok("build-broken") };
+        var tools = new FleetTools(AccessorWith("foss-", "Bearer secret"), ctrl, new McpAuth("secret"));
+
+        var result = await tools.report_issue("Build broken", "npm run build fails", "high");
+
+        Assert.Equal("foss-", ctrl.LastIssue!.Reporter);
+        Assert.Equal("Build broken", ctrl.LastIssue.Title);
+        Assert.Equal("high", ctrl.LastIssue.Severity);
+        Assert.Contains("filed build-broken", result);
+    }
+
+    [Fact]
+    public async Task report_issue_refuses_a_bad_token()
+    {
+        var ctrl = new FakeController();
+        var tools = new FleetTools(AccessorWith("foss-", "Bearer WRONG"), ctrl, new McpAuth("secret"));
+        var result = await tools.report_issue("t", "d", "low");
+        Assert.Null(ctrl.LastIssue);
+        Assert.Contains("unauthorized", result);
     }
 
     [Fact]

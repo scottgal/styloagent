@@ -1,0 +1,64 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
+             xmlns:conv="clr-namespace:Styloagent.App.Converters"
+             xmlns:issues="clr-namespace:Styloagent.Core.Issues;assembly=Styloagent.Core"
+             x:Class="Styloagent.App.Views.IssuesView"
+             x:DataType="vm:IssuesViewModel">
+
+  <UserControl.Resources>
+    <conv:SeverityColorConverter x:Key="SeverityColor" />
+  </UserControl.Resources>
+
+  <Border Background="{DynamicResource PanelBgBrush}" CornerRadius="4">
+    <Grid RowDefinitions="Auto,*">
+
+      <Border Grid.Row="0" Background="{DynamicResource PanelHeaderBgBrush}" Padding="8,6">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Grid.Column="0" Text="Issues raised by the fleet" FontSize="11"
+                     Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+          <Button Grid.Column="1" Content="Refresh" FontSize="10" Padding="6,1"
+                  Command="{Binding RefreshCommand}" />
+        </Grid>
+      </Border>
+
+      <!-- Empty state -->
+      <TextBlock Grid.Row="1" IsVisible="{Binding !HasIssues}"
+                 Text="No issues yet. Agents file them with report_issue over MCP."
+                 FontSize="11" Foreground="{DynamicResource MutedTextBrush}"
+                 TextWrapping="Wrap" Padding="12" />
+
+      <ScrollViewer Grid.Row="1" IsVisible="{Binding HasIssues}"
+                    HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <ItemsControl ItemsSource="{Binding Issues}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="issues:Issue">
+              <Border Padding="10,7" Margin="0,1,0,0" Background="{DynamicResource RowBgBrush}">
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                  <!-- Severity dot -->
+                  <Ellipse Grid.Column="0" Grid.Row="0" Width="8" Height="8"
+                           VerticalAlignment="Center" Margin="0,0,8,0"
+                           Fill="{Binding Severity, Converter={StaticResource SeverityColor}}" />
+                  <TextBlock Grid.Column="1" Grid.Row="0" Text="{Binding Title}"
+                             FontSize="12" FontWeight="SemiBold"
+                             Foreground="{DynamicResource PrimaryTextBrush}"
+                             TextTrimming="CharacterEllipsis" />
+                  <StackPanel Grid.Column="1" Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="0,2,0,0">
+                    <TextBlock Text="{Binding Reporter}" FontSize="10"
+                               Foreground="{DynamicResource MutedTextBrush}" />
+                    <TextBlock Text="{Binding Severity}" FontSize="10"
+                               Foreground="{DynamicResource MutedTextBrush}" />
+                    <TextBlock Text="{Binding Status}" FontSize="10"
+                               Foreground="{DynamicResource MutedTextBrush}" />
+                  </StackPanel>
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+
+    </Grid>
+  </Border>
+
+</UserControl>

@@ -62,6 +62,9 @@ You have these MCP tools from the `styloagent` server:
   include that summary when you tell the human what a proposal will change.
 - `agent_color(prefix)` — the roster colour for an agent prefix; use it as the component's `$bgColor`
   so the architecture C4 and the fleet share one colour scheme.
+- `report_issue(title, detail, severity)` — file a blocker, defect, or gap you cannot resolve into
+  the shared issues list (severity `low` / `medium` / `high`). Use it for things the human or another
+  agent must pick up; use the bus for routine coordination.
 
 As sub-agents learn the real system they report back over the bus (see `.styloagent/PROTOCOL.md`).
 Fold that back into the spec → re-derive the architecture → adjust the fleet, so the three docs stay a

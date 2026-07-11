@@ -8,4 +8,5 @@ public interface IFleetController
 {
     Task<SpawnOutcome> SpawnAsync(SpawnRequest req);
     FleetSnapshot Snapshot();
+    Task<IssueOutcome> ReportIssueAsync(IssueRequest req);
 }

@@ -10,6 +10,7 @@ using Styloagent.App.Mcp;
 using Styloagent.App.Services;
 using Styloagent.Core.Abstractions;
 using Styloagent.Core.Attention;
+using Styloagent.Core.Channel;
 using Styloagent.Core.Git;
 using Styloagent.Core.Hooks;
 using Styloagent.Core.Mcp;
@@ -60,6 +61,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private IFactory? _factory;
     private StyloagentDockFactory? _dockFactory;
     private BusViewModel? _busViewModel;
+
+    // Priority message delivery: pushes new channel messages to their recipient agents per the
+    // project's PriorityPolicy (ESC-break for interrupt, defer-until-idle for next-prompt, HUD-only
+    // otherwise). Built in InitializeAsync; policy refreshed in AttachProject.
+    private MessageDeliveryService? _deliveryService;
+    private ChannelDeliveryCoordinator? _deliveryCoordinator;
 
     // Runtime state for AddAgent
     private IReadOnlyList<AgentManifestEntry> _seededEntries = Array.Empty<AgentManifestEntry>();
@@ -254,6 +261,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             .Select(e => e.Prefix).ToList();
         vm._busViewModel = new BusViewModel(channelRoot, channelPrefixes);
 
+        // Priority delivery: seed the "already seen" set with the current backlog (so startup does
+        // not deliver old messages), then push newly-arrived messages on each bus reload. The policy
+        // starts at Default and is refreshed in AttachProject once a project is known.
+        vm._deliveryService = new MessageDeliveryService(PriorityPolicy.Default, new PtyMessageInjector(vm.ResolvePty));
+        vm._deliveryCoordinator = new ChannelDeliveryCoordinator(
+            channelRoot, channelPrefixes, vm._deliveryService, vm.SnapshotLiveAgents);
+        await vm._deliveryCoordinator.SeedAsync();
+        vm._busViewModel.Reloaded += () => _ = vm._deliveryCoordinator.PumpAsync();
+
         if (entries.Count == 0)
         {
             var emptyFactory = new StyloagentDockFactory(null, vm._busViewModel);
@@ -419,6 +435,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         _project = project;
         FleetPolicy = FleetPolicyReader.Read(project.FleetPolicyPath);
+        if (_deliveryService is not null)
+            _deliveryService.Policy = PriorityPolicyReader.Read(project.PriorityPolicyPath);
         OnPropertyChanged(nameof(MaxFleet));
         OnPropertyChanged(nameof(MaxDepth));
         OnPropertyChanged(nameof(FleetHudText));
@@ -593,7 +611,30 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             pane.WaitingSince = pane.NeedsYou ? (pane.WaitingSince ?? DateTimeOffset.UtcNow) : null;
             RefreshAttention();
             if (!_interaction.IsBusy(IdleWindow)) AutoRevealHead();
+
+            // When the agent goes idle, flush any NextPrompt messages that were deferred for it.
+            if (_deliveryService is not null)
+                _ = _deliveryService.OnRecipientStateChangedAsync(pane.Prefix, pane.HookState);
         }
+    }
+
+    /// <summary>Resolves an agent id (pane prefix) to its live PTY for message injection.</summary>
+    private IPtySession? ResolvePty(string agentId)
+    {
+        try { return Panes.FirstOrDefault(p => p.Prefix == agentId)?.CurrentPty; }
+        catch (InvalidOperationException) { return null; }  // panes changed mid-lookup
+    }
+
+    /// <summary>Snapshots the live agents (prefix + hook state) for delivery routing. Best-effort:
+    /// retries on concurrent pane mutation, then yields empty rather than throwing into a reload.</summary>
+    private IReadOnlyList<AgentPresence> SnapshotLiveAgents()
+    {
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            try { return Panes.Select(p => new AgentPresence(p.Prefix, p.HookState)).ToList(); }
+            catch (InvalidOperationException) { /* collection changed mid-enumeration; retry */ }
+        }
+        return Array.Empty<AgentPresence>();
     }
 
     /// <summary>Rebuilds the oldest-first attention queue from the current panes.</summary>

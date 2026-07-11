@@ -13,15 +13,18 @@ namespace Styloagent.Core.Channel;
 /// </summary>
 public sealed class MessageDeliveryService
 {
-    private readonly PriorityPolicy _policy;
     private readonly IMessageInjector _injector;
 
     // Recipient agentId -> messages waiting for that agent to go idle (NextPrompt while busy).
     private readonly ConcurrentDictionary<string, ConcurrentQueue<BusMessage>> _deferred = new();
 
+    /// <summary>The active policy. Swappable at runtime (e.g. when a project is attached) without
+    /// discarding already-deferred messages.</summary>
+    public PriorityPolicy Policy { get; set; }
+
     public MessageDeliveryService(PriorityPolicy policy, IMessageInjector injector)
     {
-        _policy = policy;
+        Policy = policy;
         _injector = injector;
     }
 
@@ -32,7 +35,7 @@ public sealed class MessageDeliveryService
     public async Task<DeliveryAction> DeliverAsync(
         BusMessage message, string recipientId, AgentHookState recipientState, CancellationToken ct = default)
     {
-        var mode = _policy.ModeFor(message.Priority);
+        var mode = Policy.ModeFor(message.Priority);
         var action = MessageDelivery.Decide(mode, recipientState);
 
         switch (action)

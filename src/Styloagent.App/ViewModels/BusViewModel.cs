@@ -94,6 +94,10 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isLoading;
 
+    /// <summary>Raised after each successful channel reload, so listeners (message delivery) can
+    /// diff for new messages. Fires on whatever thread the reload completed on.</summary>
+    public event Action? Reloaded;
+
     public BusViewModel(
         string channelRoot,
         IReadOnlyList<string> knownPrefixes,
@@ -210,6 +214,9 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                         // No UI thread (headless test context): update directly.
                         UpdateMessages();
                     }
+
+                    // Signal listeners (e.g. message delivery) that the channel was re-read.
+                    Reloaded?.Invoke();
                 }
                 catch (OperationCanceledException) { }
                 catch (Exception ex)

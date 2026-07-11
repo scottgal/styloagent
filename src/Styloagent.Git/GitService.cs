@@ -1,13 +1,15 @@
 using System.Diagnostics;
 using Styloagent.Core.Git;
+using Styloagent.Git.Vendored.Models;
 
 namespace Styloagent.Git;
 
 /// <summary>
-/// <see cref="IGitService"/> backed by the <c>git</c> CLI. Never throws: failures surface as a
-/// failed <see cref="GitResult"/> carrying git's stderr. Mirrors GitCliReader's process pattern.
+/// <see cref="IGitService"/> and <see cref="IGitLog"/> backed by the <c>git</c> CLI.
+/// Never throws: failures surface as a failed <see cref="GitResult"/> carrying git's stderr.
+/// Mirrors GitCliReader's process pattern.
 /// </summary>
-public sealed class GitService : IGitService
+public sealed class GitService : IGitService, IGitLog
 {
     public async Task<GitResult<GitStatus>> GetStatusAsync(string worktreePath, CancellationToken ct = default)
     {
@@ -33,6 +35,20 @@ public sealed class GitService : IGitService
 
     public async Task<GitResult> DeleteBranchAsync(string repoRoot, string branch, bool force, CancellationToken ct = default)
         => ToResult(await RunAsync(repoRoot, ct, "branch", force ? "-D" : "-d", branch).ConfigureAwait(false));
+
+    public async Task<GitResult<IReadOnlyList<Commit>>> GetCommitsAsync(string worktreePath, int limit = 200, CancellationToken ct = default)
+    {
+        var r = await RunAsync(worktreePath, ct,
+            "log",
+            $"-{limit}",
+            "--date-order",
+            "--no-show-signature",
+            "--decorate=full",
+            "--format=%H%x00%P%x00%D%x00%aN±%aE%x00%at%x00%cN±%cE%x00%ct%x00%s").ConfigureAwait(false);
+        return r.Ok
+            ? GitResult<IReadOnlyList<Commit>>.Success(CommitLogParser.Parse(r.Stdout))
+            : GitResult<IReadOnlyList<Commit>>.Fail(r.Stderr);
+    }
 
     private static GitResult ToResult(ProcOutcome p) => p.Ok ? GitResult.Success() : GitResult.Fail(p.Stderr);
 

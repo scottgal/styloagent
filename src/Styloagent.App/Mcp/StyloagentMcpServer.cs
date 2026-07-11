@@ -26,7 +26,7 @@ public sealed class StyloagentMcpServer : IAsyncDisposable
     private StyloagentMcpServer(WebApplication app, Uri baseUrl, string token)
         => (_app, BaseUrl, Token) = (app, baseUrl, token);
 
-    public static async Task<StyloagentMcpServer> StartAsync(IFleetController controller)
+    public static async Task<StyloagentMcpServer> StartAsync(IFleetController controller, IRouterController router)
     {
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
 
@@ -35,10 +35,12 @@ public sealed class StyloagentMcpServer : IAsyncDisposable
         builder.WebHost.UseKestrel(o => o.Listen(IPAddress.Loopback, 0));
         builder.Services.AddHttpContextAccessor();
         builder.Services.AddSingleton<IFleetController>(controller);
+        builder.Services.AddSingleton<IRouterController>(router);
         builder.Services.AddSingleton(new McpAuth(token));
         builder.Services.AddMcpServer()
             .WithHttpTransport(o => o.Stateless = true)
-            .WithTools<FleetTools>();
+            .WithTools<FleetTools>()
+            .WithTools<RouterTools>();
 
         var app = builder.Build();
         app.MapMcp("/mcp");

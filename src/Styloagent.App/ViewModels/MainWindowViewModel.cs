@@ -175,7 +175,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (_mcpServer is not null) return;
         try
         {
-            _mcpServer = await StyloagentMcpServer.StartAsync(new FleetController(this)).ConfigureAwait(false);
+            _mcpServer = await StyloagentMcpServer.StartAsync(new FleetController(this), new RouterController(this)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -190,6 +190,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     public IReadOnlyList<string> McpArgsFor(string prefix)
         => _mcpServer is { IsRunning: true } s ? s.McpConfigArgs(prefix) : Array.Empty<string>();
+
+    /// <summary>Returns the router root directory for the active project, or null when no project is loaded.</summary>
+    public string? RouterRootOrNull => _project?.RouterRoot;
 
     // ── Fleet management ─────────────────────────────────────────────────────
 

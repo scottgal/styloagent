@@ -17,6 +17,15 @@ public class StyloagentMcpServerTests
         public Task<WrapUpOutcome> WrapUpAsync(string callerPrefix) => Task.FromResult(new WrapUpOutcome(WrapUpStatus.Merged, "merged", null));
     }
 
+    private sealed class FakeRouter : IRouterController
+    {
+        public Task<string> ClaimAsync(string caller, string env, string resource, string purpose) => Task.FromResult("granted");
+        public Task<string> HeartbeatAsync(string caller, string env, string resource) => Task.FromResult("ok");
+        public Task<string> ReleaseAsync(string caller, string env, string resource) => Task.FromResult("released");
+        public Task<string> LogAttemptAsync(string caller, string env, string account, bool ok) => Task.FromResult("logged");
+        public Task<string> StatusAsync(string? env) => Task.FromResult("no resources");
+    }
+
     [Fact]
     public void McpConfig_json_names_the_server_url_prefix_and_token()
     {
@@ -32,7 +41,7 @@ public class StyloagentMcpServerTests
     [Fact]
     public async Task Server_starts_on_loopback_and_lists_the_two_tools()
     {
-        await using var server = await StyloagentMcpServer.StartAsync(new FakeController());
+        await using var server = await StyloagentMcpServer.StartAsync(new FakeController(), new FakeRouter());
         Assert.True(server.IsRunning);
         Assert.Equal("127.0.0.1", server.BaseUrl.Host);
 

@@ -102,6 +102,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private ChangesViewModel? _changes;
 
     private IGitLog? _gitLog;
+    private WorktreeGitWatcher? _gitWatcher;
 
     private ProjectConfig? _project;
 
@@ -325,6 +326,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             channelRoot, channelPrefixes, vm._deliveryService, vm.SnapshotLiveAgents);
         await vm._deliveryCoordinator.SeedAsync();
         vm._busViewModel.Reloaded += () => _ = vm._deliveryCoordinator.PumpAsync();
+
+        // Debounced .git watcher: refreshes the Git panel when the selected worktree changes on disk
+        // (e.g. an agent commits). Subscribed here; Watch() is called in RefreshGitPanelFor so it
+        // always tracks the currently-selected pane.
+        vm._gitWatcher = new WorktreeGitWatcher();
+        vm._gitWatcher.Changed += (_, _) =>
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => vm.RefreshGitPanelFor(vm.SelectedPane));
 
         if (entries.Count == 0)
         {
@@ -693,6 +701,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     public void RefreshGitPanelFor(AgentPaneViewModel? pane)
     {
+        // Re-point the live watcher at the selected pane's worktree (or stop if no worktree).
+        _gitWatcher?.Watch(pane?.WorktreePath);
+
         if (pane?.WorktreePath is { } path)
         {
             if (GitGraph is not null) _ = GitGraph.LoadAsync(path);
@@ -1104,6 +1115,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     public void Dispose()
     {
+        _gitWatcher?.Dispose();
+        _gitWatcher = null;
+
         _diagramDebounceTimer?.Stop();
         _diagramDebounceTimer = null;
 

@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
              xmlns:views="clr-namespace:Styloagent.App.Views"
+             xmlns:dockControls="clr-namespace:Dock.Avalonia.Controls;assembly=Dock.Avalonia"
              x:Class="Styloagent.App.App"
              RequestedThemeVariant="Dark">
 
@@ -12,6 +13,23 @@
   <Application.Styles>
     <FluentTheme />
     <StyleInclude Source="avares://Dock.Avalonia.Themes.Fluent/DockFluentTheme.axaml" />
+
+    <!-- Per-agent identity colour on the centre document tabs: an agent's dock tab uses the same
+         colour as its row in the roster (AgentPaneViewModel.BorderColorHex), so a terminal tab
+         reads as "the same agent" left-to-right. Non-agent documents (markdown/diagram/bus) have
+         no BorderColorHex, so the binding falls back to the default light tab colour. A coloured
+         underline reinforces the identity on the active tab. -->
+    <Style Selector="dockControls|DocumentTabStripItem">
+      <Setter Property="Foreground"
+              Value="{Binding BorderColorHex, FallbackValue=#C8C8E0, TargetNullValue=#C8C8E0}" />
+      <Setter Property="BorderBrush"
+              Value="{Binding BorderColorHex, FallbackValue=Transparent, TargetNullValue=Transparent}" />
+      <Setter Property="BorderThickness" Value="0,0,0,2" />
+    </Style>
+    <Style Selector="dockControls|DocumentTabStripItem:selected">
+      <Setter Property="Foreground"
+              Value="{Binding BorderColorHex, FallbackValue=#FFFFFF, TargetNullValue=#FFFFFF}" />
+    </Style>
   </Application.Styles>
 
   <Application.DataTemplates>

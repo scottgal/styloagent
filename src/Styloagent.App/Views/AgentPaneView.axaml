@@ -7,7 +7,8 @@
              x:DataType="vm:AgentPaneViewModel">
 
   <Border Name="PaneBorder"
-          BorderThickness="0,0,0,0"
+          BorderBrush="{Binding BorderColorHex}"
+          BorderThickness="1.5"
           CornerRadius="4"
           BoxShadow="0 2 8 0 #44000000">
     <Grid ColumnDefinitions="3,*">

@@ -9,7 +9,7 @@ namespace Styloagent.Git;
 /// Never throws: failures surface as a failed <see cref="GitResult"/> carrying git's stderr.
 /// Mirrors GitCliReader's process pattern.
 /// </summary>
-public sealed class GitService : IGitService, IGitLog, IGitDiff, IGitWrite
+public sealed class GitService : IGitService, IGitLog, IGitDiff, IGitWrite, IGitBranch
 {
     public async Task<GitResult<GitStatus>> GetStatusAsync(string worktreePath, CancellationToken ct = default)
     {
@@ -77,6 +77,32 @@ public sealed class GitService : IGitService, IGitLog, IGitDiff, IGitWrite
 
     public async Task<GitResult> PullAsync(string worktreePath, CancellationToken ct = default)
         => ToResult(await RunAsync(worktreePath, ct, "pull", "--no-edit").ConfigureAwait(false));
+
+    // IGitBranch — List / Create / Switch
+    public async Task<GitResult<IReadOnlyList<GitBranch>>> ListBranchesAsync(string worktreePath, CancellationToken ct = default)
+    {
+        var current = await RunAsync(worktreePath, ct, "branch", "--show-current").ConfigureAwait(false);
+        if (!current.Ok) return GitResult<IReadOnlyList<GitBranch>>.Fail(current.Stderr);
+        var currentName = current.Stdout.Trim();
+
+        var r = await RunAsync(worktreePath, ct, "for-each-ref", "--format=%(refname:short)", "refs/heads").ConfigureAwait(false);
+        if (!r.Ok) return GitResult<IReadOnlyList<GitBranch>>.Fail(r.Stderr);
+
+        var branches = new List<GitBranch>();
+        foreach (var raw in r.Stdout.Split('\n'))
+        {
+            var name = raw.Trim();
+            if (name.Length == 0) continue;
+            branches.Add(new GitBranch(name, name == currentName));
+        }
+        return GitResult<IReadOnlyList<GitBranch>>.Success(branches);
+    }
+
+    public async Task<GitResult> CreateBranchAsync(string worktreePath, string name, CancellationToken ct = default)
+        => ToResult(await RunAsync(worktreePath, ct, "switch", "-c", name).ConfigureAwait(false));
+
+    public async Task<GitResult> SwitchBranchAsync(string worktreePath, string name, CancellationToken ct = default)
+        => ToResult(await RunAsync(worktreePath, ct, "switch", name).ConfigureAwait(false));
 
     private static GitResult ToResult(ProcOutcome p) => p.Ok ? GitResult.Success() : GitResult.Fail(p.Stderr);
 

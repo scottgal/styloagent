@@ -134,6 +134,30 @@ public class GitServiceIntegrationTests
         finally { TryDeleteRepo(repo); }
     }
 
+    [Fact]
+    public async Task Branch_create_switch_and_list()
+    {
+        if (!GitAvailable()) return;
+        var repo = Path.Combine(Path.GetTempPath(), "gitbranch-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(repo);
+        try
+        {
+            Run(repo, "init -b main"); Run(repo, "config user.email t@t.t"); Run(repo, "config user.name t");
+            File.WriteAllText(Path.Combine(repo, "a.txt"), "one\n"); Run(repo, "add -A"); Run(repo, "commit -m init");
+
+            var git = new Styloagent.Git.GitService();
+            Assert.True((await git.CreateBranchAsync(repo, "feature")).Ok);        // creates + switches
+            var list = await git.ListBranchesAsync(repo);
+            Assert.True(list.Ok);
+            Assert.Contains(list.Value!, b => b.Name == "feature" && b.IsCurrent);
+            Assert.Contains(list.Value!, b => b.Name == "main" && !b.IsCurrent);
+            Assert.True((await git.SwitchBranchAsync(repo, "main")).Ok);
+            var after = await git.ListBranchesAsync(repo);
+            Assert.Contains(after.Value!, b => b.Name == "main" && b.IsCurrent);
+        }
+        finally { TryDeleteRepo(repo); }
+    }
+
     private static void TryDeleteRepo(string repo)
     {
         try { if (Directory.Exists(repo)) Directory.Delete(repo, recursive: true); } catch { }

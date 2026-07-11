@@ -57,10 +57,11 @@ public class MainWindowDockTests
                 // The seeded agent is an open, selected pane, hosted as the active dock document.
                 Assert.True(vm.Panes.Count >= 1, "the seeded agent should be an open pane");
                 Assert.NotNull(vm.SelectedPane);
-                var activeDoc = Assert.IsType<Document>(vm.DocumentDock!.ActiveDockable);
-                Assert.Same(vm.SelectedPane, activeDoc.Context);
+                var activeDoc = Assert.IsType<AgentPaneViewModel>(vm.DocumentDock!.ActiveDockable);
+                Assert.Same(vm.SelectedPane, activeDoc);
 
                 window.Close();
+                vm.Dispose();   // stop the idle/debounce timers so a later test's SettleAsync can idle
             }
             finally
             {

@@ -83,6 +83,7 @@ public class MainWindowScreenshotTests
             // standalone (TerminalInputTests / TerminalScreenshotTests) and in a real GUI.
 
             window.Close();
+            vm.Dispose();   // stop idle/debounce timers so a later test's SettleAsync can idle
         });
 
         Assert.True(System.IO.File.Exists(path), "mainwindow screenshot should be written");

@@ -66,6 +66,7 @@ public class DockChromeRenderTests
                 Assert.Contains("DocumentTabStrip", names);
 
                 window.Close();
+                vm.Dispose();   // stop idle/debounce timers so a later test's SettleAsync can idle
             }
             finally
             {

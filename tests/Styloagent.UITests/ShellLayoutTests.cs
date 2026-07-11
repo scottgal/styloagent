@@ -64,10 +64,10 @@ public class ShellLayoutTests
         var documentDock = rootDock.VisibleDockables?.OfType<DocumentDock>().FirstOrDefault();
         Assert.NotNull(documentDock);
 
-        var doc = documentDock!.VisibleDockables?.OfType<Document>().FirstOrDefault();
+        // The pane VM IS the Dock document (it inherits Document) — the dockable is the pane itself.
+        var doc = documentDock!.VisibleDockables?.OfType<AgentPaneViewModel>().FirstOrDefault();
         Assert.NotNull(doc);
-        Assert.Same(paneVm, doc!.Context);
-        Assert.IsType<AgentPaneViewModel>(doc.Context);
+        Assert.Same(paneVm, doc);
     }
 
     /// <summary>
@@ -83,8 +83,8 @@ public class ShellLayoutTests
 
         var documentDock = factory.DocumentDock;
         Assert.NotNull(documentDock);
-        var doc = Assert.IsType<Document>(documentDock!.ActiveDockable);
-        Assert.Same(paneVm, doc.Context);
+        var doc = Assert.IsType<AgentPaneViewModel>(documentDock!.ActiveDockable);
+        Assert.Same(paneVm, doc);
         Assert.True(doc.CanFloat);
     }
 

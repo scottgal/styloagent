@@ -60,6 +60,7 @@ public class AttentionHudTests
                 var buttons = window.GetVisualDescendants().OfType<Button>().ToList();
                 Assert.Contains(buttons, b => (b.Content?.ToString() ?? "").Contains("Jump"));
                 window.Close();
+                vm.Dispose();   // stop idle/debounce timers so a later test's SettleAsync can idle
             }
             finally { Directory.Delete(root, recursive: true); }
         });

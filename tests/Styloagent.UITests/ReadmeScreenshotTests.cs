@@ -187,6 +187,7 @@ public class ReadmeScreenshotTests
             await HeadlessRender.SettleAsync(window);
             await ScreenshotCapture.CaptureWindowAsync(window, Shot("cockpit.png"), settle: true);
             window.Close();
+            vm.Dispose();   // stop idle/debounce timers so a later test's SettleAsync can idle
         });
     }
 
@@ -247,6 +248,7 @@ public class ReadmeScreenshotTests
                 }
                 await ScreenshotCapture.CaptureControlAsync(window, view, Shot("proposed-team.png"));
                 window.Close();
+                vm.Dispose();   // stop idle/debounce timers so a later test's SettleAsync can idle
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
         });

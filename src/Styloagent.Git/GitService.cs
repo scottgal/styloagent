@@ -9,7 +9,7 @@ namespace Styloagent.Git;
 /// Never throws: failures surface as a failed <see cref="GitResult"/> carrying git's stderr.
 /// Mirrors GitCliReader's process pattern.
 /// </summary>
-public sealed class GitService : IGitService, IGitLog, IGitDiff
+public sealed class GitService : IGitService, IGitLog, IGitDiff, IGitWrite
 {
     public async Task<GitResult<GitStatus>> GetStatusAsync(string worktreePath, CancellationToken ct = default)
     {
@@ -60,6 +60,23 @@ public sealed class GitService : IGitService, IGitLog, IGitDiff
             ? GitResult<FileDiff>.Success(UnifiedDiffParser.Parse(relativePath, r.Stdout))
             : GitResult<FileDiff>.Fail(r.Stderr);
     }
+
+    // IGitWrite — Stage/Unstage/Commit/Push/Pull
+    // Message is passed as a single argv element so multiline and special-char messages are safe without temp files.
+    public async Task<GitResult> StageAsync(string worktreePath, string relativePath, CancellationToken ct = default)
+        => ToResult(await RunAsync(worktreePath, ct, "add", "--", relativePath).ConfigureAwait(false));
+
+    public async Task<GitResult> UnstageAsync(string worktreePath, string relativePath, CancellationToken ct = default)
+        => ToResult(await RunAsync(worktreePath, ct, "restore", "--staged", "--", relativePath).ConfigureAwait(false));
+
+    public async Task<GitResult> CommitAsync(string worktreePath, string message, CancellationToken ct = default)
+        => ToResult(await RunAsync(worktreePath, ct, "commit", "-m", message).ConfigureAwait(false));
+
+    public async Task<GitResult> PushAsync(string worktreePath, CancellationToken ct = default)
+        => ToResult(await RunAsync(worktreePath, ct, "push").ConfigureAwait(false));
+
+    public async Task<GitResult> PullAsync(string worktreePath, CancellationToken ct = default)
+        => ToResult(await RunAsync(worktreePath, ct, "pull", "--no-edit").ConfigureAwait(false));
 
     private static GitResult ToResult(ProcOutcome p) => p.Ok ? GitResult.Success() : GitResult.Fail(p.Stderr);
 

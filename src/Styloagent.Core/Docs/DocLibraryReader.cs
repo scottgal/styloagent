@@ -13,6 +13,13 @@ public static class DocLibraryReader
     };
 
     /// <summary>
+    /// Upper bound on directories scanned in a single read. Far above any normal project's doc tree,
+    /// but guards against an unbounded walk when pointed at a pathological root (a huge repo, the home
+    /// directory, or the OS temp tree) — without it the scan can run for minutes and appear to hang.
+    /// </summary>
+    private const int MaxDirectories = 20_000;
+
+    /// <summary>
     /// Reads all <c>*.md</c> under <paramref name="repoRoot"/> (as <see cref="DocSource.Repo"/>) and
     /// <paramref name="channelRoot"/> (as <see cref="DocSource.Channel"/>), excluding build/VCS dirs.
     /// Either root may be null/missing. Results are ordered by source then relative path.
@@ -49,9 +56,13 @@ public static class DocLibraryReader
     {
         var stack = new Stack<string>();
         stack.Push(root);
+        int visited = 0;
 
         while (stack.Count > 0)
         {
+            if (visited++ >= MaxDirectories)
+                yield break;   // bounded: never let a pathological root turn into a multi-minute scan
+
             string dir = stack.Pop();
 
             string[] files;

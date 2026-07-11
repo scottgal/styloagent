@@ -171,11 +171,16 @@ public class ReadmeScreenshotTests
     }
 
     [Fact]
-    public Task Capture_cockpit()
+    public async Task Capture_cockpit()
     {
         var pty = new FakePtySession();
-        var dir = Path.GetTempPath();
-        return _fx.DispatchAsync(async () =>
+        // Isolated empty repo root — NOT Path.GetTempPath() (DocLibrary recursively scans repoRoot;
+        // the OS temp tree is huge and turns the scan into a multi-minute hang).
+        var dir = Path.Combine(Path.GetTempPath(), "sty-cockpit-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+        await _fx.DispatchAsync(async () =>
         {
             var vm = await MainWindowViewModel.InitializeAsync(
                 "/tmp/no-channel", new OneShotLauncher(pty), new NoOpWatcher(), new OneWorktreeReader(dir), dir);
@@ -189,6 +194,8 @@ public class ReadmeScreenshotTests
             window.Close();
             vm.Dispose();   // stop idle/debounce timers so a later test's SettleAsync can idle
         });
+        }
+        finally { try { Directory.Delete(dir, recursive: true); } catch { } }
     }
 
     [Fact]

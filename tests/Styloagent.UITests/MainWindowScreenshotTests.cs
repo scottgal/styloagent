@@ -43,8 +43,13 @@ public class MainWindowScreenshotTests
         const string path = "/tmp/styloagent-mainwindow.png";
         if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
         var pty = new FakePtySession();
-        var dir = System.IO.Path.GetTempPath();
+        // An ISOLATED empty repo root — never Path.GetTempPath() (the OS temp tree is huge, and the
+        // DocLibrary recursively scans repoRoot; scanning /var/folders/.../T can take minutes → hang).
+        var dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "sty-mwss-" + System.Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(dir);
 
+        try
+        {
         await _fx.DispatchAsync(async () =>
         {
             var vm = await MainWindowViewModel.InitializeAsync(
@@ -87,5 +92,7 @@ public class MainWindowScreenshotTests
         });
 
         Assert.True(System.IO.File.Exists(path), "mainwindow screenshot should be written");
+        }
+        finally { try { System.IO.Directory.Delete(dir, recursive: true); } catch { } }
     }
 }

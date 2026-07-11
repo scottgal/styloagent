@@ -1,0 +1,111 @@
+name: release
+
+# Cross-platform release. Styloagent's App references lucidVIEW's markdown control by a *sibling*
+# project path (..\..\..\lucidview\...), and lucidVIEW pulls LiveMarkdown.Avalonia as a submodule,
+# so CI checks out both repos side-by-side before publishing. (Longer term, publishing
+# Mostlylucid.LucidView.Markdown to NuGet removes the multi-repo checkout.)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, rid: win-x64,  asset: styloagent-windows-x64 }
+          - { os: ubuntu-latest,  rid: linux-x64, asset: styloagent-linux-x64 }
+          - { os: macos-latest,   rid: osx-arm64, asset: styloagent-macos-arm64 }
+          - { os: macos-latest,   rid: osx-x64,   asset: styloagent-macos-x64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout styloagent
+        uses: actions/checkout@v4
+        with:
+          path: styloagent
+
+      - name: Checkout lucidVIEW (+ submodules)
+        uses: actions/checkout@v4
+        with:
+          repository: scottgal/lucidview
+          path: lucidview
+          submodules: recursive
+          # For a private lucidVIEW, add: token: ${{ secrets.LUCIDVIEW_PAT }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish (self-contained)
+        working-directory: styloagent
+        run: >
+          dotnet publish src/Styloagent.App -c Release -r ${{ matrix.rid }}
+          --self-contained -p:PublishSingleFile=false -o publish
+
+      - name: Package (macOS .app)
+        if: startsWith(matrix.rid, 'osx')
+        working-directory: styloagent
+        env:
+          ASSET: ${{ matrix.asset }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          APP="Styloagent.app"
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp -R publish/. "$APP/Contents/MacOS/"
+          chmod +x "$APP/Contents/MacOS/Styloagent.App"
+          cp src/Styloagent.App/icon.icns "$APP/Contents/Resources/icon.icns"
+          # Non-interpolating heredoc for the fixed plist; version substituted from $VERSION after.
+          cat > "$APP/Contents/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>CFBundleExecutable</key><string>Styloagent.App</string>
+            <key>CFBundleIconFile</key><string>icon</string>
+            <key>CFBundleIdentifier</key><string>com.mostlylucid.styloagent</string>
+            <key>CFBundleName</key><string>Styloagent</string>
+            <key>CFBundleDisplayName</key><string>Styloagent</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>__VERSION__</string>
+            <key>CFBundleVersion</key><string>1</string>
+            <key>LSMinimumSystemVersion</key><string>11.0</string>
+            <key>NSHighResolutionCapable</key><true/>
+            <key>NSPrincipalClass</key><string>NSApplication</string>
+          </dict></plist>
+          PLIST
+          SAFE_VERSION="${VERSION//[^A-Za-z0-9._-]/}"
+          sed -i '' "s/__VERSION__/${SAFE_VERSION}/" "$APP/Contents/Info.plist"
+          ditto -c -k --keepParent "$APP" "${ASSET}.zip"
+
+      - name: Package (Windows / Linux)
+        if: ${{ !startsWith(matrix.rid, 'osx') }}
+        working-directory: styloagent
+        shell: bash
+        env:
+          ASSET: ${{ matrix.asset }}
+        run: |
+          cd publish
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            7z a "../${ASSET}.zip" .
+          else
+            zip -r "../${ASSET}.zip" .
+          fi
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: styloagent/${{ matrix.asset }}.zip
+
+      - name: Upload artifact (manual runs)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: styloagent/${{ matrix.asset }}.zip

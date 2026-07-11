@@ -22,9 +22,10 @@ dotnet build src/Styloagent.App -c "${CONFIG}" --nologo -v quiet
 
 echo "▸ assembling ${APP}…"
 rm -rf "${APP}"
-mkdir -p "${APP}/Contents/MacOS"
+mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
 cp -R "${BIN}/." "${APP}/Contents/MacOS/"
 chmod +x "${APP}/Contents/MacOS/Styloagent.App"
+cp src/Styloagent.App/icon.icns "${APP}/Contents/Resources/icon.icns"
 
 cat > "${APP}/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -32,6 +33,7 @@ cat > "${APP}/Contents/Info.plist" <<'PLIST'
 <plist version="1.0">
 <dict>
   <key>CFBundleExecutable</key><string>Styloagent.App</string>
+  <key>CFBundleIconFile</key><string>icon</string>
   <key>CFBundleIdentifier</key><string>com.mostlylucid.styloagent</string>
   <key>CFBundleName</key><string>Styloagent</string>
   <key>CFBundleDisplayName</key><string>Styloagent</string>

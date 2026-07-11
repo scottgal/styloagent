@@ -1,0 +1,75 @@
+using System.Diagnostics;
+using Styloagent.Core.Git;
+
+namespace Styloagent.Git;
+
+/// <summary>
+/// <see cref="IGitService"/> backed by the <c>git</c> CLI. Never throws: failures surface as a
+/// failed <see cref="GitResult"/> carrying git's stderr. Mirrors GitCliReader's process pattern.
+/// </summary>
+public sealed class GitService : IGitService
+{
+    public async Task<GitResult<GitStatus>> GetStatusAsync(string worktreePath, CancellationToken ct = default)
+    {
+        var r = await RunAsync(worktreePath, ct, "status", "--porcelain=v2", "--branch");
+        return r.Ok ? GitResult<GitStatus>.Success(GitStatusParser.Parse(r.Stdout)) : GitResult<GitStatus>.Fail(r.Stderr);
+    }
+
+    public async Task<GitResult> AddWorktreeAsync(string repoRoot, string worktreePath, string newBranch, CancellationToken ct = default)
+        => ToResult(await RunAsync(repoRoot, ct, "worktree", "add", worktreePath, "-b", newBranch));
+
+    public async Task<GitResult> RemoveWorktreeAsync(string repoRoot, string worktreePath, CancellationToken ct = default)
+        => ToResult(await RunAsync(repoRoot, ct, "worktree", "remove", "--force", worktreePath));
+
+    public async Task<GitResult> MergeNoFfAsync(string repoRoot, string sourceBranch, string intoBranch, CancellationToken ct = default)
+    {
+        var checkout = await RunAsync(repoRoot, ct, "checkout", intoBranch);
+        if (!checkout.Ok) return GitResult.Fail(checkout.Stderr);
+        return ToResult(await RunAsync(repoRoot, ct, "merge", "--no-ff", "--no-edit", sourceBranch));
+    }
+
+    public async Task<GitResult> AbortMergeAsync(string repoRoot, CancellationToken ct = default)
+        => ToResult(await RunAsync(repoRoot, ct, "merge", "--abort"));
+
+    public async Task<GitResult> DeleteBranchAsync(string repoRoot, string branch, bool force, CancellationToken ct = default)
+        => ToResult(await RunAsync(repoRoot, ct, "branch", force ? "-D" : "-d", branch));
+
+    private static GitResult ToResult(ProcOutcome p) => p.Ok ? GitResult.Success() : GitResult.Fail(p.Stderr);
+
+    private readonly record struct ProcOutcome(bool Ok, string Stdout, string Stderr);
+
+    private static async Task<ProcOutcome> RunAsync(string workingDir, CancellationToken ct, params string[] args)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo(ResolveGit())
+            {
+                WorkingDirectory = workingDir,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            foreach (var a in args) psi.ArgumentList.Add(a);
+
+            using var proc = Process.Start(psi);
+            if (proc is null) return new ProcOutcome(false, "", "failed to start git");
+            string stdout = await proc.StandardOutput.ReadToEndAsync(ct);
+            string stderr = await proc.StandardError.ReadToEndAsync(ct);
+            await proc.WaitForExitAsync(ct);
+            return new ProcOutcome(proc.ExitCode == 0, stdout, stderr);
+        }
+        catch (Exception ex)
+        {
+            return new ProcOutcome(false, "", ex.Message);
+        }
+    }
+
+    // Finder-launched .apps don't inherit the login PATH; resolve git explicitly (matches GitCliReader).
+    private static string ResolveGit()
+    {
+        foreach (var p in new[] { "/opt/homebrew/bin/git", "/usr/local/bin/git", "/usr/bin/git" })
+            if (File.Exists(p)) return p;
+        return "git";
+    }
+}

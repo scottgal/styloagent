@@ -8,4 +8,5 @@ public sealed record BusMessage(
     string FilePath,
     DateTimeOffset? Timestamp,
     string? From,
-    string Body);
+    string Body,
+    MessagePriority Priority = MessagePriority.Normal);

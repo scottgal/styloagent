@@ -15,6 +15,9 @@ public sealed class ChannelProjection
     private static readonly Regex TimestampPattern =
         new(@"^\*\*Timestamp:\*\*\s*(.+)$", RegexOptions.Multiline | RegexOptions.Compiled);
 
+    private static readonly Regex PriorityPattern =
+        new(@"^\*\*Priority:\*\*\s*(.+)$", RegexOptions.Multiline | RegexOptions.Compiled);
+
     public async Task<IReadOnlyList<BusThread>> ReadAsync(
         string channelRoot,
         IReadOnlyCollection<string> knownPrefixes,
@@ -185,6 +188,25 @@ public sealed class ChannelProjection
             timestamp = parsed;
         }
 
-        return new BusMessage(slug, routingPrefix, kind, state, filePath, timestamp, from, body);
+        var priorityMatch = PriorityPattern.Match(body);
+        var priority = priorityMatch.Success
+            ? ParsePriority(priorityMatch.Groups[1].Value)
+            : MessagePriority.Normal;
+
+        return new BusMessage(slug, routingPrefix, kind, state, filePath, timestamp, from, body, priority);
     }
+
+    /// <summary>
+    /// Maps a <c>**Priority:**</c> header value to a <see cref="MessagePriority"/>. Case-insensitive
+    /// and tolerant: anything unrecognized (or empty) falls back to <see cref="MessagePriority.Normal"/>.
+    /// </summary>
+    internal static MessagePriority ParsePriority(string raw) =>
+        raw.Trim().ToLowerInvariant() switch
+        {
+            "urgent" => MessagePriority.Urgent,
+            "normal" => MessagePriority.Normal,
+            "low"    => MessagePriority.Low,
+            "info" or "informational" => MessagePriority.Info,
+            _ => MessagePriority.Normal,
+        };
 }

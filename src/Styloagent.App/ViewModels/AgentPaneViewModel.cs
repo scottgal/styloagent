@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Dock.Model.Mvvm.Controls;
+using Styloagent.Core.Git;
 using Styloagent.Core.Hooks;
 using Styloagent.Core.Model;
 using Styloagent.Core.Sessions;
@@ -146,6 +147,18 @@ public sealed partial class AgentPaneViewModel : Document
 
     /// <summary>The agent's dedicated branch (agent/&lt;slug&gt;), or null if it shares the repo.</summary>
     public string? WorktreeBranch { get; set; }
+
+    /// <summary>Compact git status badge text for the roster (e.g. "✓", "↑3 ↓1 ✎", "⚠ conflict", "").</summary>
+    [ObservableProperty]
+    private string _gitBadgeText = "";
+
+    /// <summary>Recomputes the git badge for this pane's worktree (no-op if it has none).</summary>
+    public async Task RefreshGitStatusAsync(IGitService git)
+    {
+        if (WorktreePath is null) { GitBadgeText = ""; return; }
+        var status = await git.GetStatusAsync(WorktreePath);
+        GitBadgeText = GitBadge.Format(status.Ok ? status.Value : null, hasWorktree: true);
+    }
 
     public AgentPaneViewModel(
         AgentSession session,

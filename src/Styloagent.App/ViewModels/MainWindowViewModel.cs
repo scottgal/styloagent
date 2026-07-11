@@ -574,6 +574,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var proposed = new ProposedAgent(req.Prefix, req.Responsibility, req.Dir, req.LaunchPrompt);
         var paneVm = CreatePaneForProposed(proposed, parentPrefix: req.ParentPrefix, depth: parentDepth + 1,
             worktreeOverride: worktreePath, worktreeBranch: worktreeBranch);
+        if (worktreePath is not null && _git is not null)
+            _ = paneVm!.RefreshGitStatusAsync(_git);
         return paneVm is null
             ? SpawnOutcome.Reject(RejectReason.InvalidPrefix, "could not create pane")
             : SpawnOutcome.Ok(req.Prefix);

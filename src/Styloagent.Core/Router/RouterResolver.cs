@@ -21,6 +21,8 @@ public static class RouterResolver
             int free = r.Policy.Capacity - liveGrants.Count;
             if (free <= 0) continue;
 
+            if (IsCooling(r, now, out _)) continue;   // withhold new grants; existing grants untouched
+
             var queued = r.Claims
                 .Where(c => !heldPrefixes.Contains(c.Prefix))
                 .OrderBy(c => c.Timestamp).ThenBy(c => c.Prefix, StringComparer.Ordinal)
@@ -30,6 +32,28 @@ public static class RouterResolver
                 decisions.Add(new RouterDecision(RouterAction.Grant, r.Env, r.Kind, r.Name, claim.Prefix, now + r.Policy.LeaseTtl));
         }
         return decisions;
+    }
+
+    /// <summary>
+    /// True when the account is in lockout cooldown: at least Budget failures since its last success,
+    /// within Window, and now is before (the budget-th such failure + Cooldown). Slots / no-lockout resources never cool.
+    /// </summary>
+    public static bool IsCooling(ResourceState r, DateTimeOffset now, out DateTimeOffset until)
+    {
+        until = default;
+        if (r.Policy.Lockout is not { } lo) return false;
+
+        // Failures since the last success, within the window, newest-relevant-first.
+        var lastOk = r.Attempts.Where(a => a.Ok).Select(a => (DateTimeOffset?)a.Timestamp).LastOrDefault();
+        var fails = r.Attempts
+            .Where(a => !a.Ok && a.Timestamp >= now - lo.Window && (lastOk is null || a.Timestamp > lastOk))
+            .OrderBy(a => a.Timestamp)
+            .ToList();
+        if (fails.Count < lo.Budget) return false;
+
+        var tripping = fails[lo.Budget - 1].Timestamp;   // the budget-th failure
+        until = tripping + lo.Cooldown;
+        return now < until;
     }
 
     internal static bool IsExpired(Grant g, TimeSpan leaseTtl, DateTimeOffset now) => now - g.HeartbeatAt >= leaseTtl;

@@ -79,4 +79,42 @@ public class RouterResolverTests
         var decisions = RouterResolver.Resolve(new RouterState(new[] { r }), T(10));
         Assert.Empty(decisions);
     }
+
+    private static ResourceState AccountWithLockout(string name, AttemptLine[] attempts, Claim[] claims) =>
+        new("prod", ResourceKind.Account, name,
+            new ResourcePolicy(1, new LockoutPolicy(Budget: 3, Window: TimeSpan.FromMinutes(10), Cooldown: TimeSpan.FromMinutes(15)), TimeSpan.FromMinutes(2)),
+            claims, System.Array.Empty<Grant>(), attempts);
+
+    [Fact]
+    public void Cooling_account_is_not_granted()
+    {
+        var attempts = new[] { new AttemptLine(T(1), false), new AttemptLine(T(2), false), new AttemptLine(T(3), false) };
+        var r = AccountWithLockout("deploy", attempts, new[] { new Claim("foss-", T(4), "") });
+        // 3 fails within window, budget 3, cooldown 15m: cooling until T(3)+15m. At T(10) => cooling.
+        var decisions = RouterResolver.Resolve(new RouterState(new[] { r }), T(10));
+        Assert.Empty(decisions);
+        Assert.True(RouterResolver.IsCooling(r, T(10), out var until));
+        Assert.Equal(T(3) + TimeSpan.FromMinutes(15), until);
+    }
+
+    [Fact]
+    public void A_success_clears_the_failure_streak()
+    {
+        var attempts = new[] { new AttemptLine(T(1), false), new AttemptLine(T(2), false),
+                               new AttemptLine(T(3), true),  new AttemptLine(T(4), false) };  // 1 fail since last ok
+        var r = AccountWithLockout("deploy", attempts, new[] { new Claim("foss-", T(5), "") });
+        var decisions = RouterResolver.Resolve(new RouterState(new[] { r }), T(10));
+        Assert.False(RouterResolver.IsCooling(r, T(10), out _));
+        Assert.Single(decisions);                       // granted — not cooling
+    }
+
+    [Fact]
+    public void Cooldown_lapses_after_the_window()
+    {
+        var attempts = new[] { new AttemptLine(T(1), false), new AttemptLine(T(2), false), new AttemptLine(T(3), false) };
+        var r = AccountWithLockout("deploy", attempts, new[] { new Claim("foss-", T(4), "") });
+        var afterCooldown = T(3) + TimeSpan.FromMinutes(15) + TimeSpan.FromSeconds(1);
+        Assert.False(RouterResolver.IsCooling(r, afterCooldown, out _));
+        Assert.Single(RouterResolver.Resolve(new RouterState(new[] { r }), afterCooldown));
+    }
 }

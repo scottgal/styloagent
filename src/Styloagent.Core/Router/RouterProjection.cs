@@ -110,7 +110,9 @@ public static partial class RouterProjection
             }
         }
         catch { }
-        return list;
+        // Guarantee chronological order so consumers (IsCooling's last-success + fail window)
+        // are correct regardless of the file's line order.
+        return list.OrderBy(a => a.Timestamp).ToList();
     }
 
     private static DateTimeOffset? ParseTs(Match m)

@@ -43,7 +43,8 @@ public static class RouterResolver
         until = default;
         if (r.Policy.Lockout is not { } lo) return false;
 
-        // Failures since the last success, within the window, newest-relevant-first.
+        // Failures since the last success, within the window. Attempts are chronological (oldest-first),
+        // guaranteed by RouterProjection, so LastOrDefault() is the latest success.
         var lastOk = r.Attempts.Where(a => a.Ok).Select(a => (DateTimeOffset?)a.Timestamp).LastOrDefault();
         var fails = r.Attempts
             .Where(a => !a.Ok && a.Timestamp >= now - lo.Window && (lastOk is null || a.Timestamp > lastOk))

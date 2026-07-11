@@ -11,6 +11,8 @@
 - `src/Styloagent.Git/Vendored/Models/Commit.cs` (adapted from `src/Models/Commit.cs`)
 - `src/Styloagent.Git/Vendored/Models/User.cs` (adapted from `src/Models/User.cs`)
 - `src/Styloagent.Git/Vendored/Models/Decorator.cs` (adapted from `src/Models/Decorator.cs`)
+- `src/Styloagent.Git/Vendored/Models/CommitGraph.cs` (adapted from `src/Models/CommitGraph.cs`)
+- `src/Styloagent.Git/Vendored/Controls/CommitGraphControl.cs` (adapted from `src/Views/CommitGraph.cs`)
 
 ### MIT License
 

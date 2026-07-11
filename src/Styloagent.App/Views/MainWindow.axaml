@@ -47,10 +47,30 @@
 
       <GridSplitter Grid.Column="3" Background="#222" />
       <TabControl Grid.Column="4" Background="#0D0D1A">
-        <TabItem Header="Signal Bus">
+        <TabControl.Styles>
+          <!-- Match the roster header typography so left/right titles read consistently. -->
+          <Style Selector="TabItem">
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="#9D7FE0" />
+          </Style>
+        </TabControl.Styles>
+        <TabItem>
+          <TabItem.Header>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ic:SymbolIcon Symbol="Communication" FontSize="15" VerticalAlignment="Center" />
+              <TextBlock Text="Signal Bus" VerticalAlignment="Center" />
+            </StackPanel>
+          </TabItem.Header>
           <views:BusView DataContext="{Binding BusViewModel}" />
         </TabItem>
-        <TabItem Header="Documents">
+        <TabItem>
+          <TabItem.Header>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ic:SymbolIcon Symbol="Document" FontSize="15" VerticalAlignment="Center" />
+              <TextBlock Text="Documents" VerticalAlignment="Center" />
+            </StackPanel>
+          </TabItem.Header>
           <views:DocLibraryView DataContext="{Binding DocLibrary}" />
         </TabItem>
       </TabControl>

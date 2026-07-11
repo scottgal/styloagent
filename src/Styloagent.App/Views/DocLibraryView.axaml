@@ -9,17 +9,13 @@
     <Grid RowDefinitions="Auto,*">
 
       <Border Grid.Row="0" Background="#1A1A2E" Padding="8,6">
-        <StackPanel>
-          <TextBlock Text="Documents" FontWeight="Bold" FontSize="13"
-                     Foreground="#9D7FE0" LetterSpacing="1" />
-          <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
-            <Button Content="System Map" FontSize="10" Padding="6,1"
-                    Command="{Binding ShowSystemMapCommand}" />
-            <Button Content="Bus Sequence" FontSize="10" Padding="6,1"
-                    Command="{Binding ShowBusSequenceCommand}" />
-            <Button Content="Architecture" FontSize="10" Padding="6,1"
-                    Command="{Binding ShowArchitectureCommand}" />
-          </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Button Content="System Map" FontSize="10" Padding="6,1"
+                  Command="{Binding ShowSystemMapCommand}" />
+          <Button Content="Bus Sequence" FontSize="10" Padding="6,1"
+                  Command="{Binding ShowBusSequenceCommand}" />
+          <Button Content="Architecture" FontSize="10" Padding="6,1"
+                  Command="{Binding ShowArchitectureCommand}" />
         </StackPanel>
       </Border>
 

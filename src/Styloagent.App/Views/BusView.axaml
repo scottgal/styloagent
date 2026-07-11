@@ -48,14 +48,9 @@
   </UserControl.Resources>
 
   <Border Background="#0D0D1A" CornerRadius="4">
-    <Grid RowDefinitions="Auto,*">
+    <Grid RowDefinitions="*">
 
-      <Border Grid.Row="0" Background="#1A1A2E" Padding="8,6">
-        <TextBlock Text="Signal Bus" FontWeight="Bold" FontSize="13"
-                   Foreground="#9D7FE0" LetterSpacing="1" />
-      </Border>
-
-      <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+      <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
         <StackPanel>
 
           <!-- Section headers use plain-Text TextBlocks (NOT Runs): a TextBlock with inline Runs

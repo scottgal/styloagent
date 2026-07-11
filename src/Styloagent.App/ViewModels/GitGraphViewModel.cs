@@ -16,6 +16,9 @@ public sealed partial class GitGraphViewModel : ObservableObject
     private CommitGraph? _graph;
 
     [ObservableProperty]
+    private CommitGraphLayout? _layout;
+
+    [ObservableProperty]
     private int _commitCount;
 
     public GitGraphViewModel(IGitLog log) => _log = log;
@@ -26,6 +29,7 @@ public sealed partial class GitGraphViewModel : ObservableObject
         if (!result.Ok || result.Value is null || result.Value.Count == 0)
         {
             Graph = null;
+            Layout = null;
             CommitCount = 0;
             return;
         }
@@ -33,6 +37,7 @@ public sealed partial class GitGraphViewModel : ObservableObject
         CommitGraph.SetDefaultPens();
         Graph = CommitGraph.Generate(commits, recalculateMergeState: false,
             firstParentOnlyEnabled: false, CommitGraphHighlighting.All, new HashSet<string>());
+        Layout = new CommitGraphLayout(StartY: 0, ClipWidth: 400, RowHeight: 24);
         CommitCount = commits.Count;
     }
 }

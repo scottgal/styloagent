@@ -1,0 +1,30 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
+             xmlns:graph="clr-namespace:Styloagent.Git.Vendored.Controls;assembly=Styloagent.Git"
+             x:Class="Styloagent.App.Views.GitGraphView"
+             x:DataType="vm:GitGraphViewModel">
+
+  <Border Background="{DynamicResource PanelBgBrush}" CornerRadius="4">
+    <Grid RowDefinitions="Auto,*">
+
+      <Border Grid.Row="0" Background="{DynamicResource PanelHeaderBgBrush}" Padding="8,6">
+        <TextBlock Text="{Binding CommitCount, StringFormat='History · {0} commits'}"
+                   FontSize="11" Foreground="{DynamicResource MutedTextBrush}" />
+      </Border>
+
+      <!-- Empty state -->
+      <TextBlock Grid.Row="1" IsVisible="{Binding Graph, Converter={x:Static ObjectConverters.IsNull}}"
+                 Text="No history — this agent has no worktree yet."
+                 FontSize="11" Foreground="{DynamicResource MutedTextBrush}" Padding="12" />
+
+      <ScrollViewer Grid.Row="1" IsVisible="{Binding Graph, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <graph:CommitGraphControl Graph="{Binding Graph}"
+                                  Layout="{Binding Layout}"
+                                  DotBrush="{DynamicResource AccentBrush}" />
+      </ScrollViewer>
+
+    </Grid>
+  </Border>
+
+</UserControl>

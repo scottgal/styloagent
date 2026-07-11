@@ -13,6 +13,7 @@ using Styloagent.Core.Attention;
 using Styloagent.Core.Channel;
 using Styloagent.Core.Git;
 using Styloagent.Core.Hooks;
+using Styloagent.Git;
 using Styloagent.Core.Mcp;
 using Styloagent.Core.Model;
 using Styloagent.Core.Projects;
@@ -508,6 +509,35 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             return IssueOutcome.Fail(ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Runs the gated wrap-up for the agent identified by <paramref name="callerPrefix"/>. Requires an
+    /// active project and that the agent was spawned with a worktree. Runs on the UI thread.
+    /// </summary>
+    public WrapUpOutcome WrapUp(string callerPrefix)
+    {
+        if (_project is null) return new WrapUpOutcome(WrapUpStatus.KeptUncommitted, "no active project", null);
+        if (_git is null) return new WrapUpOutcome(WrapUpStatus.KeptUncommitted, "git unavailable", null);
+
+        var pane = Panes.FirstOrDefault(p => p.Prefix == callerPrefix);
+        if (pane?.WorktreePath is null || pane.WorktreeBranch is null)
+            return new WrapUpOutcome(WrapUpStatus.KeptUncommitted,
+                $"{callerPrefix} has no worktree to wrap up.", null);
+
+        var policy = GitPolicyReader.Read(_project.GitPolicyPath);
+        var svc = new WrapUpService(_git, new ProcessTestRunner());
+        var req = new WrapUpRequest(callerPrefix, _project.Root, pane.WorktreePath, pane.WorktreeBranch);
+
+        var outcome = svc.WrapUpAsync(req, policy, _project.IssuesDir).GetAwaiter().GetResult();
+
+        Issues?.Refresh();
+        if (outcome.Merged)
+        {
+            pane.WorktreePath = null;
+            pane.WorktreeBranch = null;
+        }
+        return outcome;
     }
 
     /// <summary>Turns a proposed subsystem into a live roster agent (mirrors AddAgent).</summary>

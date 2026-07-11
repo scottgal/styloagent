@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Styloagent.App.Mcp;
+using Styloagent.Core.Git;
 using Styloagent.Core.Mcp;
 using Xunit;
 
@@ -13,6 +14,7 @@ public class StyloagentMcpServerTests
         public Task<SpawnOutcome> SpawnAsync(SpawnRequest req) => Task.FromResult(SpawnOutcome.Ok(req.Prefix));
         public FleetSnapshot Snapshot() => new(Array.Empty<FleetMember>(), 12, 3, false);
         public Task<IssueOutcome> ReportIssueAsync(IssueRequest req) => Task.FromResult(IssueOutcome.Ok("issue"));
+        public Task<WrapUpOutcome> WrapUpAsync(string callerPrefix) => Task.FromResult(new WrapUpOutcome(WrapUpStatus.Merged, "merged", null));
     }
 
     [Fact]

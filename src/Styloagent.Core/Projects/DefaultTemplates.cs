@@ -68,6 +68,9 @@ You have these MCP tools from the `styloagent` server:
 - `report_issue(title, detail, severity)` — file a blocker, defect, or gap you cannot resolve into
   the shared issues list (severity `low` / `medium` / `high`). Use it for things the human or another
   agent must pick up; use the bus for routine coordination.
+- `wrap_up()` — when your branch is committed and the work is done, call this to hand off: Styloagent
+  runs the project's tests, merges your branch to main and removes your worktree, or (on failure) keeps
+  the worktree and files an issue for triage. Only agents spawned with a worktree can wrap up.
 
 As sub-agents learn the real system they report back over the bus (see `.styloagent/PROTOCOL.md`).
 Fold that back into the spec → re-derive the architecture → adjust the fleet, so the three docs stay a

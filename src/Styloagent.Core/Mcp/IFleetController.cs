@@ -1,3 +1,5 @@
+using Styloagent.Core.Git;
+
 namespace Styloagent.Core.Mcp;
 
 /// <summary>
@@ -9,4 +11,5 @@ public interface IFleetController
     Task<SpawnOutcome> SpawnAsync(SpawnRequest req);
     FleetSnapshot Snapshot();
     Task<IssueOutcome> ReportIssueAsync(IssueRequest req);
+    Task<WrapUpOutcome> WrapUpAsync(string callerPrefix);
 }

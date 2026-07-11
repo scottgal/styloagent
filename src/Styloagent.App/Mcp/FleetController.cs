@@ -1,5 +1,6 @@
 using Avalonia.Threading;
 using Styloagent.App.ViewModels;
+using Styloagent.Core.Git;
 using Styloagent.Core.Mcp;
 
 namespace Styloagent.App.Mcp;
@@ -21,4 +22,7 @@ public sealed class FleetController : IFleetController
 
     public Task<IssueOutcome> ReportIssueAsync(IssueRequest req)
         => Dispatcher.UIThread.InvokeAsync(() => _vm.ReportIssue(req)).GetTask();
+
+    public Task<WrapUpOutcome> WrapUpAsync(string callerPrefix)
+        => Dispatcher.UIThread.InvokeAsync(() => _vm.WrapUp(callerPrefix)).GetTask();
 }

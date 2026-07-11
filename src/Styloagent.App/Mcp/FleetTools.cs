@@ -3,6 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Server;
+using Styloagent.Core.Git;
 using Styloagent.Core.Mcp;
 
 namespace Styloagent.App.Mcp;
@@ -95,6 +96,19 @@ public sealed class FleetTools
 
         var outcome = await _controller.ReportIssueAsync(new IssueRequest(caller, title, detail, severity));
         return outcome.Filed ? outcome.Message : $"rejected: {outcome.Message}";
+    }
+
+    [McpServerTool, Description("Signal you have finished your work in your worktree. Styloagent will guard-clean, run the project's tests, merge your branch to main and remove the worktree — or, on failure, keep your worktree and file an issue. Only call when your branch is committed and the work is complete.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> wrap_up()
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        var caller = McpAuth.CallerPrefix(ctx);
+        if (caller is null) return "unauthorized: missing caller identity";
+
+        var outcome = await _controller.WrapUpAsync(caller);
+        return outcome.Message;
     }
 #pragma warning restore CA1707
 }

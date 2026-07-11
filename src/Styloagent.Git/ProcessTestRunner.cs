@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text;
 using Styloagent.Core.Git;
 
 namespace Styloagent.Git;
@@ -30,11 +29,12 @@ public sealed class ProcessTestRunner : ITestRunner
             using var proc = Process.Start(psi);
             if (proc is null) return new TestOutcome(false, "failed to start test process");
 
-            var sb = new StringBuilder();
-            sb.Append(await proc.StandardOutput.ReadToEndAsync(ct).ConfigureAwait(false));
-            sb.Append(await proc.StandardError.ReadToEndAsync(ct).ConfigureAwait(false));
+            var stdoutTask = proc.StandardOutput.ReadToEndAsync(ct);
+            var stderrTask = proc.StandardError.ReadToEndAsync(ct);
+            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
             await proc.WaitForExitAsync(ct).ConfigureAwait(false);
-            return new TestOutcome(proc.ExitCode == 0, sb.ToString());
+            var output = (await stdoutTask.ConfigureAwait(false)) + (await stderrTask.ConfigureAwait(false));
+            return new TestOutcome(proc.ExitCode == 0, output);
         }
         catch (Exception ex)
         {

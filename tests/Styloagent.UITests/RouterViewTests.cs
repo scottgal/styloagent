@@ -42,6 +42,7 @@ public class RouterViewTests : IDisposable
         return _fx.DispatchAsync(async () =>
         {
             var vm = new RouterViewModel(_routerRoot);
+            vm.Refresh();
             var view = new RouterView { DataContext = vm };
             var window = new Window { Width = 400, Height = 600, Content = view };
             window.Show();

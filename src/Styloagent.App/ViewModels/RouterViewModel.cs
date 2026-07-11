@@ -32,7 +32,6 @@ public sealed partial class RouterViewModel : ObservableObject
     public RouterViewModel(string routerRoot)
     {
         _routerRoot = routerRoot;
-        Refresh();
     }
 
     [RelayCommand]

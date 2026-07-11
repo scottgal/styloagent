@@ -38,8 +38,8 @@ public sealed class FleetTools
         => (_http, _controller, _auth) = (http, controller, auth);
 
 #pragma warning disable CA1707 // Identifiers should not contain underscores — tool names are MCP contract and must match the wire protocol
-    [McpServerTool, Description("Launch a child agent under you. prefix is a short lowercase tag ending in '-'.")]
-    public async Task<string> spawn_agent(string prefix, string responsibility, string dir, string launchPrompt)
+    [McpServerTool, Description("Launch a child agent under you. prefix is a short lowercase tag ending in '-'. Set worktree=true when this agent's work overlaps files another agent owns, so it runs isolated on its own git worktree/branch; otherwise false to share the repo.")]
+    public async Task<string> spawn_agent(string prefix, string responsibility, string dir, string launchPrompt, bool worktree)
     {
         var ctx = _http.HttpContext;
         if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
@@ -48,7 +48,7 @@ public sealed class FleetTools
 
         var outcome = await _controller.SpawnAsync(
             new SpawnRequest(parent, prefix, responsibility,
-                string.IsNullOrWhiteSpace(dir) ? "." : dir, launchPrompt));
+                string.IsNullOrWhiteSpace(dir) ? "." : dir, launchPrompt, worktree));
 
         return outcome.Spawned ? outcome.Message : $"rejected: {outcome.Message}";
     }

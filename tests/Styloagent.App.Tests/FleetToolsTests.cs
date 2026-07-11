@@ -33,7 +33,7 @@ public class FleetToolsTests
         var ctrl = new FakeController();
         var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), ctrl, new McpAuth("secret"));
 
-        var result = await tools.spawn_agent("foss-", "owns FOSS", ".", "You are foss-.");
+        var result = await tools.spawn_agent("foss-", "owns FOSS", ".", "You are foss-.", worktree: false);
 
         Assert.Equal("overview-", ctrl.LastReq!.ParentPrefix);
         Assert.Equal("foss-", ctrl.LastReq.Prefix);
@@ -46,7 +46,7 @@ public class FleetToolsTests
         var ctrl = new FakeController { Next = SpawnOutcome.Reject(RejectReason.FleetFull, "fleet full (12/12)") };
         var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), ctrl, new McpAuth("secret"));
 
-        var result = await tools.spawn_agent("foss-", "r", ".", "p");
+        var result = await tools.spawn_agent("foss-", "r", ".", "p", worktree: false);
         Assert.Contains("rejected", result);
         Assert.Contains("fleet full", result);
     }
@@ -56,7 +56,7 @@ public class FleetToolsTests
     {
         var ctrl = new FakeController();
         var tools = new FleetTools(AccessorWith("overview-", "Bearer WRONG"), ctrl, new McpAuth("secret"));
-        var result = await tools.spawn_agent("foss-", "r", ".", "p");
+        var result = await tools.spawn_agent("foss-", "r", ".", "p", worktree: false);
         Assert.Null(ctrl.LastReq);            // never reached the controller
         Assert.Contains("unauthorized", result);
     }
@@ -92,6 +92,17 @@ public class FleetToolsTests
         var result = await tools.report_issue("t", "d", "low");
         Assert.Null(ctrl.LastIssue);
         Assert.Contains("unauthorized", result);
+    }
+
+    [Fact]
+    public async Task spawn_agent_passes_the_worktree_flag_through()
+    {
+        var ctrl = new FakeController();
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), ctrl, new McpAuth("secret"));
+
+        await tools.spawn_agent("foss-", "owns FOSS", ".", "You are foss-.", worktree: true);
+
+        Assert.True(ctrl.LastReq!.Worktree);
     }
 
     [Fact]

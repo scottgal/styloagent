@@ -22,7 +22,7 @@ public class FleetSpawnTests
                 var overviewPrefix = vm.Panes[0].Prefix;   // first live agent acts as parent
                 int before = vm.Panes.Count;
 
-                var outcome = vm.SpawnChild(new SpawnRequest(overviewPrefix, "newsub-", "owns X", ".", "You are newsub-."));
+                var outcome = vm.SpawnChild(new SpawnRequest(overviewPrefix, "newsub-", "owns X", ".", "You are newsub-.", false));
 
                 Assert.True(outcome.Spawned);
                 Assert.Equal(before + 1, vm.Panes.Count);
@@ -43,7 +43,7 @@ public class FleetSpawnTests
         {
             var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
             vm.PauseFleetCommand.Execute(null);
-            var outcome = vm.SpawnChild(new SpawnRequest(vm.Panes[0].Prefix, "x-", "r", ".", "p"));
+            var outcome = vm.SpawnChild(new SpawnRequest(vm.Panes[0].Prefix, "x-", "r", ".", "p", false));
             Assert.False(outcome.Spawned);
             Assert.Equal(RejectReason.Paused, outcome.Reason);
         }

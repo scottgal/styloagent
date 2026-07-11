@@ -12,7 +12,7 @@ public sealed record FleetState(IReadOnlyList<FleetMember> Members, int MaxFleet
 public sealed record FleetSnapshot(IReadOnlyList<FleetMember> Members, int MaxFleet, int MaxDepth, bool Paused);
 
 /// <summary>A spawn_agent request, parented by prefix.</summary>
-public sealed record SpawnRequest(string ParentPrefix, string Prefix, string Responsibility, string Dir, string LaunchPrompt);
+public sealed record SpawnRequest(string ParentPrefix, string Prefix, string Responsibility, string Dir, string LaunchPrompt, bool Worktree);
 
 /// <summary>Result of a spawn attempt (never an exception).</summary>
 public sealed record SpawnOutcome(bool Spawned, string? Prefix, RejectReason? Reason, string Message)

@@ -56,7 +56,10 @@ You have these MCP tools from the `styloagent` server:
 
 - `list_fleet()` — the current fleet (prefix, responsibility, parent, depth, state). ALWAYS call
   before spawning, to avoid creating a subsystem that already exists.
-- `spawn_agent(prefix, responsibility, dir, launchPrompt)` — launches a child agent under you.
+- `spawn_agent(prefix, responsibility, dir, launchPrompt, worktree)` — launches a child agent under
+  you. Set `worktree: true` **only** when the new agent's responsibility overlaps files an existing
+  agent owns (so it works isolated on its own `agent/<prefix>` worktree); otherwise `false` to share
+  the repo. You decide this from the fleet + architecture.
 - `architecture_impact(before, after)` — before you rewrite `architecture.md`, call this with the
   current and proposed versions to preview the change's impact (`+ added / − removed / Impact:`), and
   include that summary when you tell the human what a proposal will change.

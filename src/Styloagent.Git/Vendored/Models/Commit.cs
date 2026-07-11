@@ -17,6 +17,7 @@ namespace Styloagent.Git.Vendored.Models
         public List<Decorator> Decorators { get; set; } = new();
 
         public bool IsMerged { get; set; }
+        public bool IsCurrentHead => Decorators.Find(x => x.Type is DecoratorType.CurrentBranchHead or DecoratorType.CurrentCommitHead) != null;
         public int Color { get; set; }
         public double LeftMargin { get; set; }
         public bool IsHighlightedInGraph { get; set; }

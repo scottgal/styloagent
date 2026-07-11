@@ -22,7 +22,7 @@ public class RouterViewTests : IDisposable
         // Write a resource.yaml so the env/account is discovered
         var resDir = Path.Combine(_routerRoot, "prod", "accounts", "deploy-key");
         Directory.CreateDirectory(resDir);
-        File.WriteAllText(Path.Combine(resDir, "resource.yaml"), "capacity: 1\nlease_ttl: 10m\n");
+        File.WriteAllText(Path.Combine(resDir, "resource.yaml"), "capacity: 1\nleaseTtl: 10m\n");
         // Write a live grant (recent mtime → live)
         RouterWriter.WriteGrant(_routerRoot, "prod", ResourceKind.Account, "deploy-key",
             "agent-1-", now - TimeSpan.FromSeconds(30), now + TimeSpan.FromMinutes(10), now - TimeSpan.FromSeconds(60));

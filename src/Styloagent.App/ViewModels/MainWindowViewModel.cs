@@ -529,8 +529,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Called on the UI thread for each <see cref="Styloagent.Core.Router.RouterDecision"/> applied
-    /// by <see cref="RouterHost"/>.  Task 6 will add <c>Router?.Refresh()</c> here once the
-    /// Router panel VM exists.  Stub is intentionally minimal and never throws.
+    /// by <see cref="RouterHost"/>.  Refreshes the Router panel so grants/expiries surface live.
+    /// Never throws.
     /// </summary>
     private void OnRouterDecision(Styloagent.Core.Router.RouterDecision d)
     {

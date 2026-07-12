@@ -28,11 +28,17 @@ public class MultiRepoOverviewTests
                 Path.Combine("/ws", "beta"),
                 Path.Combine("/ws", "gamma"),
             });
-            var extras = ws.RepoOverviews().Skip(1).ToList();   // beta-, gamma-
+            var overviews = ws.RepoOverviews();
+            var primaryColor = overviews[0].ColorHex;
+            var extras = overviews.Skip(1).ToList();            // beta-, gamma-
             Assert.Equal(2, extras.Count);
 
             var vm = await MainWindowViewModel.InitializeAsync(
-                wsChannel, new FakeLauncher(), new FakeWatcher(), extraOverviews: extras);
+                wsChannel, new FakeLauncher(), new FakeWatcher(),
+                overviewColorHex: primaryColor, extraOverviews: extras);
+
+            // The primary overview is coloured by its own repo hue (repo 0).
+            Assert.Equal(primaryColor, vm.Pane!.BorderColorHex);
 
             // Exactly one extra pane per additional repo.
             Assert.Equal(baseline.Panes.Count + extras.Count, vm.Panes.Count);

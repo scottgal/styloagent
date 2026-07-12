@@ -475,6 +475,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         string? overviewSystemPromptPath = null,
         IGitService? gitService = null,
         IGitLog? gitLog = null,
+        string? overviewColorHex = null,
         IReadOnlyList<Styloagent.Core.Workspace.RepoOverview>? extraOverviews = null,
         CancellationToken ct = default)
     {
@@ -598,6 +599,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             Prefix: first.Prefix,
             DisplayName: first.Prefix.TrimEnd('-'),
             BorderColorHex: PresentationStore.DefaultColorFor(first.Prefix));
+
+        // Multi-repo: colour the primary overview by its repo hue too, so repo 0 is glanceable like the
+        // rest (single-repo passes null → the default/saved colour, released path unchanged).
+        if (overviewColorHex is not null)
+            presentation = presentation with { BorderColorHex = overviewColorHex };
 
         string firstHookId = vm.ReserveHookId(first.Prefix);
         var session = new AgentSession(first, launcher, watcher,

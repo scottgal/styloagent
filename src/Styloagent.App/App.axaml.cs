@@ -50,12 +50,15 @@ public partial class App : Application
                     await recents.AddAsync(recentsPath, root);
 
                     IReadOnlyList<RepoOverview>? extraOverviews = null;
+                    string? primaryColorHex = null;
                     if (!workspace.IsSingleRepo)
                     {
                         // Scaffold each additional repo so its .styloagent/system-prompt.md exists, then open it.
                         foreach (var extra in workspace.Repos.Skip(1))
                             ProjectScaffolder.Ensure(extra.Path);
-                        extraOverviews = workspace.RepoOverviews().Skip(1).ToList();
+                        var overviews = workspace.RepoOverviews();
+                        primaryColorHex = overviews[0].ColorHex;      // colour the primary by its repo hue too
+                        extraOverviews = overviews.Skip(1).ToList();
                     }
 
                     var gitSvc = new Styloagent.Git.GitService();
@@ -68,6 +71,7 @@ public partial class App : Application
                         overviewSystemPromptPath: cfg.SystemPromptPath,
                         gitService: gitSvc,
                         gitLog: gitSvc,
+                        overviewColorHex: primaryColorHex,
                         extraOverviews: extraOverviews);
                     vm.AttachProject(cfg);
                     vm.AttachPreferences(prefs, prefsStore, prefsPath);

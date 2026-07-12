@@ -34,4 +34,31 @@ public class ChannelSnapshotTests
             if (Directory.Exists(dest)) Directory.Delete(dest, recursive: true);
         }
     }
+
+    [Fact]
+    public void CopyTo_rewrites_hardcoded_channel_paths_to_the_snapshot()
+    {
+        var src = Path.Combine(Path.GetTempPath(), "chsnap-rw-src-" + Guid.NewGuid().ToString("N"));
+        var dest = Path.Combine(Path.GetTempPath(), "chsnap-rw-dst-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(src, "launch-prompts"));
+            // A restart prompt that hardcodes the source channel path — the exact hazard the rewrite defuses
+            // (a revived agent would otherwise read AND write the live original via these paths).
+            File.WriteAllText(Path.Combine(src, "launch-prompts", "foss-restart.md"),
+                $"Read your context at {src}/saved-context/foss-context.md and write replies to {src}/outbox/");
+
+            ChannelSnapshot.CopyTo(src, dest);
+
+            var copied = File.ReadAllText(Path.Combine(dest, "launch-prompts", "foss-restart.md"));
+            Assert.Contains($"{dest}/saved-context/foss-context.md", copied);
+            Assert.Contains($"{dest}/outbox/", copied);
+            Assert.DoesNotContain(src, copied);   // no lingering pointer to the (possibly live) original
+        }
+        finally
+        {
+            if (Directory.Exists(src)) Directory.Delete(src, recursive: true);
+            if (Directory.Exists(dest)) Directory.Delete(dest, recursive: true);
+        }
+    }
 }

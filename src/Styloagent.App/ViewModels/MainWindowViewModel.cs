@@ -555,7 +555,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             // doc) is added to the roster as un-opened seeded entries, so the operator can revive each
             // from its restart prompt via +Add agent — it cold-starts from its own saved-context doc.
             // Only entries[0] (the overview) is spawned here, so this never auto-launches the fleet.
-            var channelFleet = await new ChannelManifestSeeder().SeedAsync(channelRoot, new Dictionary<string, string>());
+            // An optional worktrees.yaml maps each prefix to the repo it should revive in (else the default).
+            var worktreeMap = Styloagent.Core.Channel.WorktreeMapReader.Read(channelRoot);
+            var channelFleet = await new ChannelManifestSeeder().SeedAsync(channelRoot, worktreeMap);
             entries = new[] { overviewEntry }
                 .Concat(channelFleet.Where(e => e.Prefix != "overview-"))
                 .ToList();

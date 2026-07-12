@@ -15,6 +15,7 @@ public class StyloagentMcpServerTests
         public FleetSnapshot Snapshot() => new(Array.Empty<FleetMember>(), 12, 3, false);
         public Task<IssueOutcome> ReportIssueAsync(IssueRequest req) => Task.FromResult(IssueOutcome.Ok("issue"));
         public Task<WrapUpOutcome> WrapUpAsync(string callerPrefix) => Task.FromResult(new WrapUpOutcome(WrapUpStatus.Merged, "merged", null));
+        public Task<MessageOutcome> SendMessageAsync(MessageRequest req) => Task.FromResult(MessageOutcome.Ok("/ch/inbox/x.md"));
     }
 
     private sealed class FakeRouter : IRouterController

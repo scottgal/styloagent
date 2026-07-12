@@ -16,11 +16,14 @@ public class FleetToolsTests
         public IssueOutcome NextIssue = IssueOutcome.Ok("some-issue");
         public string? LastWrapUp;
         public WrapUpOutcome NextWrapUp = new(WrapUpStatus.Merged, "merged foss-", null);
+        public MessageRequest? LastMessage;
+        public MessageOutcome NextMessage = MessageOutcome.Ok("/ch/inbox/router-hello.md");
         public Task<SpawnOutcome> SpawnAsync(SpawnRequest req) { LastReq = req; return Task.FromResult(Next); }
         public FleetSnapshot Snapshot() => new(
             new[] { new FleetMember("overview-", "the top", null, 0, "running") }, 12, 3, false);
         public Task<IssueOutcome> ReportIssueAsync(IssueRequest req) { LastIssue = req; return Task.FromResult(NextIssue); }
         public Task<WrapUpOutcome> WrapUpAsync(string callerPrefix) { LastWrapUp = callerPrefix; return Task.FromResult(NextWrapUp); }
+        public Task<MessageOutcome> SendMessageAsync(MessageRequest req) { LastMessage = req; return Task.FromResult(NextMessage); }
     }
 
     private static IHttpContextAccessor AccessorWith(string? agent, string? auth)
@@ -107,6 +110,30 @@ public class FleetToolsTests
         await tools.spawn_agent("foss-", "owns FOSS", ".", "You are foss-.", worktree: true);
 
         Assert.True(ctrl.LastReq!.Worktree);
+    }
+
+    [Fact]
+    public async Task send_message_sends_with_the_caller_as_sender()
+    {
+        var ctrl = new FakeController();
+        var tools = new FleetTools(AccessorWith("foss-", "Bearer secret"), ctrl, new McpAuth("secret"));
+
+        var result = await tools.send_message("router-", "Need a review", "PR is up", "normal");
+
+        Assert.Equal("foss-", ctrl.LastMessage!.From);
+        Assert.Equal("router-", ctrl.LastMessage.To);
+        Assert.Equal("Need a review", ctrl.LastMessage.Subject);
+        Assert.Contains("sent", result);
+    }
+
+    [Fact]
+    public async Task send_message_refuses_a_bad_token()
+    {
+        var ctrl = new FakeController();
+        var tools = new FleetTools(AccessorWith("foss-", "Bearer WRONG"), ctrl, new McpAuth("secret"));
+        var result = await tools.send_message("router-", "s", "b", "normal");
+        Assert.Null(ctrl.LastMessage);        // never reached the controller
+        Assert.Contains("unauthorized", result);
     }
 
     [Fact]

@@ -31,6 +31,16 @@ public sealed record IssueOutcome(bool Filed, string? Id, string Message)
     public static IssueOutcome Fail(string message) => new(false, null, message);
 }
 
+/// <summary>A send_message request from an agent (sender is the caller prefix).</summary>
+public sealed record MessageRequest(string From, string To, string Subject, string Body, string Priority);
+
+/// <summary>Result of sending a bus message (never an exception).</summary>
+public sealed record MessageOutcome(bool Sent, string? Path, string Message)
+{
+    public static MessageOutcome Ok(string path) => new(true, path, $"sent → {path}");
+    public static MessageOutcome Fail(string message) => new(false, null, message);
+}
+
 /// <summary>Governor verdict.</summary>
 public sealed record Decision(bool Allowed, RejectReason? Reason, string Message)
 {

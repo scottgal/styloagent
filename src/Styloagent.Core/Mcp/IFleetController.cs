@@ -12,4 +12,5 @@ public interface IFleetController
     FleetSnapshot Snapshot();
     Task<IssueOutcome> ReportIssueAsync(IssueRequest req);
     Task<WrapUpOutcome> WrapUpAsync(string callerPrefix);
+    Task<MessageOutcome> SendMessageAsync(MessageRequest req);
 }

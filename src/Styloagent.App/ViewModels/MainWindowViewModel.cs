@@ -124,6 +124,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private MessageDeliveryService? _deliveryService;
     private ChannelDeliveryCoordinator? _deliveryCoordinator;
 
+    // Channel root (.styloagent/channel) — where the send_message MCP tool writes the .md trace.
+    private string? _channelRoot;
+
     // Runtime state for AddAgent
     private IReadOnlyList<AgentManifestEntry> _seededEntries = Array.Empty<AgentManifestEntry>();
     private readonly HashSet<string> _openedPrefixes = new();
@@ -333,6 +336,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // Priority delivery: seed the "already seen" set with the current backlog (so startup does
         // not deliver old messages), then push newly-arrived messages on each bus reload. The policy
         // starts at Default and is refreshed in AttachProject once a project is known.
+        vm._channelRoot = channelRoot;
         vm._deliveryService = new MessageDeliveryService(PriorityPolicy.Default, new PtyMessageInjector(vm.ResolvePty));
         vm._deliveryCoordinator = new ChannelDeliveryCoordinator(
             channelRoot, channelPrefixes, vm._deliveryService, vm.SnapshotLiveAgents);
@@ -599,6 +603,33 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (pane == SelectedPane) RefreshGitPanelFor(pane);
         else if (_git is not null) _ = pane.RefreshGitStatusAsync(_git);
         return outcome;
+    }
+
+    /// <summary>
+    /// Sends a bus message on behalf of a caller agent (the <c>send_message</c> MCP tool): writes the
+    /// durable <c>.md</c> trace to the channel, then pumps delivery in-process so the recipient is
+    /// nudged immediately (no fs-watch round-trip). The fs watcher pumping the same file later is
+    /// deduped by the coordinator's seen-set, so the double path is harmless. Runs on the UI thread.
+    /// </summary>
+    public MessageOutcome SendBusMessage(MessageRequest req)
+    {
+        if (_channelRoot is null) return MessageOutcome.Fail("no active channel");
+        if (string.IsNullOrWhiteSpace(req.To)) return MessageOutcome.Fail("recipient (to) is required");
+        if (string.IsNullOrWhiteSpace(req.Subject)) return MessageOutcome.Fail("subject is required");
+
+        try
+        {
+            var path = ChannelMessageWriter.Write(
+                _channelRoot, req.From, req.To, req.Subject, req.Body ?? string.Empty,
+                req.Priority ?? "normal", DateTimeOffset.Now);
+            // Deliver now rather than waiting on the debounced fs watcher.
+            _ = _deliveryCoordinator?.PumpAsync();
+            return MessageOutcome.Ok(path);
+        }
+        catch (Exception ex)
+        {
+            return MessageOutcome.Fail(ex.Message);
+        }
     }
 
     /// <summary>Turns a proposed subsystem into a live roster agent (mirrors AddAgent).</summary>

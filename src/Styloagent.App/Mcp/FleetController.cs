@@ -25,4 +25,7 @@ public sealed class FleetController : IFleetController
 
     public Task<WrapUpOutcome> WrapUpAsync(string callerPrefix)
         => Dispatcher.UIThread.InvokeAsync(() => _vm.WrapUp(callerPrefix)).GetTask();
+
+    public Task<MessageOutcome> SendMessageAsync(MessageRequest req)
+        => Dispatcher.UIThread.InvokeAsync(() => _vm.SendBusMessage(req)).GetTask();
 }

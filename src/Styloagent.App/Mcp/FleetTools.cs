@@ -98,6 +98,20 @@ public sealed class FleetTools
         return outcome.Filed ? outcome.Message : $"rejected: {outcome.Message}";
     }
 
+    [McpServerTool, Description("Send a message to another agent over the bus. 'to' is the recipient's prefix (e.g. 'router-'), or 'all-' to broadcast to every live agent. priority is urgent | normal | low | info. The message is written to the channel as a durable trace and delivered to the recipient immediately. Use this for routine coordination between agents.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> send_message(string to, string subject, string body, string priority)
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        var caller = McpAuth.CallerPrefix(ctx);
+        if (caller is null) return "unauthorized: missing caller identity";
+
+        var outcome = await _controller.SendMessageAsync(
+            new MessageRequest(caller, to, subject, body ?? string.Empty, priority ?? "normal"));
+        return outcome.Sent ? outcome.Message : $"rejected: {outcome.Message}";
+    }
+
     [McpServerTool, Description("Signal you have finished your work in your worktree. Styloagent will guard-clean, run the project's tests, merge your branch to main and remove the worktree — or, on failure, keep your worktree and file an issue. Only call when your branch is committed and the work is complete.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public async Task<string> wrap_up()

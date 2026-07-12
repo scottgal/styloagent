@@ -6,6 +6,17 @@ using Styloagent.App.ViewModels;
 
 namespace Styloagent.App.Dock;
 
+/// <summary>How the centre region arranges the agent panes.</summary>
+public enum CockpitLayoutMode
+{
+    /// <summary>All panes stacked as tabs in one document dock (the default).</summary>
+    Tabs,
+    /// <summary>Every pane tiled in an even grid (rows of two).</summary>
+    Tile,
+    /// <summary>The starter (overview) pane full-width on top; the rest tiled in a grid below.</summary>
+    AutoTile,
+}
+
 /// <summary>
 /// Dock factory for the Styloagent shell CENTRE region: a <see cref="Dock.Model.Mvvm.Controls.DocumentDock"/>
 /// hosting each agent terminal as a dockable document (tabs, float, split). The Agents roster and the
@@ -64,5 +75,144 @@ public sealed class StyloagentDockFactory : Factory
         RootDock = rootDock;
 
         return rootDock;
+    }
+
+    /// <summary>
+    /// Builds a fresh centre layout for <paramref name="mode"/> from the current <paramref name="panes"/>,
+    /// reusing the pane view-models as documents (their terminals persist — the view re-attaches to
+    /// <c>CurrentPty</c> when it re-renders). Tabs → one document dock; Tile → an even grid; AutoTile →
+    /// the starter full-width on top with the rest gridded below. <see cref="DocumentDock"/> is repointed
+    /// at the primary dock so runtime document adds still have a target.
+    /// </summary>
+    public IRootDock BuildLayout(IReadOnlyList<AgentPaneViewModel> panes, CockpitLayoutMode mode)
+    {
+        IDock centre = mode switch
+        {
+            CockpitLayoutMode.Tile     => Grid(panes),
+            CockpitLayoutMode.AutoTile => AutoTile(panes),
+            _                          => TabsDock(panes),
+        };
+
+        var rootDock = CreateRootDock();
+        rootDock.Id = "Root";
+        rootDock.Title = "Root";
+        rootDock.VisibleDockables = CreateList<IDockable>(centre);
+        rootDock.ActiveDockable = centre;
+        rootDock.DefaultDockable = centre;
+        rootDock.IsFocusableRoot = true;
+
+        RootDock = rootDock;
+        return rootDock;
+    }
+
+    // ── layout builders ──────────────────────────────────────────────────────
+
+    /// <summary>One document dock holding every pane as a tab (the classic layout).</summary>
+    private DocumentDock TabsDock(IReadOnlyList<AgentPaneViewModel> panes)
+    {
+        var dock = new DocumentDock
+        {
+            Id = "DocumentDock",
+            Title = "Agents",
+            Proportion = double.NaN,
+            IsCollapsable = false,
+            CanCreateDocument = false,
+            VisibleDockables = CreateList<IDockable>(),
+        };
+        foreach (var p in panes) dock.VisibleDockables!.Add(p);
+        var active = panes.Count > 0 ? panes[0] : null;
+        dock.ActiveDockable = active;
+        dock.DefaultDockable = active;
+        DocumentDock = dock;   // the shared tab dock is the add target
+        return dock;
+    }
+
+    /// <summary>The starter (first depth-0 pane) full-width on top; the remaining panes gridded below.</summary>
+    private IDock AutoTile(IReadOnlyList<AgentPaneViewModel> panes)
+    {
+        if (panes.Count <= 1) return Grid(panes);
+
+        var starter = panes.FirstOrDefault(p => p.Depth == 0) ?? panes[0];
+        var rest = panes.Where(p => !ReferenceEquals(p, starter)).ToList();
+
+        var column = new ProportionalDock
+        {
+            Orientation = Orientation.Vertical,
+            Proportion = double.NaN,
+            VisibleDockables = CreateList<IDockable>(
+                OneDoc(starter),
+                new ProportionalDockSplitter(),
+                Grid(rest)),
+        };
+        return column;
+    }
+
+    /// <summary>Tiles panes in an even grid: rows of up to two columns, stacked vertically.</summary>
+    private IDock Grid(IReadOnlyList<AgentPaneViewModel> panes)
+    {
+        if (panes.Count == 0) return TabsDock(panes);       // empty — a bare document dock
+        if (panes.Count == 1) { var d = OneDoc(panes[0]); DocumentDock = d; return d; }
+
+        // Chunk into rows of two.
+        var rows = new List<IReadOnlyList<AgentPaneViewModel>>();
+        for (int i = 0; i < panes.Count; i += 2)
+            rows.Add(panes.Skip(i).Take(2).ToList());
+
+        var column = new ProportionalDock
+        {
+            Orientation = Orientation.Vertical,
+            Proportion = double.NaN,
+            VisibleDockables = CreateList<IDockable>(),
+        };
+        for (int r = 0; r < rows.Count; r++)
+        {
+            if (r > 0) column.VisibleDockables!.Add(new ProportionalDockSplitter());
+            column.VisibleDockables!.Add(Row(rows[r]));
+        }
+        DocumentDock = FirstDocumentDock(column);   // add target = the first tile
+        return column;
+    }
+
+    /// <summary>One tiled row: its panes side-by-side as separate document docks split horizontally.</summary>
+    private IDock Row(IReadOnlyList<AgentPaneViewModel> panes)
+    {
+        if (panes.Count == 1) return OneDoc(panes[0]);
+
+        var row = new ProportionalDock
+        {
+            Orientation = Orientation.Horizontal,
+            Proportion = double.NaN,
+            VisibleDockables = CreateList<IDockable>(),
+        };
+        for (int i = 0; i < panes.Count; i++)
+        {
+            if (i > 0) row.VisibleDockables!.Add(new ProportionalDockSplitter());
+            row.VisibleDockables!.Add(OneDoc(panes[i]));
+        }
+        return row;
+    }
+
+    /// <summary>A single-pane document dock (one tile).</summary>
+    private DocumentDock OneDoc(AgentPaneViewModel pane) => new()
+    {
+        Id = "doc-" + pane.Prefix,
+        Title = pane.DisplayName,
+        Proportion = double.NaN,
+        IsCollapsable = false,
+        CanCreateDocument = false,
+        VisibleDockables = CreateList<IDockable>(pane),
+        ActiveDockable = pane,
+        DefaultDockable = pane,
+    };
+
+    /// <summary>Depth-first find of the first <see cref="DocumentDock"/> in a built tree.</summary>
+    private static DocumentDock? FirstDocumentDock(IDock dock)
+    {
+        if (dock is DocumentDock dd) return dd;
+        if (dock.VisibleDockables is null) return null;
+        foreach (var child in dock.VisibleDockables)
+            if (child is IDock cd && FirstDocumentDock(cd) is { } found)
+                return found;
+        return null;
     }
 }

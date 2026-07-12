@@ -31,6 +31,28 @@
             <TextBlock Text="Add agent" VerticalAlignment="Center" />
           </StackPanel>
         </Button>
+
+        <!-- Centre: layout-mode segmented switch (Tabs / Tile / Auto-tile) -->
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="0" HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+          <StackPanel.Styles>
+            <Style Selector="ToggleButton">
+              <Setter Property="Padding" Value="8,3" />
+              <Setter Property="FontSize" Value="12" />
+            </Style>
+          </StackPanel.Styles>
+          <ToggleButton IsChecked="{Binding IsTabsLayout, Mode=OneWay}" CornerRadius="4,0,0,4"
+                        Command="{Binding SetLayoutModeCommand}" CommandParameter="Tabs" ToolTip.Tip="Tabs"
+                        Content="Tabs" />
+          <ToggleButton IsChecked="{Binding IsTileLayout, Mode=OneWay}" CornerRadius="0"
+                        Command="{Binding SetLayoutModeCommand}" CommandParameter="Tile" ToolTip.Tip="Tile evenly"
+                        Content="Tile" />
+          <ToggleButton IsChecked="{Binding IsAutoTileLayout, Mode=OneWay}" CornerRadius="0,4,4,0"
+                        Command="{Binding SetLayoutModeCommand}" CommandParameter="AutoTile"
+                        ToolTip.Tip="Auto-tile: starter on top, agents tiled below"
+                        Content="Auto-tile" />
+        </StackPanel>
+
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
           <ToggleButton x:Name="RosterToggleButton" IsChecked="{Binding IsRosterCollapsed}" Padding="6,3"
                         ToolTip.Tip="Collapse roster">

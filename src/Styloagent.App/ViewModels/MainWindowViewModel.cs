@@ -87,6 +87,46 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private IRootDock? _layout;
 
+    /// <summary>How the centre tiles the agent panes (top-bar segmented switch). Tabs by default.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsTabsLayout))]
+    [NotifyPropertyChangedFor(nameof(IsTileLayout))]
+    [NotifyPropertyChangedFor(nameof(IsAutoTileLayout))]
+    private CockpitLayoutMode _layoutMode = CockpitLayoutMode.Tabs;
+
+    public bool IsTabsLayout => LayoutMode == CockpitLayoutMode.Tabs;
+    public bool IsTileLayout => LayoutMode == CockpitLayoutMode.Tile;
+    public bool IsAutoTileLayout => LayoutMode == CockpitLayoutMode.AutoTile;
+
+    /// <summary>Switches the centre layout mode (top-bar Tabs / Tile / Auto-tile) and rebuilds it.</summary>
+    [RelayCommand]
+    private void SetLayoutMode(string mode)
+    {
+        var m = mode switch
+        {
+            "Tile"     => CockpitLayoutMode.Tile,
+            "AutoTile" => CockpitLayoutMode.AutoTile,
+            _          => CockpitLayoutMode.Tabs,
+        };
+        if (m == LayoutMode && Layout is not null) return;
+        LayoutMode = m;
+        RebuildCenterLayout();
+    }
+
+    /// <summary>
+    /// Rebuilds the centre dock tree for the current <see cref="LayoutMode"/> from the live panes,
+    /// preserving which pane is active. The pane view-models are reused, so their terminals persist.
+    /// </summary>
+    private void RebuildCenterLayout()
+    {
+        if (_dockFactory is null) return;
+        var active = SelectedPane ?? Panes.FirstOrDefault();
+        var layout = _dockFactory.BuildLayout(Panes.ToList(), LayoutMode);
+        Layout = layout;
+        _dockFactory.InitLayout(layout);
+        if (active is not null) _dockFactory.SetActiveDockable(active);
+    }
+
     [ObservableProperty]
     private DocLibraryViewModel? _docLibrary;
 
@@ -507,6 +547,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _dockFactory.SetActiveDockable(paneVm);
         _dockFactory.SetFocusedDockable(rootDock, paneVm);
 
+        // In a tiled mode, re-tile so the new pane gets its own tile rather than a hidden tab.
+        if (LayoutMode != CockpitLayoutMode.Tabs) RebuildCenterLayout();
+
         // Launch claude in the new pane immediately.
         _ = paneVm.SpawnAsync();
     }
@@ -747,6 +790,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _dockFactory.AddDockable(documentDock, paneVm);
         _dockFactory.SetActiveDockable(paneVm);
         _dockFactory.SetFocusedDockable(rootDock, paneVm);
+
+        // In a tiled mode, re-tile so the new pane gets its own tile rather than a hidden tab.
+        if (LayoutMode != CockpitLayoutMode.Tabs) RebuildCenterLayout();
 
         _ = paneVm.SpawnAsync();
         return paneVm;

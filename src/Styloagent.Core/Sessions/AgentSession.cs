@@ -16,6 +16,13 @@ public sealed class AgentSession
     // submitted, leaving stray text in the window (and blocking auto-rehydration). "\r" submits.
     private const string Submit = "\r";
 
+    // Injecting the prompt the instant the PTY spawns types the text but the Enter is dropped — Claude's
+    // TUI isn't accepting input yet, so the agent sits idle with an unsent prompt. Production waits for the
+    // TUI to come up before pressing Enter (and presses once more as a safety net). Tests leave these zero
+    // (the FakeLauncher never runs a real claude), so the suite stays fast. Set once by the app at startup.
+    public static TimeSpan InjectSettleDelay { get; set; } = TimeSpan.Zero;
+    public static TimeSpan InjectEnterRetryDelay { get; set; } = TimeSpan.Zero;
+
     /// <param name="launchArgs">
     /// Extra CLI args passed to <c>claude</c> on every spawn/rehydrate — e.g. the
     /// <c>--settings</c> hooks blob (§4.4). Empty by default so the agent stays fully functional
@@ -62,7 +69,15 @@ public sealed class AgentSession
     private static async Task InjectPromptAsync(IPtySession pty, string prompt, CancellationToken ct)
     {
         await pty.WriteAsync(prompt, ct);
+        // Wait for the TUI to be ready before submitting, or the Enter is dropped and the prompt lingers.
+        if (InjectSettleDelay > TimeSpan.Zero) await Task.Delay(InjectSettleDelay, ct);
         await pty.WriteAsync(Submit, ct);
+        // Safety net: press Enter once more after the TUI has certainly settled — a no-op on an empty box.
+        if (InjectEnterRetryDelay > TimeSpan.Zero)
+        {
+            await Task.Delay(InjectEnterRetryDelay, ct);
+            await pty.WriteAsync(Submit, ct);
+        }
     }
 
     public async Task<bool> DehydrateAsync(TimeSpan ackTimeout, CancellationToken ct = default)

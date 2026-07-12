@@ -24,6 +24,12 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            // Give a real claude TUI time to come up before we press Enter on its injected prompt, then
+            // press once more as a safety net — otherwise the prompt is typed but never submitted and the
+            // agent sits idle. (Zero in tests, where no real claude runs.)
+            Styloagent.Core.Sessions.AgentSession.InjectSettleDelay = TimeSpan.FromMilliseconds(2500);
+            Styloagent.Core.Sessions.AgentSession.InjectEnterRetryDelay = TimeSpan.FromMilliseconds(2000);
+
             string recentsPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "Styloagent", "recent-projects.yaml");

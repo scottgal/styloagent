@@ -2,8 +2,10 @@ name: full-ux-click-test
 description: |
   Drives every interactive control in the Styloagent cockpit and screenshots each state so a
   reviewer (human/LLM) can spot UX bugs. Screenshot names describe what SHOULD be visible.
-  Run with: Styloagent.App --mlui-test --script ux-scripts/full-ux-click-test.yaml --output <dir>
-  (STYLOAGENT_REPO pointed at a real git repo).
+  Ordering matters: the agent toolbar is tested first (while the overview agent is the active
+  document, so its buttons are visible) before opening docs, which change the active document.
+  Run: Styloagent.App --mlui-test --script ux-scripts/full-ux-click-test.yaml --output <dir>
+  with STYLOAGENT_REPO pointed at a real git repo.
 default_delay: 700
 actions:
   - type: Wait
@@ -11,115 +13,104 @@ actions:
   - type: Screenshot
     value: 01-initial-cockpit
 
-  # ── Right side-panel tabs (read-only) ─────────────────────────────────────
+  # ── Agent toolbar on the live overview agent (Spawn/Dehydrate/Rehydrate are disabled here — a
+  #    Live agent with no checkpoint target — so these clicks must be safe no-ops, not crashes) ──
+  - type: Click
+    target: "type=Button:has-text(Spawn)"
+  - type: Wait
+    value: "1500"
+  - type: Screenshot
+    value: 02-spawn-on-live-agent
+  - type: Click
+    target: "type=Button:has-text(Dehydrate)"
+  - type: Wait
+    value: "1500"
+  - type: Screenshot
+    value: 03-dehydrate-on-live-agent
+  - type: Click
+    target: "type=Button:has-text(Rehydrate)"
+  - type: Wait
+    value: "1000"
+  - type: Screenshot
+    value: 04-rehydrate-on-live-agent
+
+  # ── Right side-panel tabs ─────────────────────────────────────────────────
   - type: Click
     target: "type=TabItem:has-text(Documents)"
   - type: Wait
     value: "1000"
   - type: Screenshot
-    value: 02-tab-documents-tree
+    value: 05-tab-documents-tree
   - type: Click
     target: "type=TabItem:has-text(Issues)"
   - type: Screenshot
-    value: 03-tab-issues
+    value: 06-tab-issues
+  - type: Click
+    target: "type=TabItem:has-text(Router)"
+  - type: Screenshot
+    value: 07-tab-router
   - type: Click
     target: "type=TabItem:has-text(Git)"
   - type: Wait
     value: "1500"
   - type: Screenshot
-    value: 04-tab-git-history
+    value: 08-tab-git-history
   - type: Click
     target: "type=TabItem:has-text(Changes)"
   - type: Wait
     value: "800"
   - type: Screenshot
-    value: 05-git-changes-subtab
-  - type: Click
-    target: "type=TabItem:has-text(Router)"
-  - type: Screenshot
-    value: 06-tab-router
-  - type: Click
-    target: "type=TabItem:has-text(Signal Bus)"
-  - type: Screenshot
-    value: 07-tab-signal-bus
+    value: 09-git-changes-subtab
 
-  # ── Documents: header diagram buttons + open a file from the tree ─────────
+  # ── Documents: header diagram buttons + open a file ───────────────────────
   - type: Click
     target: "type=TabItem:has-text(Documents)"
+  - type: Wait
+    value: "800"
   - type: Click
     target: "type=Button:has-text(System Map)"
   - type: Wait
     value: "2500"
   - type: Screenshot
-    value: 08-doc-system-map
+    value: 10-doc-system-map
   - type: Click
     target: "type=Button:has-text(Architecture)"
   - type: Wait
     value: "2500"
   - type: Screenshot
-    value: 09-doc-architecture
+    value: 11-doc-architecture
   - type: Click
     target: "type=Button:has-text(Bus Sequence)"
   - type: Wait
     value: "2000"
   - type: Screenshot
-    value: 10-doc-bus-sequence
+    value: 12-doc-bus-sequence
   - type: Click
     target: "type=Button:has-text(PROTOCOL.md)"
   - type: Wait
     value: "1500"
   - type: Screenshot
-    value: 11-doc-protocol-md-opened
+    value: 13-doc-protocol-md
 
-  # ── EDGE CASE: Spawn on the already-spawned overview agent ────────────────
-  - type: Click
-    target: "type=Button:has-text(Spawn)"
-  - type: Wait
-    value: "2500"
-  - type: Screenshot
-    value: 12-spawn-on-already-spawned
-
-  # ── Dehydrate then Rehydrate the overview agent ───────────────────────────
-  - type: Click
-    target: "type=Button:has-text(Dehydrate)"
-  - type: Wait
-    value: "2500"
-  - type: Screenshot
-    value: 13-after-dehydrate
-  - type: Click
-    target: "type=Button:has-text(Rehydrate)"
-  - type: Wait
-    value: "2500"
-  - type: Screenshot
-    value: 14-after-rehydrate
-
-  # ── Rename button (dialog?) ───────────────────────────────────────────────
-  - type: Click
-    target: "type=Button:has-text(Rename)"
-  - type: Wait
-    value: "1200"
-  - type: Screenshot
-    value: 15-rename-clicked
-
-  # ── Add a second agent, spawn it, spawn AGAIN (edge) ──────────────────────
+  # ── Add a second agent, spawn it (enabled), spawn AGAIN (now Live → disabled no-op) ──
   - type: Click
     target: "type=Button:has-text(Add agent)"
   - type: Wait
     value: "3500"
   - type: Screenshot
-    value: 16-agent-added
+    value: 14-agent-added
   - type: Click
     target: "type=Button:has-text(Spawn)"
   - type: Wait
-    value: "3000"
+    value: "3500"
   - type: Screenshot
-    value: 17-new-agent-spawned
+    value: 15-new-agent-spawned
   - type: Click
     target: "type=Button:has-text(Spawn)"
   - type: Wait
-    value: "2500"
+    value: "2000"
   - type: Screenshot
-    value: 18-new-agent-spawn-again
+    value: 16-new-agent-spawn-again
 
   # ── Spawn all (PROPOSED) + Pause ──────────────────────────────────────────
   - type: Click
@@ -127,13 +118,13 @@ actions:
   - type: Wait
     value: "2500"
   - type: Screenshot
-    value: 19-spawn-all
+    value: 17-spawn-all
   - type: Click
     target: "type=Button:has-text(Pause)"
   - type: Wait
     value: "1000"
   - type: Screenshot
-    value: 20-paused
+    value: 18-paused
 
   # ── Panel collapse toggles ────────────────────────────────────────────────
   - type: Click
@@ -141,7 +132,7 @@ actions:
   - type: Wait
     value: "800"
   - type: Screenshot
-    value: 21-roster-collapsed
+    value: 19-roster-collapsed
   - type: Click
     target: "name=RosterToggleButton"
   - type: Click
@@ -149,7 +140,7 @@ actions:
   - type: Wait
     value: "800"
   - type: Screenshot
-    value: 22-side-panel-collapsed
+    value: 20-side-panel-collapsed
   - type: Click
     target: "name=SidePanelToggleButton"
 
@@ -159,10 +150,10 @@ actions:
   - type: Wait
     value: "1000"
   - type: Screenshot
-    value: 23-settings-flyout
+    value: 21-settings-flyout
   - type: Click
     target: "type=ToggleSwitch:has-text(Light theme)"
   - type: Wait
     value: "1800"
   - type: Screenshot
-    value: 24-light-theme-on
+    value: 22-light-theme-on

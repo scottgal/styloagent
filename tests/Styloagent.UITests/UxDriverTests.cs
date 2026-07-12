@@ -56,7 +56,7 @@ public class UxDriverTests
     {
         "DocumentControl", "DocumentTabStrip", "DocumentTabStripItem",
         "TabStripItem", "AgentPaneView", "MarkdownDocumentView", "MarkdownScrollViewer",
-        "TextBlock",
+        "TerminalControl", "DockableControl", "TextBlock",
     };
 
     private static void Diag(Window w, string stage)
@@ -79,6 +79,14 @@ public class UxDriverTests
         foreach (var n in new[] { "DocumentTabStrip", "DocumentControl", "DocumentDock" })
             foreach (var v in d.Where(x => x.GetType().Name == n).OfType<Visual>())
                 sb.Append($"  {n} bounds={v.Bounds}\n");
+
+        // Each realized AgentPaneView: its VM + whether it's actually visible. Multiple visible =
+        // terminals stacking on one surface (the bug); one reused = recycling collapsed to one control.
+        foreach (var apv in d.Where(x => x.GetType().Name == "AgentPaneView").OfType<Control>())
+        {
+            var dcName = apv.DataContext?.GetType().GetProperty("DisplayName")?.GetValue(apv.DataContext) ?? "?";
+            sb.Append($"  AgentPaneView vm='{dcName}' IsVisible={apv.IsVisible} EffectivelyVisible={apv.IsEffectivelyVisible} bounds={apv.Bounds}\n");
+        }
 
         // What Dock's deferred content host actually holds after an active-dockable change.
         foreach (var dcc in d.Where(x => x.GetType().Name == "DeferredContentControl"))

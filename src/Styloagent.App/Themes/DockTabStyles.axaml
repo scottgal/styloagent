@@ -1,14 +1,8 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:conv="clr-namespace:Styloagent.App.Converters"
         xmlns:dockControls="clr-namespace:Dock.Avalonia.Controls;assembly=Dock.Avalonia">
-  <!-- Per-agent identity colour on the centre document tabs: an agent's dock tab uses the same
-       colour as its row in the roster (AgentPaneViewModel.BorderColorHex), so a terminal tab
-       reads as "the same agent" left-to-right. Non-agent documents (markdown/diagram/bus) have
-       no BorderColorHex, so the binding falls back to the default light tab colour. A coloured
-       underline reinforces the identity on the active tab.
-
-       Shared by App.axaml (the running app) and the UI test harness (TestApp) so headless
-       screenshots render the tab strip identically to the real app. -->
+  <!-- Per-agent identity colour on the centre document tabs (shared with the UI test harness). -->
   <Style Selector="dockControls|DocumentTabStripItem">
     <Setter Property="Foreground"
             Value="{Binding BorderColorHex, FallbackValue=#C8C8E0, TargetNullValue=#C8C8E0}" />
@@ -21,13 +15,90 @@
             Value="{Binding BorderColorHex, FallbackValue=#FFFFFF, TargetNullValue=#FFFFFF}" />
   </Style>
 
-  <!-- Use Dock's EAGER "cached content" DocumentControl template instead of the default deferred one.
-       The default template hosts document content in a DeferredContentControl that posts realization at
-       DispatcherPriority.Background; a live agent terminal renders continuously and starves that queue,
-       so a newly-activated document's content never materialises — the "docs don't open / spawning an
-       agent overflows into the previous one" bug (Dock #1086). The cached template realizes each
-       document's content synchronously and toggles visibility to the active one, so switching works. -->
+  <!-- DocumentControl content template. This is Dock 11.3.12.1's stock "cached content" template
+       VERBATIM (all DockProperties drop-areas / dock-targets / adorners preserved, so drag-docking,
+       splitting and floating keep working) with EXACTLY ONE change: each document host's visibility.
+       Stock binds it to `((IDock)Owner).ActiveDockable`, which does not update on tab switch in this
+       version, so every agent's live XTerm terminal stays visible and they stack on one surface. We
+       instead compare the item to the DocumentControl's DataContext.ActiveDockable (which DOES notify)
+       via our own ReferenceEqualsMultiConverter — so all terminals stay alive but only the active one
+       renders. -->
+  <Styles.Resources>
+    <ControlTemplate x:Key="StyloagentDocumentContentTemplate" TargetType="DocumentControl">
+      <DockPanel x:Name="PART_DockPanel"
+                 DockProperties.IsDropArea="True"
+                 DockProperties.IsDockTarget="True"
+                 DockProperties.ShowDockIndicatorOnly="{DynamicResource DockDocumentControlShowDockIndicatorOnly}"
+                 DockProperties.IndicatorDockOperation="{DynamicResource DockDocumentControlIndicatorDockOperation}"
+                 VerticalSpacing="{DynamicResource DockDocumentControlVerticalSpacing}"
+                 Background="Transparent"
+                 ZIndex="1">
+        <DocumentTabStrip x:Name="PART_TabStrip"
+                          ItemsSource="{Binding VisibleDockables}"
+                          SelectedItem="{Binding ActiveDockable, Mode=TwoWay}"
+                          CanCreateItem="{Binding CanCreateDocument}"
+                          IconTemplate="{TemplateBinding IconTemplate}"
+                          HeaderTemplate="{TemplateBinding HeaderTemplate}"
+                          ModifiedTemplate="{TemplateBinding ModifiedTemplate}"
+                          CloseTemplate="{TemplateBinding CloseTemplate}"
+                          CloseButtonTheme="{TemplateBinding CloseButtonTheme}"
+                          IsActive="{TemplateBinding IsActive}"
+                          Orientation="{Binding TabsLayout, Converter={x:Static DocumentTabOrientationConverter.Instance}}"
+                          DockPanel.Dock="{Binding TabsLayout, Converter={x:Static DocumentTabDockConverter.Instance}}"
+                          DockProperties.IsDropArea="True"
+                          DockProperties.DockAdornerHost="{Binding #PART_DockPanel}">
+          <DocumentTabStrip.Styles>
+            <Style Selector="DocumentTabStripItem">
+              <Setter Property="IsActive" Value="{Binding $parent[DocumentTabStrip].IsActive}" />
+            </Style>
+          </DocumentTabStrip.Styles>
+        </DocumentTabStrip>
+        <Panel x:Name="PART_DocumentSeperatorHost" IsVisible="{Binding #PART_TabStrip.IsVisible}">
+          <Panel x:Name="PART_DocumentSeperator"
+                 IsVisible="{DynamicResource DockDocumentTabStripSeparatorVisible}" />
+        </Panel>
+        <Border x:Name="PART_Border">
+          <Grid>
+            <ItemsControl x:Name="PART_CachedContentHost"
+                          ItemsSource="{Binding VisibleDockables}"
+                          IsVisible="{Binding $parent[DocumentControl].HasVisibleDockables}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <Grid />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <DockableControl TrackingMode="Visible">
+                    <DockableControl.IsVisible>
+                      <MultiBinding Converter="{x:Static conv:ReferenceEqualsMultiConverter.Instance}">
+                        <Binding />
+                        <Binding Path="DataContext.ActiveDockable"
+                                 RelativeSource="{RelativeSource AncestorType=DocumentControl}" />
+                      </MultiBinding>
+                    </DockableControl.IsVisible>
+                    <ContentControl x:Name="PART_CachedContentPresenter"
+                                    HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Stretch"
+                                    Content="{Binding}" />
+                  </DockableControl>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <ContentControl x:Name="PART_EmptyContentHost"
+                            Content="{Binding EmptyContent}"
+                            ContentTemplate="{Binding $parent[DocumentControl].EmptyContentTemplate}"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            IsVisible="{Binding !$parent[DocumentControl].HasVisibleDockables}" />
+          </Grid>
+        </Border>
+      </DockPanel>
+    </ControlTemplate>
+  </Styles.Resources>
+
   <Style Selector="dockControls|DocumentControl">
-    <Setter Property="Template" Value="{StaticResource DockDocumentControlCachedContentTemplate}" />
+    <Setter Property="Template" Value="{StaticResource StyloagentDocumentContentTemplate}" />
   </Style>
 </Styles>

@@ -1,0 +1,29 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
+             x:Class="Styloagent.App.Views.TimelineView"
+             x:DataType="vm:TimelineViewModel">
+
+  <Border Background="{DynamicResource PanelBgBrush}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+      <ItemsControl ItemsSource="{Binding Entries}" Margin="0,4">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:TimelineEntry">
+            <Grid ColumnDefinitions="Auto,Auto,*" Margin="8,2">
+              <TextBlock Grid.Column="0" Text="{Binding TimeText}" FontSize="10"
+                         FontFamily="Menlo, Consolas, monospace"
+                         Foreground="{DynamicResource MutedTextBrush}"
+                         VerticalAlignment="Top" Margin="0,1,8,0" />
+              <TextBlock Grid.Column="1" Text="{Binding Agent}" FontSize="11" FontWeight="SemiBold"
+                         Foreground="{Binding ColorHex}" VerticalAlignment="Top"
+                         Margin="0,0,8,0" MinWidth="64" />
+              <TextBlock Grid.Column="2" Text="{Binding Description}" FontSize="11"
+                         Foreground="{DynamicResource PrimaryTextBrush}" TextWrapping="Wrap" />
+            </Grid>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+  </Border>
+
+</UserControl>

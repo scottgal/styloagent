@@ -295,6 +295,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // Channel root (.styloagent/channel) — where the send_message MCP tool writes the .md trace.
     private string? _channelRoot;
 
+    /// <summary>The activity timeline: a merged, newest-first feed of hook operations + bus messages.</summary>
+    public TimelineViewModel Timeline { get; } = new();
+
     // Runtime state for AddAgent
     private IReadOnlyList<AgentManifestEntry> _seededEntries = Array.Empty<AgentManifestEntry>();
     private readonly HashSet<string> _openedPrefixes = new();
@@ -796,6 +799,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 req.Priority ?? "normal", DateTimeOffset.Now);
             // Deliver now rather than waiting on the debounced fs watcher.
             _ = _deliveryCoordinator?.PumpAsync();
+
+            var senderColor = Panes.FirstOrDefault(p => p.Prefix == req.From)?.BorderColorHex ?? "#8888AA";
+            Timeline.Add(DateTimeOffset.Now, req.From, $"→ {req.To} · {req.Subject}", senderColor);
+
             return MessageOutcome.Ok(path);
         }
         catch (Exception ex)
@@ -1102,12 +1109,33 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             pane.ApplyHookEvent(e);
             pane.WaitingSince = pane.NeedsYou ? (pane.WaitingSince ?? DateTimeOffset.UtcNow) : null;
             RefreshAttention();
+            RecordTimelineFromHook(pane, e);
             if (!_interaction.IsBusy(IdleWindow)) AutoRevealHead();
 
             // When the agent goes idle, flush any NextPrompt messages that were deferred for it.
             if (_deliveryService is not null)
                 _ = _deliveryService.OnRecipientStateChangedAsync(pane.Prefix, pane.HookState);
         }
+    }
+
+    /// <summary>Maps a hook event to an activity-timeline entry (skips the high-frequency events).</summary>
+    private void RecordTimelineFromHook(AgentPaneViewModel pane, HookEvent e)
+    {
+        string? desc = e.EventName switch
+        {
+            "SessionStart" => "came online",
+            "SessionEnd"   => "exited",
+            "PreToolUse"   => HookActivity.DescribeTool(e.ToolName),
+            "Notification" => e.NotificationType switch
+            {
+                "permission_prompt" or "agent_needs_input" or "elicitation_dialog" => "needs you",
+                "idle_prompt" => "went idle",
+                _ => null,
+            },
+            _ => null,   // UserPromptSubmit / PostToolUse / Stop — too frequent for the timeline
+        };
+        if (!string.IsNullOrEmpty(desc))
+            Timeline.Add(DateTimeOffset.Now, pane.DisplayName, desc, pane.BorderColorHex);
     }
 
     /// <summary>Resolves an agent id (pane prefix) to its live PTY for message injection.</summary>

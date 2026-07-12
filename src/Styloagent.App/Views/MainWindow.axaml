@@ -205,6 +205,15 @@
         <TabItem>
           <TabItem.Header>
             <StackPanel Orientation="Horizontal" Spacing="6">
+              <ic:SymbolIcon Symbol="History" FontSize="15" VerticalAlignment="Center" />
+              <TextBlock Text="Timeline" VerticalAlignment="Center" />
+            </StackPanel>
+          </TabItem.Header>
+          <views:TimelineView DataContext="{Binding Timeline}" />
+        </TabItem>
+        <TabItem>
+          <TabItem.Header>
+            <StackPanel Orientation="Horizontal" Spacing="6">
               <ic:SymbolIcon Symbol="Document" FontSize="15" VerticalAlignment="Center" />
               <TextBlock Text="Documents" VerticalAlignment="Center" />
             </StackPanel>

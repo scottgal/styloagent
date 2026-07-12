@@ -81,6 +81,15 @@ jobs:
           PLIST
           SAFE_VERSION="${VERSION//[^A-Za-z0-9._-]/}"
           sed -i '' "s/__VERSION__/${SAFE_VERSION}/" "$APP/Contents/Info.plist"
+          # dotnet ad-hoc-signs the apphost as a STANDALONE Mach-O (Identifier=apphost, Info.plist
+          # not bound). Once it's a bundle's CFBundleExecutable next to Resources/, that signature is
+          # invalid — there is no _CodeSignature/CodeResources — so Apple Silicon Gatekeeper KILLS the
+          # downloaded (quarantined) app and it reads as "damaged". Re-sign the fully-assembled bundle
+          # ad-hoc (seals Info.plist + Resources), THEN verify — a bad signature must fail the build so
+          # a broken bundle can never ship green again. (No Developer ID cert, so ad-hoc: users
+          # right-click → Open, or `xattr -dr com.apple.quarantine`.)
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
           ditto -c -k --keepParent "$APP" "${ASSET}.zip"
 
       - name: Package (Windows / Linux)

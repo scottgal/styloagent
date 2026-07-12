@@ -218,6 +218,10 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     private string? _sessionId;
     private string? _cwd;
 
+    /// <summary>The agent's Claude transcript path (cwd + session id), or null before the first hook event.</summary>
+    public string? TranscriptPath
+        => Styloagent.Core.Transcripts.TranscriptReader.PathFor(_cwd ?? _manifest.Worktree, _sessionId);
+
     /// <summary>Compact token/context readout for the roster, e.g. "83k · 22%". Empty until known.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasUsage))]

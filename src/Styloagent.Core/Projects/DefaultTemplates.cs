@@ -65,6 +65,12 @@ You have these MCP tools from the `styloagent` server:
   touched*, messages, lifecycle), newest first — to catch up on what happened without watching live.
 - `dehydrate_agent(prefix)` / `rehydrate_agent(prefix)` — park an idle specialist (it checkpoints its
   context and frees its terminal) and bring it back when you need it, to manage fleet resources.
+- `read_agent(prefix)` — what an agent last *said* (its most recent assistant turn) — to see what a
+  specialist actually produced or reasoned, not just its state.
+- `who_touched(path)` — who last touched a file, when and how. Check it BEFORE you access or edit a
+  file another agent may own, so you coordinate instead of colliding — context beyond worktrees.
+- `recent_files(limit)` — the files most recently touched across the fleet: a quick map of where
+  everyone is working.
 - `spawn_agent(prefix, responsibility, dir, launchPrompt, worktree)` — launches a child agent under
   you. Set `worktree: true` **only** when the new agent's responsibility overlaps files an existing
   agent owns (so it works isolated on its own `agent/<prefix>` worktree); otherwise `false` to share

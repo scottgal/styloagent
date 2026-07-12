@@ -52,6 +52,58 @@ public static class TranscriptReader
         catch { return null; }
     }
 
+    /// <summary>
+    /// Reads the text of the agent's most recent assistant turn from its transcript — what it last
+    /// said/produced (tool-only turns with no text are skipped). Null if unavailable.
+    /// </summary>
+    public static string? ReadLastAssistantText(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
+        try
+        {
+            foreach (var line in TailLines(path, maxBytes: 512 * 1024))
+                if (TryExtractAssistantText(line, out var text))
+                    return text;
+            return null;
+        }
+        catch { return null; }
+    }
+
+    private static bool TryExtractAssistantText(string line, out string text)
+    {
+        text = "";
+        try
+        {
+            using var doc = JsonDocument.Parse(line);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return false;
+            if (!root.TryGetProperty("message", out var msg) || msg.ValueKind != JsonValueKind.Object) return false;
+
+            var type = Str(root, "type");
+            var role = Str(msg, "role");
+            if (type != "assistant" && role != "assistant") return false;
+            if (!msg.TryGetProperty("content", out var content)) return false;
+
+            var sb = new StringBuilder();
+            if (content.ValueKind == JsonValueKind.String)
+                sb.Append(content.GetString());
+            else if (content.ValueKind == JsonValueKind.Array)
+                foreach (var block in content.EnumerateArray())
+                    if (block.ValueKind == JsonValueKind.Object
+                        && Str(block, "type") == "text" && Str(block, "text") is { } bx)
+                        sb.Append(bx);
+
+            var s = sb.ToString().Trim();
+            if (s.Length == 0) return false;   // tool-only turn — keep scanning back for real text
+            text = s;
+            return true;
+        }
+        catch (JsonException) { return false; }
+    }
+
+    private static string? Str(JsonElement obj, string name)
+        => obj.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
     /// <summary>Reads up to <paramref name="maxBytes"/> from the end of the file, newest line first.</summary>
     private static IEnumerable<string> TailLines(string path, int maxBytes)
     {

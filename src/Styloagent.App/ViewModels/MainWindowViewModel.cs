@@ -1013,6 +1013,59 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _                                                    => "unknown",
     };
 
+    /// <summary>Reads what an agent last said (its most recent assistant turn) from its transcript.</summary>
+    public async Task<string> ReadAgentOutput(string prefix)
+    {
+        var pane = Panes.FirstOrDefault(p => p.Prefix == prefix);
+        if (pane is null) return $"rejected: no agent '{prefix}'";
+        var path = pane.TranscriptPath;
+        if (path is null) return $"rejected: {prefix} has no transcript yet";
+
+        var text = await Task.Run(() => Styloagent.Core.Transcripts.TranscriptReader.ReadLastAssistantText(path));
+        return string.IsNullOrEmpty(text) ? $"({prefix} has produced no assistant output yet)" : text;
+    }
+
+    // ── File-touch registry: which agent last touched each file (coordination context) ──────────
+    private sealed record FileTouch(string Agent, DateTimeOffset At, string Op);
+    private readonly Dictionary<string, FileTouch> _fileTouches = new(StringComparer.OrdinalIgnoreCase);
+
+    private void RecordFileTouch(string path, string agent, string op)
+        => _fileTouches[path] = new FileTouch(agent, DateTimeOffset.Now, op);
+
+    /// <summary>Who last touched <paramref name="path"/>, when, and how — so you can coordinate before editing.</summary>
+    public string WhoTouched(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return "rejected: path required";
+        // Accept either an exact path or a file name; match the most recent by name if not exact.
+        if (!_fileTouches.TryGetValue(path, out var t))
+        {
+            var name = Path.GetFileName(path);
+            t = _fileTouches
+                .Where(kv => string.Equals(Path.GetFileName(kv.Key), name, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(kv => kv.Value.At)
+                .Select(kv => kv.Value)
+                .FirstOrDefault();
+            if (t is null) return $"no record of any agent touching {path}";
+        }
+        var ago = (int)Math.Max(0, (DateTimeOffset.Now - t.At).TotalSeconds);
+        return $"{t.Agent} last touched it {ago}s ago ({t.Op})";
+    }
+
+    /// <summary>The most recently touched files across the fleet: "path — agent (op, Ns ago)".</summary>
+    public IReadOnlyList<string> RecentFiles(int limit)
+    {
+        limit = Math.Clamp(limit <= 0 ? 20 : limit, 1, 200);
+        return _fileTouches
+            .OrderByDescending(kv => kv.Value.At)
+            .Take(limit)
+            .Select(kv =>
+            {
+                var ago = (int)Math.Max(0, (DateTimeOffset.Now - kv.Value.At).TotalSeconds);
+                return $"{kv.Key} — {kv.Value.Agent} ({kv.Value.Op}, {ago}s ago)";
+            })
+            .ToList();
+    }
+
     /// <summary>
     /// Core pane-creation path shared by SpawnProposed and SpawnChild.
     /// Builds the manifest entry, reserves the hook id, creates the AgentPaneViewModel
@@ -1215,6 +1268,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             && e.ToolName is "Read" or "Edit" or "MultiEdit" or "Write" or "NotebookEdit" or "NotebookRead"
             && !string.IsNullOrWhiteSpace(e.ToolTarget) && e.ToolTarget.Contains('/')
                 ? e.ToolTarget : null;
+
+        // Remember who last touched this file, for coordination context.
+        if (path is not null)
+            RecordFileTouch(path, pane.DisplayName, HookActivity.DescribeTool(e.ToolName));
 
         // An Edit carries a before/after → the row opens a diff instead of the whole file.
         string? diffOld = null, diffNew = null;

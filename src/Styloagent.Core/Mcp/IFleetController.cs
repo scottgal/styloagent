@@ -20,4 +20,7 @@ public interface IFleetController
     IReadOnlyList<TimelineOp> ReadTimeline(int limit);
     Task<string> DehydrateAgentAsync(string prefix);
     Task<string> RehydrateAgentAsync(string prefix);
+    Task<string> ReadAgentAsync(string prefix);
+    string WhoTouched(string path);
+    IReadOnlyList<string> RecentFiles(int limit);
 }

@@ -132,6 +132,36 @@ public sealed class FleetTools
         return JsonSerializer.Serialize(_controller.ReadTimeline(limit), Json);
     }
 
+    [McpServerTool, Description("Read what an agent last said — the text of its most recent assistant turn, from its transcript. Use to see what a specialist actually produced/reasoned, not just its state.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> read_agent(string prefix)
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
+        return await _controller.ReadAgentAsync(prefix);
+    }
+
+    [McpServerTool, Description("Who last touched a file (by path or file name), when, and how (read/edited). Check this BEFORE you access or edit a file another agent may own, so you can coordinate instead of colliding — context beyond worktree boundaries.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public string who_touched(string path)
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
+        return _controller.WhoTouched(path);
+    }
+
+    [McpServerTool, Description("The files most recently touched across the fleet — each with the agent, the operation and how long ago. Pass limit (default 20, max 200). A quick map of where everyone is working.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public string recent_files(int limit)
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
+        return JsonSerializer.Serialize(_controller.RecentFiles(limit), Json);
+    }
+
     [McpServerTool, Description("Suspend an agent by prefix: it checkpoints its context and frees its terminal. Use to park an idle specialist and reclaim resources — rehydrate it when you need it again. Returns 'rejected' if it can't (e.g. no checkpoint target).")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public async Task<string> dehydrate_agent(string prefix)

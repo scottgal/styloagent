@@ -4,6 +4,29 @@ namespace Styloagent.Core.Tests;
 
 public class TranscriptReaderTests
 {
+    private static readonly string[] AssistantLines =
+    {
+        "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"first turn\"}]}}",
+        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"go\"}}",
+        "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\"},{\"type\":\"text\",\"text\":\"the final answer\"}]}}",
+    };
+
+    [Fact]
+    public void ReadLastAssistantText_returns_the_latest_assistant_text_skipping_tool_only()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, string.Join('\n', AssistantLines));
+            Assert.Equal("the final answer", TranscriptReader.ReadLastAssistantText(path));
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void ReadLastAssistantText_missing_file_is_null()
+        => Assert.Null(TranscriptReader.ReadLastAssistantText("/no/such/t.jsonl"));
+
     private static readonly string[] SampleLines =
     {
         "{\"type\":\"assistant\",\"message\":{\"model\":\"claude-opus-4\",\"usage\":{\"input_tokens\":1000,\"cache_read_input_tokens\":40000,\"output_tokens\":500}}}",

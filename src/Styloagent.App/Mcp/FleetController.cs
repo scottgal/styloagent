@@ -47,4 +47,17 @@ public sealed class FleetController : IFleetController
 
     public Task<string> RehydrateAgentAsync(string prefix)
         => Dispatcher.UIThread.InvokeAsync(() => _vm.RehydrateAgentByPrefixAsync(prefix));
+
+    public Task<string> ReadAgentAsync(string prefix)
+        => Dispatcher.UIThread.InvokeAsync(() => _vm.ReadAgentOutput(prefix));
+
+    public string WhoTouched(string path)
+        => Dispatcher.UIThread.CheckAccess()
+            ? _vm.WhoTouched(path)
+            : Dispatcher.UIThread.InvokeAsync(() => _vm.WhoTouched(path)).GetTask().GetAwaiter().GetResult();
+
+    public IReadOnlyList<string> RecentFiles(int limit)
+        => Dispatcher.UIThread.CheckAccess()
+            ? _vm.RecentFiles(limit)
+            : Dispatcher.UIThread.InvokeAsync(() => _vm.RecentFiles(limit)).GetTask().GetAwaiter().GetResult();
 }

@@ -33,6 +33,9 @@ public class FleetToolsTests
             new[] { new TimelineOp("14:00:00", "foss-", "editing · Foo.cs") };
         public Task<string> DehydrateAgentAsync(string prefix) { LastDehydrate = prefix; return Task.FromResult($"dehydrated {prefix}"); }
         public Task<string> RehydrateAgentAsync(string prefix) => Task.FromResult($"rehydrated {prefix}");
+        public Task<string> ReadAgentAsync(string prefix) => Task.FromResult($"{prefix} said: done");
+        public string WhoTouched(string path) => "foss- last touched it 5s ago (editing)";
+        public IReadOnlyList<string> RecentFiles(int limit) => new[] { "/repo/Foo.cs — foss- (editing, 5s ago)" };
     }
 
     private static IHttpContextAccessor AccessorWith(string? agent, string? auth)
@@ -201,6 +204,27 @@ public class FleetToolsTests
         var result = await tools.dehydrate_agent("foss-");
         Assert.Null(ctrl.LastDehydrate);
         Assert.Contains("unauthorized", result);
+    }
+
+    [Fact]
+    public void who_touched_reports_the_last_toucher()
+    {
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), new FakeController(), new McpAuth("secret"));
+        Assert.Contains("foss-", tools.who_touched("/repo/Foo.cs"));
+    }
+
+    [Fact]
+    public async Task read_agent_returns_the_agents_last_output()
+    {
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), new FakeController(), new McpAuth("secret"));
+        Assert.Contains("done", await tools.read_agent("foss-"));
+    }
+
+    [Fact]
+    public void recent_files_serializes_the_list()
+    {
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), new FakeController(), new McpAuth("secret"));
+        Assert.Contains("Foo.cs", tools.recent_files(20));
     }
 
     [Fact]

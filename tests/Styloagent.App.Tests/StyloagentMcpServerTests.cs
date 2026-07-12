@@ -21,6 +21,9 @@ public class StyloagentMcpServerTests
         public IReadOnlyList<TimelineOp> ReadTimeline(int limit) => Array.Empty<TimelineOp>();
         public Task<string> DehydrateAgentAsync(string prefix) => Task.FromResult($"dehydrated {prefix}");
         public Task<string> RehydrateAgentAsync(string prefix) => Task.FromResult($"rehydrated {prefix}");
+        public Task<string> ReadAgentAsync(string prefix) => Task.FromResult("done");
+        public string WhoTouched(string path) => "none";
+        public IReadOnlyList<string> RecentFiles(int limit) => Array.Empty<string>();
     }
 
     private sealed class FakeRouter : IRouterController

@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -546,6 +547,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             ShowBusSequenceCommand = vm.ShowBusSequenceCommand,
             ShowArchitectureCommand = vm.ShowArchitectureCommand,
         };
+        vm.BuildSearchIndex(docRepoRoot, channelRoot);
 
         return vm;
     }
@@ -767,6 +769,61 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (_dockFactory.RootDock is { } root) _dockFactory.SetFocusedDockable(root, console);
 
         _ = console.StartAsync(_launcher, cwd);
+    }
+
+    // ── Document search (Lucene, top-bar autosuggest) ────────────────────────
+    private readonly Styloagent.Core.Docs.DocumentSearchIndex _searchIndex = new();
+
+    /// <summary>Live document-search suggestions for the top-bar box (updated as the query changes).</summary>
+    public ObservableCollection<Styloagent.Core.Docs.DocSearchHit> SearchResults { get; } = new();
+
+    /// <summary>The top-bar search text — each change re-queries the Lucene index for suggestions.</summary>
+    [ObservableProperty]
+    private string _searchQuery = "";
+
+    partial void OnSearchQueryChanged(string value)
+    {
+        SearchResults.Clear();
+        if (string.IsNullOrWhiteSpace(value)) return;
+        foreach (var hit in _searchIndex.Search(value, 8))
+            SearchResults.Add(hit);
+    }
+
+    /// <summary>The chosen suggestion — selecting one opens the document and resets the box.</summary>
+    [ObservableProperty]
+    private Styloagent.Core.Docs.DocSearchHit? _selectedSearchResult;
+
+    partial void OnSelectedSearchResultChanged(Styloagent.Core.Docs.DocSearchHit? value)
+    {
+        if (value is null) return;
+        OpenMarkdownDocument(new MarkdownDocumentViewModel(value.Title, value.FullPath));
+        // Reset the box for the next search (deferred so we don't fight the AutoCompleteBox's own update).
+        Dispatcher.UIThread.Post(() =>
+        {
+            SelectedSearchResult = null;
+            SearchQuery = "";
+            SearchResults.Clear();
+        });
+    }
+
+    /// <summary>(Re)builds the document search index from the library files (title + content).</summary>
+    private void BuildSearchIndex(string? repoRoot, string? channelRoot)
+    {
+        try
+        {
+            var entries = Styloagent.Core.Docs.DocLibraryReader.Read(repoRoot, channelRoot);
+            _searchIndex.Build(entries.Select(e => (e, SafeReadFile(e.FullPath))));
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[MainWindowViewModel] search index build failed: {ex}");
+        }
+    }
+
+    private static string SafeReadFile(string path)
+    {
+        try { return File.Exists(path) ? File.ReadAllText(path) : ""; }
+        catch { return ""; }
     }
 
     /// <summary>Turns a proposed subsystem into a live roster agent (mirrors AddAgent).</summary>
@@ -1350,6 +1407,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         ProposedTeam?.Dispose();
         _busViewModel?.Dispose();
+        _searchIndex.Dispose();
 
         if (_mcpServer is not null)
         {

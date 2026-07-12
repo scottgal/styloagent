@@ -8,6 +8,10 @@
 
   <ItemGroup>
     <PackageReference Include="VYaml" Version="1.4.0" />
+    <!-- Lucene.NET's 4.8.0-beta line is the current release (the only non-prerelease versions are the
+         ancient 2.x/3.0.3); beta00018 is the latest. -->
+    <PackageReference Include="Lucene.Net" Version="4.8.0-beta00018" />
+    <PackageReference Include="Lucene.Net.Analysis.Common" Version="4.8.0-beta00018" />
   </ItemGroup>
 
 </Project>

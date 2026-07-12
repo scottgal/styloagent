@@ -6,6 +6,7 @@
         xmlns:ic="using:FluentIcons.Avalonia.Fluent"
         xmlns:conv="clr-namespace:Styloagent.App.Converters"
         xmlns:cfg="clr-namespace:Styloagent.App.Config"
+        xmlns:docs="clr-namespace:Styloagent.Core.Docs;assembly=Styloagent.Core"
         xmlns:terminal="clr-namespace:Styloagent.Terminal;assembly=Styloagent.Terminal"
         x:Class="Styloagent.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -25,7 +26,7 @@
     <Border DockPanel.Dock="Top"
             Background="{DynamicResource CockpitAccentBrush}"
             Padding="8,4">
-      <Grid ColumnDefinitions="Auto,*,Auto">
+      <Grid ColumnDefinitions="Auto,Auto,*,Auto">
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
           <Button Command="{Binding AddAgentCommand}" Padding="10,4" FontSize="13">
             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -43,8 +44,28 @@
           </Button>
         </StackPanel>
 
+        <!-- Document search (Lucene autosuggest) — type to suggest, click a result to open it -->
+        <AutoCompleteBox Grid.Column="1" Width="280" Margin="16,0" VerticalAlignment="Center"
+                         Watermark="Search documents…"
+                         FilterMode="None"
+                         MinimumPrefixLength="1"
+                         Text="{Binding SearchQuery}"
+                         ItemsSource="{Binding SearchResults}"
+                         SelectedItem="{Binding SelectedSearchResult}"
+                         ValueMemberBinding="{Binding Title}">
+          <AutoCompleteBox.ItemTemplate>
+            <DataTemplate x:DataType="docs:DocSearchHit">
+              <StackPanel Margin="2,1">
+                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="12" />
+                <TextBlock Text="{Binding RelativePath}" FontSize="10"
+                           Foreground="{DynamicResource MutedTextBrush}" />
+              </StackPanel>
+            </DataTemplate>
+          </AutoCompleteBox.ItemTemplate>
+        </AutoCompleteBox>
+
         <!-- Centre: layout-mode segmented switch (Tabs / Tile / Auto-tile) -->
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="0" HorizontalAlignment="Center"
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" HorizontalAlignment="Center"
                     VerticalAlignment="Center">
           <StackPanel.Styles>
             <Style Selector="ToggleButton">
@@ -64,7 +85,7 @@
                         Content="Auto-tile" />
         </StackPanel>
 
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
           <ToggleButton x:Name="RosterToggleButton" IsChecked="{Binding IsRosterCollapsed}" Padding="6,3"
                         ToolTip.Tip="Collapse roster">
             <ic:SymbolIcon Symbol="PanelLeft" FontSize="15" />

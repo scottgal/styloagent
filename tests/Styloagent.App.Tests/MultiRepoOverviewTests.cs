@@ -1,0 +1,73 @@
+using Styloagent.App.ViewModels;
+using Styloagent.Core.Workspace;
+using Xunit;
+
+namespace Styloagent.App.Tests;
+
+/// <summary>
+/// Phase 3: a workspace of N repos opens the primary repo's overview (existing flow) plus one overview
+/// pane per additional repo, each coloured by its repo hue, on the shared bus. These drive
+/// <see cref="MainWindowViewModel.InitializeAsync"/> with a fake launcher so no real claude is spawned.
+/// </summary>
+public class MultiRepoOverviewTests
+{
+    [Fact]
+    public async Task Extra_overviews_each_add_one_pane_coloured_by_its_repo()
+    {
+        // Two independent channels seeded identically → a clean before/after pane-count baseline.
+        var baseChannel = MainWindowViewModelTests.MakeTwoAgentChannel();
+        var wsChannel = MainWindowViewModelTests.MakeTwoAgentChannel();
+        try
+        {
+            var baseline = await MainWindowViewModel.InitializeAsync(
+                baseChannel, new FakeLauncher(), new FakeWatcher());
+
+            var ws = WorkspaceConfig.For("/ws", "mono", new[]
+            {
+                Path.Combine("/ws", "primary"),
+                Path.Combine("/ws", "beta"),
+                Path.Combine("/ws", "gamma"),
+            });
+            var extras = ws.RepoOverviews().Skip(1).ToList();   // beta-, gamma-
+            Assert.Equal(2, extras.Count);
+
+            var vm = await MainWindowViewModel.InitializeAsync(
+                wsChannel, new FakeLauncher(), new FakeWatcher(), extraOverviews: extras);
+
+            // Exactly one extra pane per additional repo.
+            Assert.Equal(baseline.Panes.Count + extras.Count, vm.Panes.Count);
+
+            foreach (var ov in extras)
+            {
+                var pane = vm.Panes.FirstOrDefault(p => p.Prefix == ov.Prefix);
+                Assert.NotNull(pane);
+                Assert.Equal(ov.ColorHex, pane!.BorderColorHex);   // coloured by repo hue
+            }
+
+            // Distinct repos → distinct hues.
+            Assert.NotEqual(extras[0].ColorHex, extras[1].ColorHex);
+        }
+        finally
+        {
+            if (Directory.Exists(baseChannel)) Directory.Delete(baseChannel, recursive: true);
+            if (Directory.Exists(wsChannel)) Directory.Delete(wsChannel, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task No_extra_overviews_leaves_the_single_repo_roster_unchanged()
+    {
+        var channel = MainWindowViewModelTests.MakeTwoAgentChannel();
+        try
+        {
+            var withNull = await MainWindowViewModel.InitializeAsync(
+                channel, new FakeLauncher(), new FakeWatcher(), extraOverviews: null);
+            var withEmpty = await MainWindowViewModel.InitializeAsync(
+                channel, new FakeLauncher(), new FakeWatcher(), extraOverviews: Array.Empty<RepoOverview>());
+
+            // A null or empty extra-overview list is the released single-repo path: same roster.
+            Assert.Equal(withNull.Panes.Count, withEmpty.Panes.Count);
+        }
+        finally { if (Directory.Exists(channel)) Directory.Delete(channel, recursive: true); }
+    }
+}

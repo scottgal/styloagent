@@ -8,6 +8,7 @@ using Styloagent.App.ViewModels;
 using Styloagent.App.Views;
 using Styloagent.Core.Projects;
 using Styloagent.Core.Sessions;
+using Styloagent.Core.Workspace;
 using Styloagent.Terminal;
 
 namespace Styloagent.App;
@@ -40,8 +41,23 @@ public partial class App : Application
             {
                 try
                 {
-                    var cfg = ProjectScaffolder.Ensure(root);
+                    // A folder with .styloagent-workspace/workspace.yaml is a workspace of N repos; otherwise
+                    // it's a single repo (a workspace of one). The primary repo (index 0) anchors on the
+                    // existing single-repo flow; every additional repo adds its own overview onto the shared bus.
+                    var workspace = new WorkspaceStore().Load(root) ?? WorkspaceConfig.SingleRepo(root);
+                    var primary = workspace.Repos[0];
+                    var cfg = ProjectScaffolder.Ensure(primary.Path);
                     await recents.AddAsync(recentsPath, root);
+
+                    IReadOnlyList<RepoOverview>? extraOverviews = null;
+                    if (!workspace.IsSingleRepo)
+                    {
+                        // Scaffold each additional repo so its .styloagent/system-prompt.md exists, then open it.
+                        foreach (var extra in workspace.Repos.Skip(1))
+                            ProjectScaffolder.Ensure(extra.Path);
+                        extraOverviews = workspace.RepoOverviews().Skip(1).ToList();
+                    }
+
                     var gitSvc = new Styloagent.Git.GitService();
                     var vm = await MainWindowViewModel.InitializeAsync(
                         cfg.ChannelRoot,
@@ -51,7 +67,8 @@ public partial class App : Application
                         repoRoot: cfg.Root,
                         overviewSystemPromptPath: cfg.SystemPromptPath,
                         gitService: gitSvc,
-                        gitLog: gitSvc);
+                        gitLog: gitSvc,
+                        extraOverviews: extraOverviews);
                     vm.AttachProject(cfg);
                     vm.AttachPreferences(prefs, prefsStore, prefsPath);
                     await vm.StartFleetServerAsync();

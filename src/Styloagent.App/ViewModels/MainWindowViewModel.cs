@@ -475,6 +475,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         string? overviewSystemPromptPath = null,
         IGitService? gitService = null,
         IGitLog? gitLog = null,
+        IReadOnlyList<Styloagent.Core.Workspace.RepoOverview>? extraOverviews = null,
         CancellationToken ct = default)
     {
         var vm = new MainWindowViewModel();
@@ -645,6 +646,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // up running claude. The view attaches to CurrentPty when it renders.
         _ = vm.Pane.SpawnAsync();
 
+        // Multi-repo: each additional repo brings its own overview onto the SHARED bus (the primary repo
+        // above anchors on `overview-`). Added here — same thread, same dock, before the window is realised —
+        // so every repo overview is built identically to the primary.
+        if (extraOverviews is { Count: > 0 })
+            foreach (var ov in extraOverviews)
+                vm.AddRepoOverview(ov);
+
         var docRepoRoot = repoRoot ?? Environment.GetEnvironmentVariable("STYLOAGENT_REPO") ?? Directory.GetCurrentDirectory();
         vm.DocLibrary = new DocLibraryViewModel(docRepoRoot, channelRoot, vm.OpenMarkdownDocument)
         {
@@ -733,6 +741,56 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (LayoutMode != CockpitLayoutMode.Tabs) RebuildCenterLayout();
 
         // Launch claude in the new pane immediately.
+        _ = paneVm.SpawnAsync();
+    }
+
+    /// <summary>
+    /// Opens an additional repo's overview agent as a pane on the shared bus (multi-repo workspaces).
+    /// Mirrors <see cref="AddAgent"/> but launches claude in that repo's root with the repo's own system
+    /// prompt and the fleet MCP, coloured by the repo's hue. The primary repo's overview is opened by
+    /// <see cref="InitializeAsync"/>; this adds every additional repo. Idempotent per prefix.
+    /// </summary>
+    public void AddRepoOverview(Styloagent.Core.Workspace.RepoOverview overview)
+    {
+        if (_dockFactory is null || _launcher is null || _watcher is null)
+            return;
+        var documentDock = _dockFactory.DocumentDock;
+        var rootDock = _dockFactory.RootDock;
+        if (documentDock is null || rootDock is null)
+            return;
+        if (!_openedPrefixes.Add(overview.Prefix))
+            return;   // already open
+
+        var entry = WithWorkingDir(new AgentManifestEntry(
+            Prefix: overview.Prefix,
+            Repo: overview.RepoRoot,
+            Worktree: overview.RepoRoot,
+            LaunchPromptPath: string.Empty,
+            RestartPromptPath: string.Empty,
+            SavedContextPath: string.Empty,
+            Transport: AgentTransport.Local));
+
+        // The specialist team travels with the repo: append THIS repo's own system prompt.
+        var systemPromptArgs = File.Exists(overview.SystemPromptPath)
+            ? new[] { "--append-system-prompt", File.ReadAllText(overview.SystemPromptPath) }
+            : Array.Empty<string>();
+
+        string hookId = ReserveHookId(entry.Prefix);
+        var session = new AgentSession(entry, _launcher, _watcher,
+            HookArgs(hookId)
+              .Concat(systemPromptArgs)
+              .Concat(McpArgsFor(entry.Prefix))
+              .ToArray());
+
+        var paneVm = new AgentPaneViewModel(session, entry, overview.Prefix.TrimEnd('-'), overview.ColorHex)
+        {
+            UserInteracted = _interaction.RecordInput,
+        };
+        Panes.Add(paneVm);
+        _panesByHookId[hookId] = paneVm;
+        _dockFactory.AddDockable(documentDock, paneVm);
+
+        // Launch claude in the repo's root immediately (the primary pane stays selected).
         _ = paneVm.SpawnAsync();
     }
 

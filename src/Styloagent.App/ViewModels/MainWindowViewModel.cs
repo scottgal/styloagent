@@ -607,7 +607,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         string firstHookId = vm.ReserveHookId(first.Prefix);
         var session = new AgentSession(first, launcher, watcher,
-            vm.HookArgs(firstHookId)
+            vm.HookArgs(firstHookId, first)
               .Concat(vm._overviewSystemPromptArgs)
               .Concat(vm.McpArgsFor(first.Prefix))
               .ToArray());
@@ -725,7 +725,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         entry = WithWorkingDir(entry);
         string hookId = ReserveHookId(entry.Prefix);
-        var session = new AgentSession(entry, _launcher, _watcher, HookArgs(hookId));
+        var session = new AgentSession(entry, _launcher, _watcher, HookArgs(hookId, entry));
         var paneVm = new AgentPaneViewModel(
             session,
             entry,
@@ -783,7 +783,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         string hookId = ReserveHookId(entry.Prefix);
         var session = new AgentSession(entry, _launcher, _watcher,
-            HookArgs(hookId)
+            HookArgs(hookId, entry)
               .Concat(systemPromptArgs)
               .Concat(McpArgsFor(entry.Prefix))
               .ToArray());
@@ -1072,8 +1072,57 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             Activity: p.StatusHeadline,
             IdleSeconds: p.LastActivityAt is { } t ? (int)Math.Max(0, (DateTimeOffset.UtcNow - t).TotalSeconds) : -1,
             Usage: p.UsageText,
-            Worktree: p.WorktreePath is not null)).ToList();
+            Worktree: p.WorktreePath is not null,
+            Repo: RepoNameForPrefix(p.Prefix))).ToList();
         return new FleetStatusReport(agents, WorkingCount, WaitingCount, FleetPaused);
+    }
+
+    /// <summary>
+    /// Which repo an agent belongs to (multi-repo workspaces): its own overview prefix if it is one,
+    /// else it inherits its parent's repo up the spawn chain; falls back to the primary repo. Empty
+    /// when no workspace repos are known (single-repo tests).
+    /// </summary>
+    private string RepoNameForPrefix(string prefix)
+    {
+        if (_repos.Count == 0) return "";
+        var seen = new HashSet<string>();
+        string? p = prefix;
+        while (p is not null && seen.Add(p))
+        {
+            var hit = _repos.FirstOrDefault(r => r.Prefix == p);
+            if (hit is not null) return hit.Name;
+            p = Panes.FirstOrDefault(x => x.Prefix == p)?.ParentPrefix;
+        }
+        return _repos[0].Name;   // default: the primary (anchor) repo
+    }
+
+    /// <summary>Context-window fill at which an agent is nudged to dehydrate / hand off before its scope dilutes.</summary>
+    private const double DilutionThreshold = 0.75;
+
+    /// <summary>
+    /// Scope-dilution guard: when a live agent's context window fills past <see cref="DilutionThreshold"/>,
+    /// surface a one-time timeline nudge to dehydrate or hand work off (spawn a specialist) before the
+    /// agent dilutes its scope. Resets with hysteresis so it can fire again after a compaction shrinks it.
+    /// </summary>
+    public void CheckContextDilution()
+    {
+        foreach (var pane in Panes)
+        {
+            if (pane.State != SessionState.Live) { pane.DilutionNudged = false; continue; }
+
+            if (pane.ContextFraction >= DilutionThreshold && !pane.DilutionNudged)
+            {
+                pane.DilutionNudged = true;
+                Timeline.Add(DateTimeOffset.Now, pane.DisplayName,
+                    $"context {pane.ContextFraction * 100:0}% — consider dehydrating or handing off (spawn a specialist) before scope dilutes",
+                    pane.BorderColorHex);
+                RefreshInstruments();
+            }
+            else if (pane.ContextFraction < DilutionThreshold - 0.10)
+            {
+                pane.DilutionNudged = false;   // hysteresis: re-arm once it drops well below the line
+            }
+        }
     }
 
     /// <summary>The most recent <paramref name="limit"/> timeline operations (newest first).</summary>
@@ -1238,7 +1287,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         string hookId = ReserveHookId(entry.Prefix);
         var session = new AgentSession(entry, _launcher, _watcher,
-            HookArgs(hookId).Concat(McpArgsFor(p.Prefix)).ToArray());
+            HookArgs(hookId, entry).Concat(McpArgsFor(p.Prefix)).ToArray());
         var paneVm = new AgentPaneViewModel(
             session,
             entry,
@@ -1352,6 +1401,23 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>The <c>--settings</c> hook args for a hook id, or none if the channel is unavailable.</summary>
     private IReadOnlyList<string> HookArgs(string hookId)
         => _hookChannel?.SettingsArgsFor(hookId) ?? Array.Empty<string>();
+
+    /// <summary>
+    /// Hook args PLUS the compaction guard: writes this agent's hydration text (re-read your context
+    /// doc, hold your scope, hand off/dehydrate rather than dilute) and wires the SessionStart hook to
+    /// re-inject it on compact/resume — so an agent can't compact away its own identity.
+    /// </summary>
+    private IReadOnlyList<string> HookArgs(string hookId, AgentManifestEntry entry)
+    {
+        if (_hookChannel is null) return Array.Empty<string>();
+        var hydration = Styloagent.Core.Hooks.HydrationText.For(
+            entry.Prefix,
+            string.IsNullOrWhiteSpace(entry.SavedContextPath) ? null : entry.SavedContextPath,
+            _project?.ProtocolPath,
+            _channelRoot);
+        var file = _hookChannel.WriteHydrationFile(hookId, hydration);
+        return _hookChannel.SettingsArgsFor(hookId, file);
+    }
 
     /// <summary>Routes a hook event (raised on a background thread) to the owning pane on the UI thread.</summary>
     private void OnHookEvent(HookEvent e)
@@ -1531,9 +1597,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // (no per-pane timer). Runs on the UI thread; panes only mutate here too.
         foreach (var pane in Panes) pane.TickRelativeTimes();
 
-        // Every ~3s, refresh each agent's token/context readout from its transcript (off-thread).
+        // Every ~3s, refresh each agent's token/context readout from its transcript (off-thread),
+        // then run the scope-dilution guard off the freshest readings.
         if (++_usageTick % 3 == 0)
+        {
             foreach (var pane in Panes) pane.RefreshUsage();
+            CheckContextDilution();
+        }
 
         if (!_interaction.IsBusy(IdleWindow)) AutoRevealHead();
     }

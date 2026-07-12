@@ -29,9 +29,29 @@ public sealed class HookChannel : IAsyncDisposable
         Directory.CreateDirectory(_hooksDir);
     }
 
-    /// <summary>The <c>--settings &lt;json&gt;</c> args to append to this agent's <c>claude</c> launch.</summary>
-    public IReadOnlyList<string> SettingsArgsFor(string agentId)
-        => HookSettings.BuildSettingsArgs(agentId, _hooksDir);
+    /// <summary>
+    /// The <c>--settings &lt;json&gt;</c> args to append to this agent's <c>claude</c> launch. When
+    /// <paramref name="hydrationFile"/> is supplied, the SessionStart hook re-injects that file's
+    /// hydration text on compact/resume (the compaction guard).
+    /// </summary>
+    public IReadOnlyList<string> SettingsArgsFor(string agentId, string? hydrationFile = null)
+        => HookSettings.BuildSettingsArgs(agentId, _hooksDir, hydrationFile);
+
+    /// <summary>
+    /// Writes <paramref name="hydrationText"/> as a JSON string to a stable per-agent file under the
+    /// hooks dir and returns its path — the SessionStart compact/resume hook reads it back verbatim as
+    /// <c>additionalContext</c>. Best-effort: returns null if the write fails (agent still launches).
+    /// </summary>
+    public string? WriteHydrationFile(string agentId, string hydrationText)
+    {
+        try
+        {
+            var path = Path.Combine(_hooksDir, $"{HookSettings.SanitizeAgentId(agentId)}.hydrate.json");
+            File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(hydrationText));
+            return path;
+        }
+        catch { return null; }
+    }
 
     /// <summary>Begins the background polling loop. Idempotent.</summary>
     public void Start() => _loop ??= Task.Run(PollLoopAsync);

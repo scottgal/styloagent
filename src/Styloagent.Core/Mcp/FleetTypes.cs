@@ -48,7 +48,7 @@ public sealed record MessageOutcome(bool Sent, string? Path, string Message)
 /// <param name="Usage">Context readout, e.g. "83k · 22%" (empty until known).</param>
 public sealed record AgentStatus(
     string Prefix, string Responsibility, string State, string Activity,
-    int IdleSeconds, string Usage, bool Worktree);
+    int IdleSeconds, string Usage, bool Worktree, string Repo = "");
 
 /// <summary>A whole-fleet situational snapshot for the fleet_status tool.</summary>
 public sealed record FleetStatusReport(

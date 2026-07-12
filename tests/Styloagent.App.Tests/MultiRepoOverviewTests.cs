@@ -1,4 +1,5 @@
 using Styloagent.App.ViewModels;
+using Styloagent.Core.Model;
 using Styloagent.Core.Workspace;
 using Xunit;
 
@@ -84,6 +85,57 @@ public class MultiRepoOverviewTests
             Assert.False(repos[1].Primary);
             Assert.Equal("lucidRESUME", repos[1].Name);
             Assert.NotEqual(repos[0].ColorHex, repos[1].ColorHex);
+        }
+        finally { if (Directory.Exists(channel)) Directory.Delete(channel, recursive: true); }
+    }
+
+    [Fact]
+    public async Task FleetStatus_tags_each_agent_with_its_repo()
+    {
+        var channel = MainWindowViewModelTests.MakeTwoAgentChannel();
+        try
+        {
+            var ws = WorkspaceConfig.For("/ws", "mono", new[]
+            {
+                Path.Combine("/ws", "primary"),
+                Path.Combine("/ws", "beta"),
+            });
+            var vm = await MainWindowViewModel.InitializeAsync(
+                channel, new FakeLauncher(), new FakeWatcher(),
+                extraOverviews: ws.RepoOverviews().Skip(1).ToList());
+            vm.SetReposFromOverviews(ws.RepoOverviews());
+
+            var beta = vm.BuildFleetStatus().Agents.FirstOrDefault(a => a.Prefix == "beta-");
+            Assert.NotNull(beta);
+            Assert.Equal("beta", beta!.Repo);
+        }
+        finally { if (Directory.Exists(channel)) Directory.Delete(channel, recursive: true); }
+    }
+
+    [Fact]
+    public async Task Dilution_guard_nudges_once_when_context_fills_then_re_arms()
+    {
+        var channel = MainWindowViewModelTests.MakeTwoAgentChannel();
+        try
+        {
+            var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
+            var pane = vm.Panes[0];
+            Assert.Equal(SessionState.Live, pane.State);   // FakeLauncher + zero inject-delays spawn synchronously
+
+            int before = vm.Timeline.Entries.Count;
+            pane.ContextFraction = 0.92;
+            vm.CheckContextDilution();
+            vm.CheckContextDilution();                     // must not double-nudge
+
+            Assert.Equal(before + 1, vm.Timeline.Entries.Count);
+            Assert.Contains(vm.Timeline.Entries, e => e.Description.Contains("dehydrating"));
+
+            // Drops well below the line → re-arms, so a later fill nudges again.
+            pane.ContextFraction = 0.5;
+            vm.CheckContextDilution();
+            pane.ContextFraction = 0.92;
+            vm.CheckContextDilution();
+            Assert.Equal(before + 2, vm.Timeline.Entries.Count);
         }
         finally { if (Directory.Exists(channel)) Directory.Delete(channel, recursive: true); }
     }

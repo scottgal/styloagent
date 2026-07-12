@@ -230,6 +230,12 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     /// <summary>True once a usage readout is available — gates the roster line.</summary>
     public bool HasUsage => !string.IsNullOrEmpty(UsageText);
 
+    /// <summary>Latest context-window fill (0–1), for the scope-dilution nudge. 0 until known.</summary>
+    public double ContextFraction { get; set; }
+
+    /// <summary>Set once the dilution nudge has fired for this agent, so it isn't repeated every tick.</summary>
+    public bool DilutionNudged { get; set; }
+
     /// <summary>
     /// Reads the agent's transcript (off the UI thread) for the latest context tokens + window fill and
     /// updates <see cref="UsageText"/>. No-op until a hook event has supplied the session id.
@@ -245,7 +251,8 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
             var path = Styloagent.Core.Transcripts.TranscriptReader.PathFor(cwd, sid);
             var usage = Styloagent.Core.Transcripts.TranscriptReader.ReadLatest(path);
             var text = usage is null ? "" : $"{FormatTokens(usage.ContextTokens)} · {usage.ContextFraction * 100:0}%";
-            global::Avalonia.Threading.Dispatcher.UIThread.Post(() => UsageText = text);
+            var frac = usage?.ContextFraction ?? 0;
+            global::Avalonia.Threading.Dispatcher.UIThread.Post(() => { UsageText = text; ContextFraction = frac; });
         });
     }
 

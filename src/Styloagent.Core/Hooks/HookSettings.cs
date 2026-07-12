@@ -60,17 +60,20 @@ public static class HookSettings
 
     /// <summary>
     /// Builds the value for <c>claude --settings</c> that streams this agent's hook events into
-    /// <paramref name="hooksDir"/>. The returned string is compact JSON, ready to pass as one CLI arg.
+    /// <paramref name="hooksDir"/>. When <paramref name="hydrationFile"/> is supplied, the
+    /// <c>SessionStart</c> hook ALSO re-injects the agent's hydration instructions on
+    /// <c>source=compact|resume</c> — the guard against an agent compacting away its own identity.
+    /// The returned string is compact JSON, ready to pass as one CLI arg.
     /// </summary>
-    public static string BuildSettingsJson(string agentId, string hooksDir)
+    public static string BuildSettingsJson(string agentId, string hooksDir, string? hydrationFile = null)
     {
         string safeId = SanitizeAgentId(agentId);
-        // sh -c command: write raw stdin JSON to a unique per-event file tagged with the agent id.
-        // uuidgen ships with macOS and util-linux; the file is complete once cat exits.
-        string command = $"cat > \"{hooksDir}/{safeId}{Separator}$(uuidgen).json\"";
+        // Observe: write raw stdin JSON to a unique per-event file tagged with the agent id.
+        // uuidgen ships with macOS and util-linux; the file is complete once the write exits.
+        string observe = $"cat > \"{hooksDir}/{safeId}{Separator}$(uuidgen).json\"";
 
         // hooks: { "<Event>": [ { "hooks": [ { "type":"command", "command":"..." } ] } ], ... }
-        var entryList = new List<Dictionary<string, object>>
+        static List<Dictionary<string, object>> Entry(string command) => new()
         {
             new()
             {
@@ -81,15 +84,37 @@ public static class HookSettings
             },
         };
 
+        bool reHydrate = !string.IsNullOrWhiteSpace(hydrationFile);
         var hooks = new Dictionary<string, object>();
         foreach (string ev in ObservedEvents)
-            hooks[ev] = entryList;
+        {
+            hooks[ev] = (ev == "SessionStart" && reHydrate)
+                ? Entry(SessionStartWithHydration(safeId, hooksDir, hydrationFile!))
+                : Entry(observe);
+        }
 
         var settings = new Dictionary<string, object> { ["hooks"] = hooks };
         return JsonSerializer.Serialize(settings);
     }
 
+    /// <summary>
+    /// The <c>SessionStart</c> command that still drops the raw event for observation AND, when the
+    /// source is <c>compact</c> or <c>resume</c>, prints the agent's hydration text back to Claude as
+    /// <c>additionalContext</c> (read from <paramref name="hydrationFile"/>, which holds a JSON string).
+    /// Pure POSIX <c>sh</c>: a substring match on the payload, no jq.
+    /// </summary>
+    private static string SessionStartWithHydration(string safeId, string hooksDir, string hydrationFile)
+    {
+        string drop = $"{hooksDir}/{safeId}{Separator}$(uuidgen).json";
+        return
+            $"d=$(cat); printf '%s' \"$d\" > \"{drop}\"; " +
+            "case \"$d\" in *'\"compact\"'*|*'\"resume\"'*) " +
+            $"[ -f \"{hydrationFile}\" ] && " +
+            "printf '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":%s}}' " +
+            $"\"$(cat \"{hydrationFile}\")\" ;; esac";
+    }
+
     /// <summary>The CLI args (<c>--settings &lt;json&gt;</c>) to append to a <c>claude</c> launch.</summary>
-    public static IReadOnlyList<string> BuildSettingsArgs(string agentId, string hooksDir)
-        => new[] { "--settings", BuildSettingsJson(agentId, hooksDir) };
+    public static IReadOnlyList<string> BuildSettingsArgs(string agentId, string hooksDir, string? hydrationFile = null)
+        => new[] { "--settings", BuildSettingsJson(agentId, hooksDir, hydrationFile) };
 }

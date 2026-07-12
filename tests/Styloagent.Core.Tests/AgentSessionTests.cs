@@ -54,6 +54,22 @@ public class AgentSessionTests
     }
 
     [Fact]
+    public async Task Spawn_submits_prompt_with_carriage_return_not_newline()
+    {
+        // Regression: Claude's TUI submits on Enter (0x0D "\r"). A trailing "\n" only inserts a
+        // newline in the input box, leaving the prompt typed-but-unsent — which also blocks
+        // auto-rehydration. The prompt must be followed by a "\r" submit and no stray "\n".
+        var launcher = new FakeLauncher();
+        var s = new AgentSession(Entry(), launcher, new FakeWatcher());
+
+        await s.SpawnAsync("LAUNCH PROMPT");
+
+        var writes = launcher.Spawned[0].Writes;
+        Assert.Equal("\r", writes[^1]);                              // last write is the Enter submit
+        Assert.DoesNotContain(writes, w => w.Contains('\n'));        // nothing left unsent via "\n"
+    }
+
+    [Fact]
     public async Task Spawn_passes_launch_args_to_the_launcher()
     {
         var launcher = new FakeLauncher();

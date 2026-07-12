@@ -11,6 +11,11 @@ public sealed class AgentSession
     private readonly IReadOnlyList<string> _launchArgs;
     private IPtySession? _pty;
 
+    // Enter in a terminal TUI is carriage-return (0x0D), NOT line-feed (0x0A). Claude Code's input
+    // box treats a bare "\n" as "insert a newline in the buffer" — so the prompt is typed but never
+    // submitted, leaving stray text in the window (and blocking auto-rehydration). "\r" submits.
+    private const string Submit = "\r";
+
     /// <param name="launchArgs">
     /// Extra CLI args passed to <c>claude</c> on every spawn/rehydrate — e.g. the
     /// <c>--settings</c> hooks blob (§4.4). Empty by default so the agent stays fully functional
@@ -43,10 +48,21 @@ public sealed class AgentSession
             Command: "claude", Args: _launchArgs,
             WorkingDirectory: _manifest.Worktree, Env: null, Cols: 120, Rows: 30), ct);
         _pty.Output += OnOutput;
-        await _pty.WriteAsync(launchPrompt + "\n", ct);
+        await InjectPromptAsync(_pty, launchPrompt, ct);
         CurrentPty = _pty;
         State = SessionState.Live;
         PtyStarted?.Invoke(_pty);
+    }
+
+    /// <summary>
+    /// Types a prompt into the agent's terminal and submits it: the prompt text, then Enter as a
+    /// separate write. Interior newlines in a multi-line prompt stay as buffer content; only the
+    /// trailing <see cref="Submit"/> (0x0D) submits — so nothing is left unsent in the input box.
+    /// </summary>
+    private static async Task InjectPromptAsync(IPtySession pty, string prompt, CancellationToken ct)
+    {
+        await pty.WriteAsync(prompt, ct);
+        await pty.WriteAsync(Submit, ct);
     }
 
     public async Task<bool> DehydrateAsync(TimeSpan ackTimeout, CancellationToken ct = default)
@@ -55,8 +71,8 @@ public sealed class AgentSession
         // No checkpoint target (e.g. the overview agent) — cannot dehydrate; keep it live rather than
         // ask it to checkpoint to nowhere and then watch an empty path.
         if (string.IsNullOrWhiteSpace(_manifest.SavedContextPath)) return false;
-        await _pty.WriteAsync(
-            $"Please checkpoint your context to {_manifest.SavedContextPath}, then stand by.\n", ct);
+        await InjectPromptAsync(_pty,
+            $"Please checkpoint your context to {_manifest.SavedContextPath}, then stand by.", ct);
         var acked = await _watcher.WaitForChangeAsync(_manifest.SavedContextPath, ackTimeout, ct);
         if (!acked) return false;                 // never lose context — keep it live
         _pty.Output -= OnOutput;
@@ -73,7 +89,7 @@ public sealed class AgentSession
         _pty = await _launcher.SpawnAsync(new PtySpawnOptions(
             "claude", _launchArgs, _manifest.Worktree, null, 120, 30), ct);
         _pty.Output += OnOutput;
-        await _pty.WriteAsync(restartPrompt + "\n", ct);
+        await InjectPromptAsync(_pty, restartPrompt, ct);
         CurrentPty = _pty;
         State = SessionState.Live;
         PtyStarted?.Invoke(_pty);

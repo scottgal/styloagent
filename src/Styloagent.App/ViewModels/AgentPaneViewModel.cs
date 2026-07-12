@@ -79,6 +79,7 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     [NotifyPropertyChangedFor(nameof(HookStateColorHex))]
     [NotifyPropertyChangedFor(nameof(RowHighlightHex))]
     [NotifyPropertyChangedFor(nameof(NeedsYou))]
+    [NotifyPropertyChangedFor(nameof(StatusHeadline))]
     private AgentHookState _hookState = AgentHookState.Unknown;
 
     /// <summary>Short human label for the current hook state, shown in the roster.</summary>
@@ -90,6 +91,48 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
         AgentHookState.Exited          => "exited",
         _                              => "—",
     };
+
+    /// <summary>
+    /// The "what is it doing right now" phrase derived from the last tool the agent invoked
+    /// (e.g. "reading files", "running commands"). Empty until a tool fires. Only surfaced while
+    /// <see cref="AgentHookState.Working"/> — a stale detail on an idle agent would mislead.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusHeadline))]
+    private string _activityDetail = "";
+
+    /// <summary>
+    /// Headline status line for the roster: the live activity detail while working
+    /// ("indexing repo"), otherwise the plain state word ("idle", "needs you").
+    /// </summary>
+    public string StatusHeadline =>
+        HookState == AgentHookState.Working && !string.IsNullOrEmpty(ActivityDetail)
+            ? ActivityDetail
+            : HookStateText;
+
+    /// <summary>Wall-clock time of the most recent hook event from this agent (null before first).</summary>
+    public DateTimeOffset? LastActivityAt { get; private set; }
+
+    /// <summary>
+    /// Relative "last output" readout for the roster ("last output 12s", "last output 3m").
+    /// Recomputed on a shared 1-second tick via <see cref="TickRelativeTimes"/>.
+    /// </summary>
+    public string LastOutputText
+    {
+        get
+        {
+            if (LastActivityAt is not { } t) return "";
+            var age = DateTimeOffset.UtcNow - t;
+            if (age < TimeSpan.Zero) age = TimeSpan.Zero;
+            string span = age.TotalSeconds < 60 ? $"{(int)age.TotalSeconds}s"
+                        : age.TotalMinutes < 60 ? $"{(int)age.TotalMinutes}m"
+                        : $"{(int)age.TotalHours}h";
+            return $"last output {span}";
+        }
+    }
+
+    /// <summary>Pokes the relative-time readouts so "last output Ns" ticks without a per-pane timer.</summary>
+    public void TickRelativeTimes() => OnPropertyChanged(nameof(LastOutputText));
 
     /// <summary>Glyph badge for the current hook state.</summary>
     public string HookStateGlyph => HookState switch
@@ -127,8 +170,25 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     /// </summary>
     public Action? UserInteracted { get; set; }
 
-    /// <summary>Applies a hook event, advancing this pane's <see cref="HookState"/>.</summary>
-    public void ApplyHookEvent(HookEvent e) => HookState = HookStateMachine.Next(HookState, e);
+    /// <summary>True once at least one hook event has arrived — gates the "last output" line.</summary>
+    public bool HasActivityMeta => LastActivityAt is not null;
+
+    /// <summary>
+    /// Applies a hook event: advances this pane's <see cref="HookState"/>, stamps the
+    /// "last output" time, and refreshes the activity detail from the tool the agent just ran.
+    /// </summary>
+    public void ApplyHookEvent(HookEvent e)
+    {
+        HookState = HookStateMachine.Next(HookState, e);
+        LastActivityAt = DateTimeOffset.UtcNow;
+        OnPropertyChanged(nameof(LastOutputText));
+        OnPropertyChanged(nameof(HasActivityMeta));
+
+        if (e.EventName is "PreToolUse" or "PostToolUse" && !string.IsNullOrEmpty(e.ToolName))
+            ActivityDetail = HookActivity.DescribeTool(e.ToolName);
+        else if (HookState is AgentHookState.Idle or AgentHookState.Exited)
+            ActivityDetail = ""; // a stale "editing" on an idle agent would mislead
+    }
 
     /// <summary>
     /// Raised when the underlying session starts a new PTY.

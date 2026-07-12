@@ -28,7 +28,8 @@ public static class HookEventParser
                 NotificationType: Str(root, "notification_type"),
                 Message: Str(root, "message"),
                 SessionId: Str(root, "session_id"),
-                Cwd: Str(root, "cwd"));
+                Cwd: Str(root, "cwd"),
+                ToolName: Str(root, "tool_name"));
             return true;
         }
         catch (JsonException)

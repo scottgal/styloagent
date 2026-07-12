@@ -11,10 +11,12 @@ namespace Styloagent.Core.Hooks;
 /// <param name="Message">Human-readable message, when present (what the agent is waiting on).</param>
 /// <param name="SessionId">Claude session id, for correlation/debugging.</param>
 /// <param name="Cwd">The agent's working directory at the time of the event.</param>
+/// <param name="ToolName">For <c>PreToolUse</c>/<c>PostToolUse</c>: the tool being run (e.g. <c>Read</c>, <c>Bash</c>) — drives the activity detail.</param>
 public sealed record HookEvent(
     string AgentId,
     string EventName,
     string? NotificationType,
     string? Message,
     string? SessionId,
-    string? Cwd);
+    string? Cwd,
+    string? ToolName = null);

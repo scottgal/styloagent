@@ -37,13 +37,18 @@
             <StackPanel Grid.Column="1" Margin="8,6" Spacing="2">
               <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="12"
                          Foreground="{Binding BorderColorHex}" />
-              <!-- Live hook state (§4.4): glyph + label, coloured by state -->
+              <!-- Live hook state (§4.4): glyph + activity headline ("indexing repo"), coloured by state -->
               <StackPanel Orientation="Horizontal" Spacing="5">
                 <TextBlock Text="{Binding HookStateGlyph}" FontSize="11"
                            Foreground="{Binding HookStateColorHex}" />
-                <TextBlock Text="{Binding HookStateText}" FontSize="10"
-                           Foreground="{Binding HookStateColorHex}" />
+                <TextBlock Text="{Binding StatusHeadline}" FontSize="10"
+                           Foreground="{Binding HookStateColorHex}"
+                           TextTrimming="CharacterEllipsis" />
               </StackPanel>
+              <!-- Relative "last output Ns" readout; hidden until the first hook event -->
+              <TextBlock Text="{Binding LastOutputText}" FontSize="9"
+                         Foreground="{DynamicResource MutedTextBrush}"
+                         IsVisible="{Binding HasActivityMeta}" />
             </StackPanel>
             <!-- Identity dot; amber when the agent needs you -->
             <Ellipse Grid.Column="2" Width="8" Height="8" Margin="0,0,10,0"

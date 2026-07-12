@@ -25,6 +25,9 @@
                     SelectedItem="{Binding SelectedBranch}"
                     FontSize="11"
                     Padding="4,2"
+                    HorizontalAlignment="Left"
+                    MinWidth="150"
+                    MaxWidth="280"
                     x:Name="BranchComboBox">
             <ComboBox.ItemTemplate>
               <DataTemplate DataType="git:GitBranch">

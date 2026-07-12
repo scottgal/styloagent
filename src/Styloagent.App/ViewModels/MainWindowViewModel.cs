@@ -895,6 +895,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     internal void OnIdleTick()
     {
+        // Refresh each roster's relative "last output Ns" readout off the shared 1s tick
+        // (no per-pane timer). Runs on the UI thread; panes only mutate here too.
+        foreach (var pane in Panes) pane.TickRelativeTimes();
         if (!_interaction.IsBusy(IdleWindow)) AutoRevealHead();
     }
 

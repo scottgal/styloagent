@@ -28,8 +28,9 @@
     </ResourceDictionary>
   </ResourceDictionary.ThemeDictionaries>
 
-  <!-- Brand accents — the same in both variants (read well on either). -->
-  <SolidColorBrush x:Key="CockpitAccentBrush" Color="#7C5CBF"/>
-  <SolidColorBrush x:Key="AccentBrush" Color="#9D7FE0"/>
+  <!-- Accent brushes — overridden at startup from the saved accent preset (AccentPalette / ThemeApplier).
+       These defaults match the "Blue" preset so the app is never the old purple, even before prefs load. -->
+  <SolidColorBrush x:Key="CockpitAccentBrush" Color="#1E4F9E"/>
+  <SolidColorBrush x:Key="AccentBrush" Color="#3B82F6"/>
   <SolidColorBrush x:Key="AttentionBrush" Color="#E5A05A"/>
 </ResourceDictionary>

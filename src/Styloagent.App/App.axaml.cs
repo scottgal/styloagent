@@ -28,6 +28,14 @@ public partial class App : Application
                 "Styloagent", "recent-projects.yaml");
             var recents = new RecentProjectsStore();
 
+            // Load + apply persisted preferences before any window shows, so the app never flashes the
+            // old purple default. The file is tiny; a synchronous load at startup is fine.
+            var prefsStore = new PreferencesStore();
+            string prefsPath = PreferencesStore.DefaultPath;
+            var prefs = prefsStore.LoadAsync(prefsPath).GetAwaiter().GetResult();
+            ThemeApplier.ApplyThemeVariant(this, prefs.LightTheme);
+            ThemeApplier.ApplyAccent(this, AccentPalette.Resolve(prefs.Accent));
+
             async Task OpenProjectAsync(string root, Window? welcomeWindow, MainWindow? existing = null)
             {
                 try
@@ -45,6 +53,7 @@ public partial class App : Application
                         gitService: gitSvc,
                         gitLog: gitSvc);
                     vm.AttachProject(cfg);
+                    vm.AttachPreferences(prefs, prefsStore, prefsPath);
                     await vm.StartFleetServerAsync();
 
                     await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>

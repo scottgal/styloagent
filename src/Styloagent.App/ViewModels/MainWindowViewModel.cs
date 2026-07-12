@@ -70,6 +70,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         foreach (var pane in Panes)
             pane.SelectedTerminalTheme = value;
+        SavePreferences();
     }
 
     /// <summary>App-wide light/dark toggle — swaps the structural theme tokens (Fluent variant).</summary>
@@ -79,9 +80,60 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     partial void OnIsLightThemeChanged(bool value)
     {
         if (Avalonia.Application.Current is { } app)
-            app.RequestedThemeVariant = value
-                ? Avalonia.Styling.ThemeVariant.Light
-                : Avalonia.Styling.ThemeVariant.Dark;
+            ThemeApplier.ApplyThemeVariant(app, value);
+        SavePreferences();
+    }
+
+    /// <summary>Accent presets offered in the settings picker.</summary>
+#pragma warning disable CA1822 // instance property for XAML binding
+    public IReadOnlyList<AccentPreset> AvailableAccents => AccentPalette.All;
+#pragma warning restore CA1822
+
+    /// <summary>The selected accent preset — setting it repaints the accent brushes app-wide.</summary>
+    [ObservableProperty]
+    private AccentPreset _selectedAccent = AccentPalette.Resolve(AccentPalette.DefaultName);
+
+    partial void OnSelectedAccentChanged(AccentPreset value)
+    {
+        if (Avalonia.Application.Current is { } app)
+            ThemeApplier.ApplyAccent(app, value);
+        SavePreferences();
+    }
+
+    // ── Persistence of the above (accent, theme, terminal theme, font sizes) ──────────────────
+    private PreferencesStore? _prefsStore;
+    private string? _prefsPath;
+    private AppPreferences _prefs = new();
+    private bool _prefsLoaded;   // gate: don't save while seeding from disk
+
+    /// <summary>
+    /// Seeds the observable settings from persisted <paramref name="prefs"/> and enables save-on-change.
+    /// Accent + theme variant were already applied at startup (App.axaml.cs); this aligns the VM's
+    /// bound state with them so the pickers show the right selection.
+    /// </summary>
+    public void AttachPreferences(AppPreferences prefs, PreferencesStore store, string path)
+    {
+        _prefs = prefs;
+        _prefsStore = store;
+        _prefsPath = path;
+
+        IsLightTheme = prefs.LightTheme;
+        SelectedAccent = AccentPalette.Resolve(prefs.Accent);
+        var theme = TerminalThemes.FirstOrDefault(t =>
+            string.Equals(t.Name, prefs.TerminalTheme, StringComparison.OrdinalIgnoreCase));
+        if (theme is not null) GlobalTerminalTheme = theme;
+
+        _prefsLoaded = true;   // seeding complete — subsequent changes persist
+    }
+
+    /// <summary>Snapshots the current settings into the prefs file (best-effort, fire-and-forget).</summary>
+    private void SavePreferences()
+    {
+        if (!_prefsLoaded || _prefsStore is null || _prefsPath is null) return;
+        _prefs.LightTheme = IsLightTheme;
+        _prefs.Accent = SelectedAccent.Name;
+        _prefs.TerminalTheme = GlobalTerminalTheme.Name;
+        _ = _prefsStore.SaveAsync(_prefsPath, _prefs);
     }
 
     [ObservableProperty]

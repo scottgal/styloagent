@@ -100,6 +100,22 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         SavePreferences();
     }
 
+    /// <summary>App-wide terminal font size (points). Persisted; applied to every live terminal.</summary>
+    [ObservableProperty]
+    private double _terminalFontSize = 13;
+
+    partial void OnTerminalFontSizeChanged(double value)
+    {
+        Styloagent.Terminal.TerminalControl.SetGlobalFontSize(value);
+        SavePreferences();
+    }
+
+    /// <summary>App-wide markdown / document font size (points). Persisted.</summary>
+    [ObservableProperty]
+    private double _markdownFontSize = 14;
+
+    partial void OnMarkdownFontSizeChanged(double value) => SavePreferences();
+
     // ── Persistence of the above (accent, theme, terminal theme, font sizes) ──────────────────
     private PreferencesStore? _prefsStore;
     private string? _prefsPath;
@@ -122,6 +138,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var theme = TerminalThemes.FirstOrDefault(t =>
             string.Equals(t.Name, prefs.TerminalTheme, StringComparison.OrdinalIgnoreCase));
         if (theme is not null) GlobalTerminalTheme = theme;
+        TerminalFontSize = prefs.TerminalFontSize;
+        MarkdownFontSize = prefs.MarkdownFontSize;
+        Styloagent.Terminal.TerminalControl.SetGlobalFontSize(TerminalFontSize);
 
         _prefsLoaded = true;   // seeding complete — subsequent changes persist
     }
@@ -133,6 +152,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _prefs.LightTheme = IsLightTheme;
         _prefs.Accent = SelectedAccent.Name;
         _prefs.TerminalTheme = GlobalTerminalTheme.Name;
+        _prefs.TerminalFontSize = TerminalFontSize;
+        _prefs.MarkdownFontSize = MarkdownFontSize;
         _ = _prefsStore.SaveAsync(_prefsPath, _prefs);
     }
 

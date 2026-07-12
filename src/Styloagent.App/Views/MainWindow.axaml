@@ -99,6 +99,21 @@
                   </ComboBox>
                   <TextBlock Text="Each agent's terminal can also be themed from its own toolbar."
                              FontSize="10" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" />
+                  <Border Height="1" Background="{DynamicResource SubtleBorderBrush}" />
+                  <TextBlock Text="Font sizes" FontWeight="SemiBold" FontSize="12"
+                             Foreground="{DynamicResource AccentBrush}" />
+                  <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="4">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Terminal" FontSize="11"
+                               VerticalAlignment="Center" />
+                    <NumericUpDown Grid.Row="0" Grid.Column="1" Width="96" FontSize="11"
+                                   Minimum="8" Maximum="32" Increment="1" FormatString="0"
+                                   Value="{Binding TerminalFontSize}" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Markdown" FontSize="11"
+                               VerticalAlignment="Center" />
+                    <NumericUpDown Grid.Row="1" Grid.Column="1" Width="96" FontSize="11"
+                                   Minimum="8" Maximum="32" Increment="1" FormatString="0"
+                                   Value="{Binding MarkdownFontSize}" />
+                  </Grid>
                 </StackPanel>
               </Flyout>
             </Button.Flyout>

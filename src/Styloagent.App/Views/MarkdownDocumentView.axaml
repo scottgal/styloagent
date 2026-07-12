@@ -9,9 +9,12 @@
        panel + dark text under Light. Uses the shared ThemeTokens brushes so docs stay consistent with
        the rest of the cockpit instead of a blinding-white paper beside the dark terminals. -->
   <ScrollViewer Background="{DynamicResource PanelBgBrush}" Padding="16,12">
+    <!-- FontSize follows the app-wide MarkdownFontSize preference (on the window's MainWindowViewModel).
+         ReflectionBinding: the window's DataContext type isn't known to this view's compiled bindings. -->
     <lucid:LucidMarkdownView Name="Md"
                              Markdown="{Binding Markdown}"
                              SourcePath="{Binding SourcePath}"
+                             FontSize="{ReflectionBinding DataContext.MarkdownFontSize, RelativeSource={RelativeSource AncestorType=Window}, FallbackValue=14}"
                              Foreground="{DynamicResource PrimaryTextBrush}" />
   </ScrollViewer>
 

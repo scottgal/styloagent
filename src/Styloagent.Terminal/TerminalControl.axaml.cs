@@ -52,6 +52,34 @@ public sealed partial class TerminalControl : UserControl
         Dispatcher.UIThread.Post(RebuildRows, DispatcherPriority.Render);
     }
 
+    /// <summary>Terminal font size in points — drives the text and the PTY col/row cell metrics.</summary>
+    private double _fontSize = 13.0;
+
+    /// <summary>Sets the terminal font size (points), rescales the row height, and re-fits the PTY grid.</summary>
+    public void SetFontSize(double pt)
+    {
+        _fontSize = Math.Clamp(pt, 8.0, 32.0);
+        ScreenText.FontSize = _fontSize;
+        ScreenText.LineHeight = Math.Round(_fontSize * 1.23);
+        RefitGrid(Bounds.Size);
+        Dispatcher.UIThread.Post(RebuildRows, DispatcherPriority.Render);
+    }
+
+    // ── App-wide terminal font size ──────────────────────────────────────────
+    // A single global size (a user preference), so every live terminal tracks it without threading
+    // per-pane state through the three pane-creation sites. New terminals pick it up in their ctor.
+    private static double _globalFontSize = 13.0;
+    private static event Action<double>? GlobalFontSizeChanged;
+
+    /// <summary>Sets the app-wide terminal font size; every live terminal updates immediately.</summary>
+    public static void SetGlobalFontSize(double pt)
+    {
+        _globalFontSize = Math.Clamp(pt, 8.0, 32.0);
+        GlobalFontSizeChanged?.Invoke(_globalFontSize);
+    }
+
+    private void OnGlobalFontSizeChanged(double pt) => SetFontSize(pt);
+
     /// <summary>Cache of colour → brush so we don't allocate a brush per cell per repaint.</summary>
     private readonly Dictionary<uint, IBrush> _brushCache = new();
 
@@ -83,6 +111,12 @@ public sealed partial class TerminalControl : UserControl
 
         // Initialize rows to match the terminal's initial size.
         RebuildRows();
+
+        // Adopt the current app-wide font size and track future changes.
+        _fontSize = _globalFontSize;
+        ScreenText.FontSize = _fontSize;
+        ScreenText.LineHeight = Math.Round(_fontSize * 1.23);
+        GlobalFontSizeChanged += OnGlobalFontSizeChanged;
 
         // Start Avalonia size tracking.
         SizeChanged += OnSizeChanged;
@@ -135,6 +169,7 @@ public sealed partial class TerminalControl : UserControl
         // Fix 4: auto-teardown — unsubscribe session events when the control leaves the tree
         // to prevent handler leaks when the control is removed without an explicit Detach() call.
         Detach();
+        GlobalFontSizeChanged -= OnGlobalFontSizeChanged;
         base.OnDetachedFromVisualTree(e);
     }
 
@@ -274,14 +309,19 @@ public sealed partial class TerminalControl : UserControl
 
     // ── Size change → PTY resize ─────────────────────────────────────────────
 
-    private void OnSizeChanged(object? sender, SizeChangedEventArgs e)
-    {
-        // Approximate: 8px per char width, 16px per row height at font size 13.
-        const double charWidth = 8.0;
-        const double charHeight = 16.0;
+    private void OnSizeChanged(object? sender, SizeChangedEventArgs e) => RefitGrid(e.NewSize);
 
-        int cols = Math.Max(10, (int)(e.NewSize.Width / charWidth));
-        int rows = Math.Max(4, (int)(e.NewSize.Height / charHeight));
+    /// <summary>
+    /// Re-fits the terminal grid (cols/rows) to <paramref name="size"/> at the current font size.
+    /// Monospace cell metrics scale with the font: ~0.6× wide, ~1.23× tall (≈8×16 at 13pt).
+    /// </summary>
+    private void RefitGrid(Size size)
+    {
+        double charWidth = _fontSize * 0.6;
+        double charHeight = _fontSize * 1.23;
+
+        int cols = Math.Max(10, (int)(size.Width / charWidth));
+        int rows = Math.Max(4, (int)(size.Height / charHeight));
 
         if (cols != _terminal.Cols || rows != _terminal.Rows)
         {

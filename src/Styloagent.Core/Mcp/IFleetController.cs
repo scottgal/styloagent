@@ -14,4 +14,10 @@ public interface IFleetController
     Task<WrapUpOutcome> WrapUpAsync(string callerPrefix);
     Task<MessageOutcome> SendMessageAsync(MessageRequest req);
     Task<string> CaptureScreenshotAsync(string? target);
+
+    // Fleet-control surface for an orchestrator agent.
+    FleetStatusReport FleetStatus();
+    IReadOnlyList<TimelineOp> ReadTimeline(int limit);
+    Task<string> DehydrateAgentAsync(string prefix);
+    Task<string> RehydrateAgentAsync(string prefix);
 }

@@ -958,6 +958,61 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         return new FleetSnapshot(members, FleetPolicy.MaxFleet, FleetPolicy.MaxDepth, FleetPaused);
     }
 
+    // ── Fleet-control surface (the fleet_status / dehydrate / rehydrate / read_timeline MCP tools) ──
+
+    /// <summary>Rich, live per-agent status — an orchestrator's situational-awareness snapshot.</summary>
+    public FleetStatusReport BuildFleetStatus()
+    {
+        var agents = Panes.Select(p => new AgentStatus(
+            Prefix: p.Prefix,
+            Responsibility: p.Responsibility,
+            State: HookStateName(p.HookState),
+            Activity: p.StatusHeadline,
+            IdleSeconds: p.LastActivityAt is { } t ? (int)Math.Max(0, (DateTimeOffset.UtcNow - t).TotalSeconds) : -1,
+            Usage: p.UsageText,
+            Worktree: p.WorktreePath is not null)).ToList();
+        return new FleetStatusReport(agents, WorkingCount, WaitingCount, FleetPaused);
+    }
+
+    /// <summary>The most recent <paramref name="limit"/> timeline operations (newest first).</summary>
+    public IReadOnlyList<TimelineOp> ReadTimeline(int limit)
+    {
+        limit = Math.Clamp(limit <= 0 ? 30 : limit, 1, 200);
+        return Timeline.Entries.Take(limit)
+            .Select(e => new TimelineOp(e.TimeText, e.Agent, e.Description)).ToList();
+    }
+
+    /// <summary>Suspends an agent (checkpoints its context, frees its PTY) by prefix.</summary>
+    public async Task<string> DehydrateAgentByPrefixAsync(string prefix)
+    {
+        var pane = Panes.FirstOrDefault(p => p.Prefix == prefix);
+        if (pane is null) return $"rejected: no agent '{prefix}'";
+        await pane.DehydrateAsync();
+        return pane.State == SessionState.Dehydrated
+            ? $"dehydrated {prefix}"
+            : $"rejected: {prefix} stayed live (no checkpoint target, or the checkpoint didn't ack)";
+    }
+
+    /// <summary>Resumes a dehydrated agent by prefix.</summary>
+    public async Task<string> RehydrateAgentByPrefixAsync(string prefix)
+    {
+        var pane = Panes.FirstOrDefault(p => p.Prefix == prefix);
+        if (pane is null) return $"rejected: no agent '{prefix}'";
+        await pane.RehydrateAsync();
+        return pane.State == SessionState.Live
+            ? $"rehydrated {prefix}"
+            : $"rejected: {prefix} did not resume (was it dehydrated?)";
+    }
+
+    private static string HookStateName(Styloagent.Core.Hooks.AgentHookState s) => s switch
+    {
+        Styloagent.Core.Hooks.AgentHookState.Working         => "working",
+        Styloagent.Core.Hooks.AgentHookState.Idle            => "idle",
+        Styloagent.Core.Hooks.AgentHookState.WaitingForHuman => "needs-you",
+        Styloagent.Core.Hooks.AgentHookState.Exited          => "exited",
+        _                                                    => "unknown",
+    };
+
     /// <summary>
     /// Core pane-creation path shared by SpawnProposed and SpawnChild.
     /// Builds the manifest entry, reserves the hook id, creates the AgentPaneViewModel

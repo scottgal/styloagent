@@ -17,6 +17,10 @@ public class StyloagentMcpServerTests
         public Task<WrapUpOutcome> WrapUpAsync(string callerPrefix) => Task.FromResult(new WrapUpOutcome(WrapUpStatus.Merged, "merged", null));
         public Task<MessageOutcome> SendMessageAsync(MessageRequest req) => Task.FromResult(MessageOutcome.Ok("/ch/inbox/x.md"));
         public Task<string> CaptureScreenshotAsync(string? target) => Task.FromResult("/shots/x.png");
+        public FleetStatusReport FleetStatus() => new(Array.Empty<AgentStatus>(), 0, 0, false);
+        public IReadOnlyList<TimelineOp> ReadTimeline(int limit) => Array.Empty<TimelineOp>();
+        public Task<string> DehydrateAgentAsync(string prefix) => Task.FromResult($"dehydrated {prefix}");
+        public Task<string> RehydrateAgentAsync(string prefix) => Task.FromResult($"rehydrated {prefix}");
     }
 
     private sealed class FakeRouter : IRouterController

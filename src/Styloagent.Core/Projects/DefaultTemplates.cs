@@ -57,6 +57,14 @@ You have these MCP tools from the `styloagent` server:
 
 - `list_fleet()` — the current fleet (prefix, responsibility, parent, depth, state). ALWAYS call
   before spawning, to avoid creating a subsystem that already exists.
+- `fleet_status()` — a *rich* live snapshot of every agent: state (working / idle / needs-you /
+  exited), what it's doing right now, seconds since its last output, context usage (e.g. "83k · 22%")
+  and worktree — plus working/waiting counts. Use it to see who is stalled, blocked or burning
+  context before you act. This is your fleet dashboard.
+- `read_timeline(limit)` — the most recent operations across the fleet (tool use *with the file
+  touched*, messages, lifecycle), newest first — to catch up on what happened without watching live.
+- `dehydrate_agent(prefix)` / `rehydrate_agent(prefix)` — park an idle specialist (it checkpoints its
+  context and frees its terminal) and bring it back when you need it, to manage fleet resources.
 - `spawn_agent(prefix, responsibility, dir, launchPrompt, worktree)` — launches a child agent under
   you. Set `worktree: true` **only** when the new agent's responsibility overlaps files an existing
   agent owns (so it works isolated on its own `agent/<prefix>` worktree); otherwise `false` to share

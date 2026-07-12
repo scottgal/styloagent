@@ -112,6 +112,46 @@ public sealed class FleetTools
         return outcome.Sent ? outcome.Message : $"rejected: {outcome.Message}";
     }
 
+    [McpServerTool, Description("Rich live status of the whole fleet: each agent's prefix, responsibility, state (working | idle | needs-you | exited), current activity, seconds since its last output, context usage (e.g. \"83k · 22%\") and whether it has a git worktree — plus working/waiting counts and the paused flag. Use this to see what everyone is doing and who is stalled or blocked.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public string fleet_status()
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
+        return JsonSerializer.Serialize(_controller.FleetStatus(), Json);
+    }
+
+    [McpServerTool, Description("The most recent operations across the fleet, newest first: time, agent, and what it did (tool use with the file touched, messages, lifecycle). Pass limit (default 30, max 200). Use it to catch up on what happened without watching live.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public string read_timeline(int limit)
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
+        return JsonSerializer.Serialize(_controller.ReadTimeline(limit), Json);
+    }
+
+    [McpServerTool, Description("Suspend an agent by prefix: it checkpoints its context and frees its terminal. Use to park an idle specialist and reclaim resources — rehydrate it when you need it again. Returns 'rejected' if it can't (e.g. no checkpoint target).")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> dehydrate_agent(string prefix)
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
+        return await _controller.DehydrateAgentAsync(prefix);
+    }
+
+    [McpServerTool, Description("Resume a previously dehydrated agent by prefix — it reloads its saved context and comes back live.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> rehydrate_agent(string prefix)
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
+        return await _controller.RehydrateAgentAsync(prefix);
+    }
+
     [McpServerTool, Description("Capture a screenshot of the cockpit UI to a PNG file and return its path, which you can then read to see the current UI. Requires the human to have enabled UI automation in Settings (off by default); returns 'rejected' otherwise. Pass an empty target for the whole window.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public async Task<string> screenshot(string target)

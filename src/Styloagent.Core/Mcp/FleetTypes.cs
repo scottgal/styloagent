@@ -41,6 +41,22 @@ public sealed record MessageOutcome(bool Sent, string? Path, string Message)
     public static MessageOutcome Fail(string message) => new(false, null, message);
 }
 
+/// <summary>Rich, live status of one agent — what an orchestrator needs to run the fleet.</summary>
+/// <param name="State">Hook state: working | idle | needs-you | exited | unknown.</param>
+/// <param name="Activity">What it's doing right now (e.g. "editing", "running commands", "idle").</param>
+/// <param name="IdleSeconds">Seconds since its last output (-1 if it has produced none yet).</param>
+/// <param name="Usage">Context readout, e.g. "83k · 22%" (empty until known).</param>
+public sealed record AgentStatus(
+    string Prefix, string Responsibility, string State, string Activity,
+    int IdleSeconds, string Usage, bool Worktree);
+
+/// <summary>A whole-fleet situational snapshot for the fleet_status tool.</summary>
+public sealed record FleetStatusReport(
+    IReadOnlyList<AgentStatus> Agents, int Working, int Waiting, bool Paused);
+
+/// <summary>One recorded operation for the read_timeline tool.</summary>
+public sealed record TimelineOp(string Time, string Agent, string What);
+
 /// <summary>Governor verdict.</summary>
 public sealed record Decision(bool Allowed, RejectReason? Reason, string Message)
 {

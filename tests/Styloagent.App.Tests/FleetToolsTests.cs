@@ -26,6 +26,13 @@ public class FleetToolsTests
         public Task<MessageOutcome> SendMessageAsync(MessageRequest req) { LastMessage = req; return Task.FromResult(NextMessage); }
         public string? LastShotTarget = "unset";
         public Task<string> CaptureScreenshotAsync(string? target) { LastShotTarget = target; return Task.FromResult("/shots/x.png"); }
+        public string? LastDehydrate;
+        public FleetStatusReport FleetStatus() => new(
+            new[] { new AgentStatus("foss-", "packages", "working", "editing", 3, "41k · 22%", true) }, 1, 0, false);
+        public IReadOnlyList<TimelineOp> ReadTimeline(int limit) =>
+            new[] { new TimelineOp("14:00:00", "foss-", "editing · Foo.cs") };
+        public Task<string> DehydrateAgentAsync(string prefix) { LastDehydrate = prefix; return Task.FromResult($"dehydrated {prefix}"); }
+        public Task<string> RehydrateAgentAsync(string prefix) => Task.FromResult($"rehydrated {prefix}");
     }
 
     private static IHttpContextAccessor AccessorWith(string? agent, string? auth)
@@ -155,6 +162,44 @@ public class FleetToolsTests
         var tools = new FleetTools(AccessorWith("foss-", "Bearer WRONG"), ctrl, new McpAuth("secret"));
         var result = await tools.screenshot("");
         Assert.Equal("unset", ctrl.LastShotTarget);   // never reached the controller
+        Assert.Contains("unauthorized", result);
+    }
+
+    [Fact]
+    public void fleet_status_serializes_the_rich_report()
+    {
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), new FakeController(), new McpAuth("secret"));
+        var json = tools.fleet_status();
+        Assert.Contains("foss-", json);
+        Assert.Contains("editing", json);
+        Assert.Contains("\"working\"", json);
+        Assert.Contains("\"working\":1", json.Replace(" ", ""));
+    }
+
+    [Fact]
+    public void read_timeline_serializes_recent_ops()
+    {
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), new FakeController(), new McpAuth("secret"));
+        Assert.Contains("Foo.cs", tools.read_timeline(10));
+    }
+
+    [Fact]
+    public async Task dehydrate_agent_targets_the_prefix()
+    {
+        var ctrl = new FakeController();
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), ctrl, new McpAuth("secret"));
+        var result = await tools.dehydrate_agent("foss-");
+        Assert.Equal("foss-", ctrl.LastDehydrate);
+        Assert.Contains("dehydrated foss-", result);
+    }
+
+    [Fact]
+    public async Task dehydrate_agent_refuses_a_bad_token()
+    {
+        var ctrl = new FakeController();
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer WRONG"), ctrl, new McpAuth("secret"));
+        var result = await tools.dehydrate_agent("foss-");
+        Assert.Null(ctrl.LastDehydrate);
         Assert.Contains("unauthorized", result);
     }
 

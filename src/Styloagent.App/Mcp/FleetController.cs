@@ -31,4 +31,20 @@ public sealed class FleetController : IFleetController
 
     public Task<string> CaptureScreenshotAsync(string? target)
         => Dispatcher.UIThread.InvokeAsync(() => _vm.CaptureScreenshotToFileAsync(target));
+
+    public FleetStatusReport FleetStatus()
+        => Dispatcher.UIThread.CheckAccess()
+            ? _vm.BuildFleetStatus()
+            : Dispatcher.UIThread.InvokeAsync(_vm.BuildFleetStatus).GetTask().GetAwaiter().GetResult();
+
+    public IReadOnlyList<TimelineOp> ReadTimeline(int limit)
+        => Dispatcher.UIThread.CheckAccess()
+            ? _vm.ReadTimeline(limit)
+            : Dispatcher.UIThread.InvokeAsync(() => _vm.ReadTimeline(limit)).GetTask().GetAwaiter().GetResult();
+
+    public Task<string> DehydrateAgentAsync(string prefix)
+        => Dispatcher.UIThread.InvokeAsync(() => _vm.DehydrateAgentByPrefixAsync(prefix));
+
+    public Task<string> RehydrateAgentAsync(string prefix)
+        => Dispatcher.UIThread.InvokeAsync(() => _vm.RehydrateAgentByPrefixAsync(prefix));
 }

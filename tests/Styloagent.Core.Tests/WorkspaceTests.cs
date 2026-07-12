@@ -8,6 +8,7 @@ public class WorkspaceTests
     private static readonly string[] ThreeNames = { "a", "b", "c" };
     private static readonly int[] ThreeIndexes = { 0, 1, 2 };
     private static readonly string[] TwoRepos = { "repoA", "repoB" };
+    private static readonly string[] ExpectedOverviewPrefixes = { "styloagent-", "lucidresume-" };
 
     [Fact]
     public void SingleRepo_is_a_workspace_of_one_with_the_repos_own_channel()
@@ -56,4 +57,47 @@ public class WorkspaceTests
     [Fact]
     public void Load_returns_null_when_there_is_no_workspace_file()
         => Assert.Null(new WorkspaceStore().Load("/no/such/workspace"));
+
+    [Fact]
+    public void RepoOverviews_single_repo_keeps_the_overview_prefix_and_workspace_prompt()
+    {
+        var ws = WorkspaceConfig.SingleRepo(Path.Combine("/Users", "x", "proj"));
+        var ovs = ws.RepoOverviews();
+
+        var o = Assert.Single(ovs);
+        Assert.Equal("overview-", o.Prefix);
+        Assert.True(o.IsPrimary);
+        Assert.Equal(0, o.RepoIndex);
+        Assert.Equal(ws.OverviewSystemPromptPath, o.SystemPromptPath);
+        Assert.Equal(Path.Combine("/Users", "x", "proj"), o.RepoRoot);
+        Assert.Matches("^#[0-9A-F]{6}$", o.ColorHex);
+    }
+
+    [Fact]
+    public void RepoOverviews_multi_repo_names_each_after_its_repo_and_uses_its_own_prompt()
+    {
+        var primary = Path.Combine("/ws", "Styloagent");
+        var second = Path.Combine("/ws", "lucidRESUME");
+        var ws = WorkspaceConfig.For("/ws", "mono", new[] { primary, second });
+
+        var ovs = ws.RepoOverviews();
+
+        Assert.Equal(2, ovs.Count);
+        Assert.Equal(ExpectedOverviewPrefixes, ovs.Select(o => o.Prefix));
+        Assert.True(ovs[0].IsPrimary);
+        Assert.False(ovs[1].IsPrimary);
+        // Each overview points at its OWN repo's system prompt — the specialist team travels with the repo.
+        Assert.Equal(Path.Combine(primary, ".styloagent", "system-prompt.md"), ovs[0].SystemPromptPath);
+        Assert.Equal(Path.Combine(second, ".styloagent", "system-prompt.md"), ovs[1].SystemPromptPath);
+        // Different repos → different hue families.
+        Assert.NotEqual(ovs[0].ColorHex, ovs[1].ColorHex);
+    }
+
+    [Fact]
+    public void RepoOverviews_disambiguates_colliding_repo_names()
+    {
+        var ws = WorkspaceConfig.For("/ws", "mono", new[] { Path.Combine("/a", "app"), Path.Combine("/b", "app") });
+        var prefixes = ws.RepoOverviews().Select(o => o.Prefix).ToList();
+        Assert.Equal(prefixes.Count, prefixes.Distinct().Count());  // unique despite the same repo name
+    }
 }

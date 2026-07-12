@@ -29,10 +29,33 @@ cockpit. From there the team keeps splitting and specialising through the coordi
 
 ## The cockpit
 
-Roster of agents on the left, dockable agent terminals in the centre, and a
-`Signal Bus | Documents` panel on the right:
+Agents and their shared **Signal Bus** down the left, dockable agent terminals in the centre, and a
+`Timeline | Documents | Issues | Git | Router` panel on the right — with a fleet **instruments
+strip** along the bottom (live agents · working · waiting · ops):
 
 ![The Styloagent cockpit](docs/screenshots/cockpit.png)
+
+### Top bar
+
+Everything front-of-house: **Add agent** and **New console** (a plain shell, not an agent), a
+Lucene-backed **document search** with autosuggest (type, click a result to open), a **layout
+switch** (Tabs / Tile / Auto-tile), and Settings — accent themes, light/dark, and terminal &
+markdown font sizes, all persisted:
+
+![Document search](docs/screenshots/search.png)
+
+### Layout modes
+
+Tab the panes, tile them evenly, or **auto-tile** — the starter agent full-width on top with the
+rest gridded below. The active tab wears its agent's identity colour:
+
+![Auto-tile layout](docs/screenshots/layout-tiles.png)
+
+### Activity Timeline
+
+A newest-first operations feed of what the fleet is doing — each agent's tool operations *with the
+file it touched* (e.g. "editing · Foo.cs"), lifecycle and attention, and the messages they send over
+the bus. Click a file op to open it in a syntax-highlighted read-only source view.
 
 ### Real terminals, in colour
 
@@ -43,10 +66,11 @@ Each pane launches a real `claude` (or any CLI) over a PTY and renders its full-
 
 ### Signal Bus — attention-first
 
-The file-drop message channel, grouped so *what needs you* is glanceable: a pinned
-**Needs attention** group (unreplied threads), then **Recent**, then **Archive** — each row
-with a status glyph (● unreplied · ↩ replied · ▤ archived), colour-coded participants matching
-the roster, and relative time:
+Agents coordinate through the `send_message` MCP tool, which writes a durable markdown trace to the
+channel *and* delivers in-process. The bus — in the left column under the roster — groups it so
+*what needs you* is glanceable: a pinned **Needs attention** group (unreplied threads), then
+**Recent**, then **Archive** — each row with a status glyph (● unreplied · ↩ replied · ▤ archived),
+colour-coded participants matching the roster, and relative time:
 
 ![Attention-first Signal Bus](docs/screenshots/bus-attention.png)
 

@@ -48,7 +48,8 @@ From the architecture, propose the agents that will own and build it — roughly
 area, though a component may want several agents, or a few small ones may share an owner, as the work
 demands. Write them to `.styloagent/proposed-agents.yaml` (schema below), giving each the **same
 colour** as the component it owns so the architecture reads as the ownership map. The human reviews and
-spawns them; do not spawn them yourself.
+spawns them; do not spawn them yourself. Once the team is agreed, promote it to the committed
+`.styloagent/team.yaml` (same schema) so it travels with the repo — a fresh checkout picks it up.
 
     agents:
       - prefix: foss-
@@ -141,7 +142,8 @@ though you move fluidly and revisit them as you learn:
    `UpdateElementStyle(<id>, $bgColor="#RRGGBB")`. Let it take whatever shape the system actually wants.
 3. **Fleet** — Propose the team that will own and build it — roughly one owner per area — in
    `.styloagent/proposed-agents.yaml`, each the same colour as its component. The human reviews and
-   spawns them.
+   spawns them. Once the team is agreed, promote it to the committed **`.styloagent/team.yaml`** (same
+   schema) so it travels with the repo — a fresh checkout or clone picks that team up automatically.
 
 Then **build the first feature** inside that shape. Coordinate with the fleet via the `send_message`
 MCP tool; see `.styloagent/PROTOCOL.md`.

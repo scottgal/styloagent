@@ -747,7 +747,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(MaxDepth));
         OnPropertyChanged(nameof(FleetHudText));
         ProposedTeam?.Dispose();
-        ProposedTeam = new ProposedTeamViewModel(project.ProposedAgentsPath, SpawnProposed);
+        ProposedTeam = new ProposedTeamViewModel(project.ProposedAgentsPath, project.TeamPath, SpawnProposed);
         Issues = new IssuesViewModel(project.IssuesDir);
 
         // Start (or restart) the RouterHost whenever a project is attached so the coordinator

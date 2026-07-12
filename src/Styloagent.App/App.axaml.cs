@@ -113,6 +113,25 @@ public partial class App : Application
             desktop.ShutdownRequested += (_, _) =>
                 (desktop.MainWindow?.DataContext as IDisposable)?.Dispose();
 
+            // STYLOAGENT_CHANNEL opens an existing bare channel (agent-channel format: saved-context/,
+            // launch-prompts/, inbox/, ...) — but that channel may be LIVE and in use by another fleet, so
+            // we copy it into a fresh working repo's .styloagent/channel and open the COPY, never the
+            // original. Then the normal repo-open path seeds the fleet from the snapshot.
+            var channelEnv = Environment.GetEnvironmentVariable("STYLOAGENT_CHANNEL");
+            if (!string.IsNullOrWhiteSpace(channelEnv) && Directory.Exists(channelEnv))
+            {
+                var name = Path.GetFileName(channelEnv.TrimEnd('/', '\\'));
+                var work = Path.Combine(Path.GetTempPath(), "styloagent-channels",
+                    name + "-" + Guid.NewGuid().ToString("N")[..8]);
+                Styloagent.Core.Channel.ChannelSnapshot.CopyTo(channelEnv, Path.Combine(work, ".styloagent", "channel"));
+
+                var placeholder = new MainWindow();
+                desktop.MainWindow = placeholder;
+                _ = OpenProjectAsync(work, welcomeWindow: null, existing: placeholder);
+                base.OnFrameworkInitializationCompleted();
+                return;
+            }
+
             var repoEnv = Environment.GetEnvironmentVariable("STYLOAGENT_REPO");
             if (!string.IsNullOrWhiteSpace(repoEnv))
             {

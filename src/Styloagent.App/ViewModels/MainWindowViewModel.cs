@@ -516,17 +516,24 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             await vm.StartFleetServerAsync().ConfigureAwait(false);
 
             string overviewRoot = repoRoot ?? Directory.GetCurrentDirectory();
-            entries = new[]
-            {
-                new AgentManifestEntry(
-                    Prefix: "overview-",
-                    Repo: overviewRoot,
-                    Worktree: overviewRoot,
-                    LaunchPromptPath: string.Empty,
-                    RestartPromptPath: string.Empty,
-                    SavedContextPath: string.Empty,
-                    Transport: AgentTransport.Local),
-            };
+            var overviewEntry = new AgentManifestEntry(
+                Prefix: "overview-",
+                Repo: overviewRoot,
+                Worktree: overviewRoot,
+                LaunchPromptPath: string.Empty,
+                RestartPromptPath: string.Empty,
+                SavedContextPath: string.Empty,
+                Transport: AgentTransport.Local);
+
+            // The overview opens + spawns; the channel's parked fleet (every agent with a saved-context
+            // doc) is added to the roster as un-opened seeded entries, so the operator can revive each
+            // from its restart prompt via +Add agent — it cold-starts from its own saved-context doc.
+            // Only entries[0] (the overview) is spawned here, so this never auto-launches the fleet.
+            var channelFleet = await new ChannelManifestSeeder().SeedAsync(channelRoot, new Dictionary<string, string>());
+            entries = new[] { overviewEntry }
+                .Concat(channelFleet.Where(e => e.Prefix != "overview-"))
+                .ToList();
+
             vm._overviewSystemPromptArgs = File.Exists(overviewSystemPromptPath)
                 ? new[] { "--append-system-prompt", File.ReadAllText(overviewSystemPromptPath) }
                 : Array.Empty<string>();

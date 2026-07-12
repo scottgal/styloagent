@@ -1144,7 +1144,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             "SessionStart" => "came online",
             "SessionEnd"   => "exited",
-            "PreToolUse"   => HookActivity.DescribeTool(e.ToolName),
+            "PreToolUse"   => DescribeOp(e.ToolName, e.ToolTarget),
             "Notification" => e.NotificationType switch
             {
                 "permission_prompt" or "agent_needs_input" or "elicitation_dialog" => "needs you",
@@ -1155,6 +1155,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         };
         if (!string.IsNullOrEmpty(desc))
             Timeline.Add(DateTimeOffset.Now, pane.DisplayName, desc, pane.BorderColorHex);
+    }
+
+    /// <summary>Formats a tool operation with its target — "editing · Foo.cs", "running commands · git status".</summary>
+    private static string DescribeOp(string? tool, string? target)
+    {
+        var verb = HookActivity.DescribeTool(tool);
+        if (string.IsNullOrEmpty(verb) || string.IsNullOrWhiteSpace(target)) return verb;
+
+        var t = target.Trim();
+        bool isFile = tool is "Read" or "Edit" or "MultiEdit" or "Write" or "NotebookEdit" or "NotebookRead";
+        if (isFile && t.Contains('/')) t = Path.GetFileName(t);
+        if (t.Length > 44) t = t[..44] + "…";
+        return $"{verb} · {t}";
     }
 
     /// <summary>Resolves an agent id (pane prefix) to its live PTY for message injection.</summary>

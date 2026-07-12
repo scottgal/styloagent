@@ -12,6 +12,7 @@ namespace Styloagent.Core.Hooks;
 /// <param name="SessionId">Claude session id, for correlation/debugging.</param>
 /// <param name="Cwd">The agent's working directory at the time of the event.</param>
 /// <param name="ToolName">For <c>PreToolUse</c>/<c>PostToolUse</c>: the tool being run (e.g. <c>Read</c>, <c>Bash</c>) — drives the activity detail.</param>
+/// <param name="ToolTarget">What the tool acts on — a file path (Read/Edit/Write), a command (Bash), or a pattern (Grep/Glob) from <c>tool_input</c>.</param>
 public sealed record HookEvent(
     string AgentId,
     string EventName,
@@ -19,4 +20,5 @@ public sealed record HookEvent(
     string? Message,
     string? SessionId,
     string? Cwd,
-    string? ToolName = null);
+    string? ToolName = null,
+    string? ToolTarget = null);

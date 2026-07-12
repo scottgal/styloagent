@@ -35,6 +35,32 @@ public class HookLogicTests
         Assert.Null(e.Message);
     }
 
+    [Fact]
+    public void Parse_extracts_tool_name_and_the_file_it_touches()
+    {
+        const string json = """
+            {"hook_event_name":"PreToolUse","tool_name":"Edit",
+             "tool_input":{"file_path":"/repo/src/Foo.cs","old_string":"a","new_string":"b"}}
+            """;
+        Assert.True(HookEventParser.TryParse(json, "foss-", out var e));
+        Assert.Equal("Edit", e!.ToolName);
+        Assert.Equal("/repo/src/Foo.cs", e.ToolTarget);
+    }
+
+    [Fact]
+    public void Parse_uses_command_then_pattern_as_the_tool_target()
+    {
+        Assert.True(HookEventParser.TryParse(
+            """{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git status"}}""",
+            "a", out var bash));
+        Assert.Equal("git status", bash!.ToolTarget);
+
+        Assert.True(HookEventParser.TryParse(
+            """{"hook_event_name":"PreToolUse","tool_name":"Grep","tool_input":{"pattern":"TODO"}}""",
+            "a", out var grep));
+        Assert.Equal("TODO", grep!.ToolTarget);
+    }
+
     [Theory]
     [InlineData("not json at all")]
     [InlineData("")]

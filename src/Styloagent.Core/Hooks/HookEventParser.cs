@@ -29,7 +29,8 @@ public static class HookEventParser
                 Message: Str(root, "message"),
                 SessionId: Str(root, "session_id"),
                 Cwd: Str(root, "cwd"),
-                ToolName: Str(root, "tool_name"));
+                ToolName: Str(root, "tool_name"),
+                ToolTarget: ToolTarget(root));
             return true;
         }
         catch (JsonException)
@@ -42,4 +43,18 @@ public static class HookEventParser
         => obj.TryGetProperty(name, out JsonElement v) && v.ValueKind == JsonValueKind.String
             ? v.GetString()
             : null;
+
+    /// <summary>
+    /// Extracts what a tool acts on from <c>tool_input</c>: a file path (Read/Edit/Write/Notebook),
+    /// else a command (Bash), else a search pattern (Grep/Glob). Null when none apply.
+    /// </summary>
+    private static string? ToolTarget(JsonElement root)
+    {
+        if (!root.TryGetProperty("tool_input", out var input) || input.ValueKind != JsonValueKind.Object)
+            return null;
+        return Str(input, "file_path")
+            ?? Str(input, "notebook_path")
+            ?? Str(input, "command")
+            ?? Str(input, "pattern");
+    }
 }

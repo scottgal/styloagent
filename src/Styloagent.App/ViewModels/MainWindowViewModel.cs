@@ -1121,11 +1121,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// has been quiet for at least <see cref="IdleWindow"/> — this is trigger (b): a pane
     /// that was queued while the human was busy is revealed as soon as they go idle.
     /// </summary>
+    private int _usageTick;
+
     internal void OnIdleTick()
     {
         // Refresh each roster's relative "last output Ns" readout off the shared 1s tick
         // (no per-pane timer). Runs on the UI thread; panes only mutate here too.
         foreach (var pane in Panes) pane.TickRelativeTimes();
+
+        // Every ~3s, refresh each agent's token/context readout from its transcript (off-thread).
+        if (++_usageTick % 3 == 0)
+            foreach (var pane in Panes) pane.RefreshUsage();
+
         if (!_interaction.IsBusy(IdleWindow)) AutoRevealHead();
     }
 

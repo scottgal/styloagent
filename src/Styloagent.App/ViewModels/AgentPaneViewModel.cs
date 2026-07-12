@@ -205,11 +205,47 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
         OnPropertyChanged(nameof(LastOutputText));
         OnPropertyChanged(nameof(HasActivityMeta));
 
+        if (!string.IsNullOrEmpty(e.SessionId)) _sessionId = e.SessionId;
+        if (!string.IsNullOrEmpty(e.Cwd)) _cwd = e.Cwd;
+
         if (e.EventName is "PreToolUse" or "PostToolUse" && !string.IsNullOrEmpty(e.ToolName))
             ActivityDetail = HookActivity.DescribeTool(e.ToolName);
         else if (HookState is AgentHookState.Idle or AgentHookState.Exited)
             ActivityDetail = ""; // a stale "editing" on an idle agent would mislead
     }
+
+    // ── Token / context usage (read from the agent's Claude transcript) ──────────────────────
+    private string? _sessionId;
+    private string? _cwd;
+
+    /// <summary>Compact token/context readout for the roster, e.g. "83k · 22%". Empty until known.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasUsage))]
+    private string _usageText = "";
+
+    /// <summary>True once a usage readout is available — gates the roster line.</summary>
+    public bool HasUsage => !string.IsNullOrEmpty(UsageText);
+
+    /// <summary>
+    /// Reads the agent's transcript (off the UI thread) for the latest context tokens + window fill and
+    /// updates <see cref="UsageText"/>. No-op until a hook event has supplied the session id.
+    /// </summary>
+    public void RefreshUsage()
+    {
+        var cwd = _cwd ?? _manifest.Worktree;
+        var sid = _sessionId;
+        if (string.IsNullOrEmpty(sid)) return;
+
+        _ = Task.Run(() =>
+        {
+            var path = Styloagent.Core.Transcripts.TranscriptReader.PathFor(cwd, sid);
+            var usage = Styloagent.Core.Transcripts.TranscriptReader.ReadLatest(path);
+            var text = usage is null ? "" : $"{FormatTokens(usage.ContextTokens)} · {usage.ContextFraction * 100:0}%";
+            global::Avalonia.Threading.Dispatcher.UIThread.Post(() => UsageText = text);
+        });
+    }
+
+    private static string FormatTokens(long t) => t >= 1000 ? $"{t / 1000}k" : t.ToString();
 
     /// <summary>
     /// Raised when the underlying session starts a new PTY.

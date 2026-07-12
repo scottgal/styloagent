@@ -49,6 +49,10 @@
               <TextBlock Text="{Binding LastOutputText}" FontSize="9"
                          Foreground="{DynamicResource MutedTextBrush}"
                          IsVisible="{Binding HasActivityMeta}" />
+              <!-- Token / context readout ("83k · 22%") from the agent's transcript -->
+              <TextBlock Text="{Binding UsageText}" FontSize="9"
+                         Foreground="{DynamicResource MutedTextBrush}"
+                         IsVisible="{Binding HasUsage}" />
             </StackPanel>
             <!-- Identity dot; amber when the agent needs you -->
             <Ellipse Grid.Column="2" Width="8" Height="8" Margin="0,0,10,0"

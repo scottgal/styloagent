@@ -63,11 +63,12 @@ public sealed record WorkspaceConfig(
     }
 
     /// <summary>
-    /// The overview agents to open, one per repo. Single-repo keeps the historical <c>overview-</c> prefix and
-    /// this workspace's overview system prompt (back-compat). Multi-repo names each overview after its repo
-    /// (<c>styloagent-</c>) and points at that repo's own <c>.styloagent/system-prompt.md</c>, so the primary
-    /// repo (index 0) anchors and every additional repo brings its own specialist overview onto the shared bus.
-    /// Colliding repo names are disambiguated so every prefix stays unique.
+    /// The overview agents to open, one per repo. The primary repo (index 0) always anchors on the historical
+    /// <c>overview-</c> prefix — so the released single-repo path and everything keyed off <c>overview-</c> are
+    /// unchanged. Single-repo uses this workspace's overview prompt; multi-repo names each ADDITIONAL overview
+    /// after its repo (<c>lucidresume-</c>) and points every overview at its own repo's
+    /// <c>.styloagent/system-prompt.md</c> (the specialist team travels with the repo). Colliding repo names are
+    /// disambiguated so every prefix stays unique.
     /// </summary>
     public IReadOnlyList<RepoOverview> RepoOverviews()
     {
@@ -80,15 +81,23 @@ public sealed record WorkspaceConfig(
             };
         }
 
-        var used = new HashSet<string>();
+        var used = new HashSet<string> { "overview-" };
         var list = new List<RepoOverview>(Repos.Count);
         foreach (var r in Repos)
         {
-            var prefix = PrefixFor(r.Name);
-            if (!used.Add(prefix))
+            string prefix;
+            if (r.Index == 0)
             {
-                prefix = PrefixFor($"{r.Name}-{r.Index}");   // two repos share a name → keep prefixes unique
-                used.Add(prefix);
+                prefix = "overview-";   // the primary repo anchors on the historical overview prefix
+            }
+            else
+            {
+                prefix = PrefixFor(r.Name);
+                if (!used.Add(prefix))
+                {
+                    prefix = PrefixFor($"{r.Name}-{r.Index}");   // two repos share a name → keep prefixes unique
+                    used.Add(prefix);
+                }
             }
             list.Add(new RepoOverview(
                 Prefix: prefix,

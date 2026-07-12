@@ -24,4 +24,5 @@ public interface IFleetController
     string WhoTouched(string path);
     IReadOnlyList<string> RecentFiles(int limit);
     IReadOnlyList<Docs.DocSearchHit> SearchDocs(string query, int limit);
+    IReadOnlyList<RepoInfo> ListRepos();
 }

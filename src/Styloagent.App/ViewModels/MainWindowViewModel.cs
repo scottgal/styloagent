@@ -1175,6 +1175,26 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         return _searchIndex.Search(query ?? "", limit);
     }
 
+    // ── Workspace repos (multi-repo) ─────────────────────────────────────────
+    private IReadOnlyList<RepoInfo> _repos = Array.Empty<RepoInfo>();
+
+    /// <summary>
+    /// Records the open workspace's repos (from its overview list) so the <c>list_repos</c> MCP tool and
+    /// repo-grouped UI can enumerate them. A single repo becomes a one-entry list. Set once at startup.
+    /// </summary>
+    public void SetReposFromOverviews(IReadOnlyList<Styloagent.Core.Workspace.RepoOverview> overviews)
+        => _repos = overviews.Select(o => new RepoInfo(
+                Name: Path.GetFileName(o.RepoRoot.TrimEnd('/', '\\')),
+                Path: o.RepoRoot,
+                Index: o.RepoIndex,
+                Prefix: o.Prefix,
+                ColorHex: o.ColorHex,
+                Primary: o.IsPrimary))
+            .ToList();
+
+    /// <summary>The repos in the open workspace, for the <c>list_repos</c> MCP tool.</summary>
+    public IReadOnlyList<RepoInfo> BuildRepoList() => _repos;
+
     /// <summary>
     /// Core pane-creation path shared by SpawnProposed and SpawnChild.
     /// Builds the manifest entry, reserves the hook id, creates the AgentPaneViewModel

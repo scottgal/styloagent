@@ -8,7 +8,7 @@ public class WorkspaceTests
     private static readonly string[] ThreeNames = { "a", "b", "c" };
     private static readonly int[] ThreeIndexes = { 0, 1, 2 };
     private static readonly string[] TwoRepos = { "repoA", "repoB" };
-    private static readonly string[] ExpectedOverviewPrefixes = { "styloagent-", "lucidresume-" };
+    private static readonly string[] ExpectedOverviewPrefixes = { "overview-", "lucidresume-" };
 
     [Fact]
     public void SingleRepo_is_a_workspace_of_one_with_the_repos_own_channel()

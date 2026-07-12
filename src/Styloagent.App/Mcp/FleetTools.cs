@@ -142,6 +142,16 @@ public sealed class FleetTools
         return JsonSerializer.Serialize(_controller.SearchDocs(query, limit), Json);
     }
 
+    [McpServerTool, Description("List the repos in the open workspace: each repo's name, path, index, overview prefix (e.g. 'overview-' for the primary, 'lucidresume-'), identity colour, and whether it's the primary. A single repo returns one entry. Use this to see which repos you're coordinating across and how to address each repo's overview.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public string list_repos()
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
+        return JsonSerializer.Serialize(_controller.ListRepos(), Json);
+    }
+
     [McpServerTool, Description("Read what an agent last said — the text of its most recent assistant turn, from its transcript. Use to see what a specialist actually produced/reasoned, not just its state.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public async Task<string> read_agent(string prefix)

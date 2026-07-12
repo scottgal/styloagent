@@ -38,6 +38,11 @@ public class FleetToolsTests
         public IReadOnlyList<string> RecentFiles(int limit) => new[] { "/repo/Foo.cs — foss- (editing, 5s ago)" };
         public IReadOnlyList<Styloagent.Core.Docs.DocSearchHit> SearchDocs(string query, int limit) =>
             new[] { new Styloagent.Core.Docs.DocSearchHit("PROTOCOL", "/repo/.styloagent/PROTOCOL.md", Styloagent.Core.Docs.DocSource.Repo, ".styloagent/PROTOCOL.md") };
+        public IReadOnlyList<RepoInfo> ListRepos() => new[]
+        {
+            new RepoInfo("styloagent", "/ws/styloagent", 0, "overview-", "#4C9AFF", true),
+            new RepoInfo("lucidRESUME", "/ws/lucidRESUME", 1, "lucidresume-", "#5FD08A", false),
+        };
     }
 
     private static IHttpContextAccessor AccessorWith(string? agent, string? auth)
@@ -234,6 +239,23 @@ public class FleetToolsTests
     {
         var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), new FakeController(), new McpAuth("secret"));
         Assert.Contains("PROTOCOL", tools.search_docs("proto", 8));
+    }
+
+    [Fact]
+    public void list_repos_serializes_the_workspace_repos()
+    {
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), new FakeController(), new McpAuth("secret"));
+        var json = tools.list_repos();
+        Assert.Contains("overview-", json);
+        Assert.Contains("lucidresume-", json);
+        Assert.Contains("\"primary\":true", json.Replace(" ", ""));
+    }
+
+    [Fact]
+    public void list_repos_refuses_a_bad_token()
+    {
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer WRONG"), new FakeController(), new McpAuth("secret"));
+        Assert.Contains("unauthorized", tools.list_repos());
     }
 
     [Fact]

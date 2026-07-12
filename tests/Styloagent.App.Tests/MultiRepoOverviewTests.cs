@@ -61,6 +61,34 @@ public class MultiRepoOverviewTests
     }
 
     [Fact]
+    public async Task ListRepos_reflects_the_workspace_overviews()
+    {
+        var channel = MainWindowViewModelTests.MakeTwoAgentChannel();
+        try
+        {
+            var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
+            var ws = WorkspaceConfig.For("/ws", "mono", new[]
+            {
+                Path.Combine("/ws", "Styloagent"),
+                Path.Combine("/ws", "lucidRESUME"),
+            });
+            vm.SetReposFromOverviews(ws.RepoOverviews());
+
+            var repos = vm.BuildRepoList();
+
+            Assert.Equal(2, repos.Count);
+            Assert.Equal("overview-", repos[0].Prefix);
+            Assert.True(repos[0].Primary);
+            Assert.Equal("Styloagent", repos[0].Name);
+            Assert.Equal("lucidresume-", repos[1].Prefix);
+            Assert.False(repos[1].Primary);
+            Assert.Equal("lucidRESUME", repos[1].Name);
+            Assert.NotEqual(repos[0].ColorHex, repos[1].ColorHex);
+        }
+        finally { if (Directory.Exists(channel)) Directory.Delete(channel, recursive: true); }
+    }
+
+    [Fact]
     public async Task No_extra_overviews_leaves_the_single_repo_roster_unchanged()
     {
         var channel = MainWindowViewModelTests.MakeTwoAgentChannel();

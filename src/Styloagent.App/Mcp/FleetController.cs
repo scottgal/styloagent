@@ -65,4 +65,9 @@ public sealed class FleetController : IFleetController
         => Dispatcher.UIThread.CheckAccess()
             ? _vm.SearchDocs(query, limit)
             : Dispatcher.UIThread.InvokeAsync(() => _vm.SearchDocs(query, limit)).GetTask().GetAwaiter().GetResult();
+
+    public IReadOnlyList<RepoInfo> ListRepos()
+        => Dispatcher.UIThread.CheckAccess()
+            ? _vm.BuildRepoList()
+            : Dispatcher.UIThread.InvokeAsync(_vm.BuildRepoList).GetTask().GetAwaiter().GetResult();
 }

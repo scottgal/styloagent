@@ -26,6 +26,7 @@ public class StyloagentMcpServerTests
         public IReadOnlyList<string> RecentFiles(int limit) => Array.Empty<string>();
         public IReadOnlyList<Styloagent.Core.Docs.DocSearchHit> SearchDocs(string query, int limit) =>
             Array.Empty<Styloagent.Core.Docs.DocSearchHit>();
+        public IReadOnlyList<RepoInfo> ListRepos() => Array.Empty<RepoInfo>();
     }
 
     private sealed class FakeRouter : IRouterController

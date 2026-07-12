@@ -57,6 +57,12 @@ public sealed record FleetStatusReport(
 /// <summary>One recorded operation for the read_timeline tool.</summary>
 public sealed record TimelineOp(string Time, string Agent, string What);
 
+/// <summary>One repo in the open workspace, for the list_repos tool.</summary>
+/// <param name="Prefix">The repo overview's channel prefix (e.g. "overview-" for the primary, "lucidresume-").</param>
+/// <param name="Primary">True for the workspace's primary (anchor) repo.</param>
+public sealed record RepoInfo(
+    string Name, string Path, int Index, string Prefix, string ColorHex, bool Primary);
+
 /// <summary>Governor verdict.</summary>
 public sealed record Decision(bool Allowed, RejectReason? Reason, string Message)
 {

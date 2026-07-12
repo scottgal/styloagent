@@ -49,6 +49,7 @@ public partial class App : Application
                     var cfg = ProjectScaffolder.Ensure(primary.Path);
                     await recents.AddAsync(recentsPath, root);
 
+                    var overviews = workspace.RepoOverviews();
                     IReadOnlyList<RepoOverview>? extraOverviews = null;
                     string? primaryColorHex = null;
                     if (!workspace.IsSingleRepo)
@@ -56,7 +57,6 @@ public partial class App : Application
                         // Scaffold each additional repo so its .styloagent/system-prompt.md exists, then open it.
                         foreach (var extra in workspace.Repos.Skip(1))
                             ProjectScaffolder.Ensure(extra.Path);
-                        var overviews = workspace.RepoOverviews();
                         primaryColorHex = overviews[0].ColorHex;      // colour the primary by its repo hue too
                         extraOverviews = overviews.Skip(1).ToList();
                     }
@@ -74,6 +74,7 @@ public partial class App : Application
                         overviewColorHex: primaryColorHex,
                         extraOverviews: extraOverviews);
                     vm.AttachProject(cfg);
+                    vm.SetReposFromOverviews(overviews);   // enumerate repos for list_repos + repo-grouped UI
                     vm.AttachPreferences(prefs, prefsStore, prefsPath);
                     await vm.StartFleetServerAsync();
 

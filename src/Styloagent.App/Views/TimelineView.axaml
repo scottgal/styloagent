@@ -9,17 +9,24 @@
       <ItemsControl ItemsSource="{Binding Entries}" Margin="0,4">
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="vm:TimelineEntry">
-            <Grid ColumnDefinitions="Auto,Auto,*" Margin="8,2">
-              <TextBlock Grid.Column="0" Text="{Binding TimeText}" FontSize="10"
-                         FontFamily="Menlo, Consolas, monospace"
-                         Foreground="{DynamicResource MutedTextBrush}"
-                         VerticalAlignment="Top" Margin="0,1,8,0" />
-              <TextBlock Grid.Column="1" Text="{Binding Agent}" FontSize="11" FontWeight="SemiBold"
-                         Foreground="{Binding ColorHex}" VerticalAlignment="Top"
-                         Margin="0,0,8,0" MinWidth="64" />
-              <TextBlock Grid.Column="2" Text="{Binding Description}" FontSize="11"
-                         Foreground="{DynamicResource PrimaryTextBrush}" TextWrapping="Wrap" />
-            </Grid>
+            <!-- Rows that touched a file are clickable (open the source viewer); others are plain. -->
+            <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                    Background="Transparent" BorderThickness="0" Padding="0" Margin="0"
+                    IsEnabled="{Binding HasPath}"
+                    Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                    CommandParameter="{Binding Path}">
+              <Grid ColumnDefinitions="Auto,Auto,*" Margin="8,2">
+                <TextBlock Grid.Column="0" Text="{Binding TimeText}" FontSize="10"
+                           FontFamily="Menlo, Consolas, monospace"
+                           Foreground="{DynamicResource MutedTextBrush}"
+                           VerticalAlignment="Top" Margin="0,1,8,0" />
+                <TextBlock Grid.Column="1" Text="{Binding Agent}" FontSize="11" FontWeight="SemiBold"
+                           Foreground="{Binding ColorHex}" VerticalAlignment="Top"
+                           Margin="0,0,8,0" MinWidth="64" />
+                <TextBlock Grid.Column="2" Text="{Binding Description}" FontSize="11"
+                           Foreground="{DynamicResource PrimaryTextBrush}" TextWrapping="Wrap" />
+              </Grid>
+            </Button>
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>

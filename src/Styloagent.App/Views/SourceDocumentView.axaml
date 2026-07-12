@@ -1,0 +1,16 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
+             x:Class="Styloagent.App.Views.SourceDocumentView"
+             x:DataType="vm:SourceDocumentViewModel">
+
+  <ScrollViewer Background="#0F0F1A" Padding="10,8"
+                HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+    <SelectableTextBlock Name="Code"
+                         FontFamily="Menlo, Monaco, Cascadia Mono, Consolas, monospace"
+                         FontSize="12"
+                         Foreground="#D6D6E8"
+                         TextWrapping="NoWrap" />
+  </ScrollViewer>
+
+</UserControl>

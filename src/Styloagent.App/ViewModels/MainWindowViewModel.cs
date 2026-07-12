@@ -624,6 +624,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             ShowArchitectureCommand = vm.ShowArchitectureCommand,
         };
         vm.BuildSearchIndex(docRepoRoot, channelRoot);
+        vm.Timeline.OpenSource = vm.OpenSourceDocument;
 
         return vm;
     }
@@ -1153,8 +1154,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             },
             _ => null,   // UserPromptSubmit / PostToolUse / Stop — too frequent for the timeline
         };
+        // A file the row can open: only for the file-touching tools, and only a real path.
+        string? path = e.EventName == "PreToolUse"
+            && e.ToolName is "Read" or "Edit" or "MultiEdit" or "Write" or "NotebookEdit" or "NotebookRead"
+            && !string.IsNullOrWhiteSpace(e.ToolTarget) && e.ToolTarget.Contains('/')
+                ? e.ToolTarget : null;
+
         if (!string.IsNullOrEmpty(desc))
-            Timeline.Add(DateTimeOffset.Now, pane.DisplayName, desc, pane.BorderColorHex);
+            Timeline.Add(DateTimeOffset.Now, pane.DisplayName, desc, pane.BorderColorHex, path);
     }
 
     /// <summary>Formats a tool operation with its target — "editing · Foo.cs", "running commands · git status".</summary>
@@ -1168,6 +1175,21 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (isFile && t.Contains('/')) t = Path.GetFileName(t);
         if (t.Length > 44) t = t[..44] + "…";
         return $"{verb} · {t}";
+    }
+
+    /// <summary>
+    /// Opens a file in a read-only, syntax-highlighted source document tab (from a timeline click).
+    /// Added to the centre dock like a markdown doc; no-op for a blank path.
+    /// </summary>
+    public void OpenSourceDocument(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || _dockFactory?.DocumentDock is null || _dockFactory.RootDock is null)
+            return;
+
+        var doc = new SourceDocumentViewModel(path) { Id = "Src-" + Guid.NewGuid().ToString("N"), CanFloat = true };
+        _dockFactory.AddDockable(_dockFactory.DocumentDock, doc);
+        _dockFactory.SetActiveDockable(doc);
+        _dockFactory.SetFocusedDockable(_dockFactory.RootDock, doc);
     }
 
     /// <summary>Resolves an agent id (pane prefix) to its live PTY for message injection.</summary>

@@ -36,6 +36,15 @@ public sealed class BusMessageItem
     public string ColorHex { get; init; } = "#888888";
     public string DisplayLine { get; init; } = "";
 
+    /// <summary>The message's backing <c>.md</c> file (double-click a message to open it in full).</summary>
+    public string FilePath { get; init; } = "";
+
+    /// <summary>The message body (markdown) — rendered per page in the thread carousel.</summary>
+    public string Body { get; init; } = "";
+
+    /// <summary>Directory of the backing file, so relative links/images in the markdown resolve.</summary>
+    public string SourcePath => string.IsNullOrEmpty(FilePath) ? "" : (Path.GetDirectoryName(FilePath) ?? "");
+
     public string RelativeTime => BusTime.Format(Timestamp);
 }
 
@@ -235,6 +244,28 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
         }
     }
 
+    // ── Open a message / thread as documents (double-click a message; popout a thread carousel) ──
+
+    /// <summary>Opens a single message's backing markdown file as a document. Wired by the shell.</summary>
+    public Action<string>? OpenDocument { get; set; }
+
+    /// <summary>Opens a whole thread as a carousel document (page through its messages). Wired by the shell.</summary>
+    public Action<BusThreadItem>? ThreadOpener { get; set; }
+
+    /// <summary>Double-click a message → open its full markdown.</summary>
+    [RelayCommand]
+    private void OpenMessage(BusMessageItem? item)
+    {
+        if (item is { FilePath.Length: > 0 }) OpenDocument?.Invoke(item.FilePath);
+    }
+
+    /// <summary>Popout a thread → carousel through its messages.</summary>
+    [RelayCommand]
+    private void OpenThread(BusThreadItem? thread)
+    {
+        if (thread is not null) ThreadOpener?.Invoke(thread);
+    }
+
     private static BusMessageItem BuildMessageItem(BusMessage m) => new()
     {
         RoutingPrefix = m.RoutingPrefix,
@@ -245,6 +276,8 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
         Timestamp     = m.Timestamp,
         ColorHex      = PresentationStore.DefaultColorFor(m.RoutingPrefix),
         DisplayLine   = BuildDisplayLine(m),
+        FilePath      = m.FilePath,
+        Body          = m.Body,
     };
 
     private static string BuildDisplayLine(BusMessage m)

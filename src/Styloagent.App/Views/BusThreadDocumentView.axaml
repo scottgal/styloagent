@@ -1,0 +1,52 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
+             xmlns:lucid="clr-namespace:Mostlylucid.LucidView.Markdown;assembly=Mostlylucid.LucidView.Markdown"
+             x:Class="Styloagent.App.Views.BusThreadDocumentView"
+             x:DataType="vm:BusThreadDocumentViewModel">
+
+  <Grid RowDefinitions="Auto,*,Auto" Background="{DynamicResource PanelBgBrush}">
+
+    <!-- Thread subject header -->
+    <Border Grid.Row="0" Background="#15152A" Padding="14,8">
+      <TextBlock Text="{Binding Subject}" FontSize="13" FontWeight="SemiBold"
+                 Foreground="{DynamicResource PrimaryTextBrush}" TextTrimming="CharacterEllipsis" />
+    </Border>
+
+    <!-- One message per page; cross-fade between them. -->
+    <Carousel Grid.Row="1" ItemsSource="{Binding Messages}" SelectedIndex="{Binding SelectedIndex}">
+      <Carousel.PageTransition>
+        <CrossFade Duration="0:00:00.25" />
+      </Carousel.PageTransition>
+      <Carousel.ItemTemplate>
+        <DataTemplate DataType="vm:BusMessageItem">
+          <ScrollViewer Padding="16,12" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="6">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="{Binding DisplayLine}" FontSize="12" FontWeight="Bold"
+                           Foreground="{Binding ColorHex}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding RelativeTime}" FontSize="10" Foreground="#888899"
+                           VerticalAlignment="Center" />
+              </StackPanel>
+              <lucid:LucidMarkdownView Markdown="{Binding Body}" SourcePath="{Binding SourcePath}"
+                                       FontSize="{ReflectionBinding DataContext.MarkdownFontSize, RelativeSource={RelativeSource AncestorType=Window}, FallbackValue=14}"
+                                       Foreground="{DynamicResource PrimaryTextBrush}" />
+            </StackPanel>
+          </ScrollViewer>
+        </DataTemplate>
+      </Carousel.ItemTemplate>
+    </Carousel>
+
+    <!-- Carousel controls -->
+    <Border Grid.Row="2" Background="#15152A" Padding="0,6">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="14">
+        <Button Content="‹ Prev" Command="{Binding PrevCommand}" Padding="10,4" />
+        <TextBlock Text="{Binding PageIndicator}" VerticalAlignment="Center"
+                   FontSize="11" Foreground="{DynamicResource MutedTextBrush}" />
+        <Button Content="Next ›" Command="{Binding NextCommand}" Padding="10,4" />
+      </StackPanel>
+    </Border>
+
+  </Grid>
+
+</UserControl>

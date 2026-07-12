@@ -2,12 +2,14 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
              x:Class="Styloagent.App.Views.BusView"
+             x:Name="BusRoot"
              x:DataType="vm:BusViewModel">
 
   <UserControl.Resources>
-    <!-- One message row, shown when a thread is expanded. -->
+    <!-- One message row, shown when a thread is expanded. Double-click opens its full markdown. -->
     <DataTemplate x:Key="MsgTemplate" DataType="vm:BusMessageItem">
-      <Border Margin="18,1,0,0" Background="#0F0F1E">
+      <Border Margin="18,1,0,0" Background="#0F0F1E" Cursor="Hand"
+              DoubleTapped="OnMessageDoubleTapped" ToolTip.Tip="Double-click to open the full message">
         <StackPanel Orientation="Horizontal" Spacing="6" Margin="6,3">
           <TextBlock Text="{Binding RoutingPrefix}" FontSize="10" FontWeight="Bold"
                      Foreground="{Binding ColorHex}" />
@@ -18,28 +20,35 @@
       </Border>
     </DataTemplate>
 
-    <!-- One thread row: glyph + colour stripe + subject + participants + time; click expands. -->
+    <!-- One thread row: glyph + colour stripe + subject + participants + time; click expands, ⤢ carousels. -->
     <DataTemplate x:Key="ThreadTemplate" DataType="vm:BusThreadItem">
       <Border Margin="0,1,0,0" Background="{DynamicResource RowBgBrush}">
         <StackPanel>
-          <Button Background="Transparent" BorderThickness="0" Padding="0"
-                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                  Command="{Binding ToggleExpandCommand}">
-            <Grid ColumnDefinitions="4,Auto,*,Auto">
-              <Border Grid.Column="0" Background="{Binding ColorHex}" Width="4" />
-              <TextBlock Grid.Column="1" Text="{Binding Glyph}" FontSize="12"
-                         Margin="6,0,4,0" VerticalAlignment="Center"
-                         Foreground="{Binding ColorHex}" />
-              <StackPanel Grid.Column="2" Margin="0,5,8,5" Spacing="1">
-                <TextBlock Text="{Binding Subject}" FontSize="11" Foreground="#DDDDEE"
-                           TextTrimming="CharacterEllipsis" />
-                <TextBlock Text="{Binding ParticipantsDisplay}" FontSize="9"
-                           Foreground="{Binding ColorHex}" TextTrimming="CharacterEllipsis" />
-              </StackPanel>
-              <TextBlock Grid.Column="3" Text="{Binding RelativeTime}" FontSize="9"
-                         Foreground="#555566" VerticalAlignment="Center" Margin="0,0,8,0" />
-            </Grid>
-          </Button>
+          <Grid ColumnDefinitions="*,Auto">
+            <Button Grid.Column="0" Background="Transparent" BorderThickness="0" Padding="0"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                    Command="{Binding ToggleExpandCommand}">
+              <Grid ColumnDefinitions="4,Auto,*,Auto">
+                <Border Grid.Column="0" Background="{Binding ColorHex}" Width="4" />
+                <TextBlock Grid.Column="1" Text="{Binding Glyph}" FontSize="12"
+                           Margin="6,0,4,0" VerticalAlignment="Center"
+                           Foreground="{Binding ColorHex}" />
+                <StackPanel Grid.Column="2" Margin="0,5,8,5" Spacing="1">
+                  <TextBlock Text="{Binding Subject}" FontSize="11" Foreground="#DDDDEE"
+                             TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding ParticipantsDisplay}" FontSize="9"
+                             Foreground="{Binding ColorHex}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <TextBlock Grid.Column="3" Text="{Binding RelativeTime}" FontSize="9"
+                           Foreground="#555566" VerticalAlignment="Center" Margin="0,0,8,0" />
+              </Grid>
+            </Button>
+            <Button Grid.Column="1" Content="⤢" FontSize="12" Padding="8,0" VerticalAlignment="Stretch"
+                    Background="Transparent" BorderThickness="0" Foreground="#8888AA"
+                    ToolTip.Tip="Open thread carousel"
+                    Command="{Binding #BusRoot.((vm:BusViewModel)DataContext).OpenThreadCommand}"
+                    CommandParameter="{Binding}" />
+          </Grid>
           <ItemsControl ItemsSource="{Binding Messages}" ItemTemplate="{StaticResource MsgTemplate}"
                         IsVisible="{Binding IsExpanded}" />
         </StackPanel>

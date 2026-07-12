@@ -525,6 +525,32 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 SavedContextPath: string.Empty,
                 Transport: AgentTransport.Local);
 
+            // Resume the overview from its OWN context doc when the channel carries one — revive YOU, not a
+            // blank overseer. Write a restart prompt (identity + re-read your context doc + resume + stay in
+            // scope) and wire it as the overview's launch/restart prompt + saved-context, so spawn injects it
+            // and the compaction guard points at it. Best-effort; a fresh overview otherwise.
+            var overviewCtx = Path.Combine(channelRoot, "saved-context", "overview-context.md");
+            if (File.Exists(overviewCtx))
+            {
+                try
+                {
+                    var restart = Path.Combine(channelRoot, "launch-prompts", "overview-restart.md");
+                    if (!File.Exists(restart))
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(restart)!);
+                        File.WriteAllText(restart, Styloagent.Core.Hooks.HydrationText.For(
+                            "overview-", overviewCtx, Path.Combine(channelRoot, "PROTOCOL.md"), channelRoot));
+                    }
+                    overviewEntry = overviewEntry with
+                    {
+                        LaunchPromptPath = restart,
+                        RestartPromptPath = restart,
+                        SavedContextPath = overviewCtx,
+                    };
+                }
+                catch { /* best-effort revive; fall back to a fresh overview */ }
+            }
+
             // The overview opens + spawns; the channel's parked fleet (every agent with a saved-context
             // doc) is added to the roster as un-opened seeded entries, so the operator can revive each
             // from its restart prompt via +Add agent — it cold-starts from its own saved-context doc.
@@ -559,7 +585,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var channelPrefixes = (await new ChannelManifestSeeder()
                 .SeedAsync(channelRoot, new Dictionary<string, string>()))
             .Select(e => e.Prefix).ToList();
-        vm._busViewModel = new BusViewModel(channelRoot, channelPrefixes);
+        vm._busViewModel = new BusViewModel(channelRoot, channelPrefixes)
+        {
+            OpenDocument = vm.OpenBusMessageDocument,   // double-click a message → its full markdown
+            ThreadOpener = vm.OpenBusThreadDocument,     // popout a thread → carousel through it
+        };
 
         // Priority delivery: seed the "already seen" set with the current backlog (so startup does
         // not deliver old messages), then push newly-arrived messages on each bus reload. The policy
@@ -1709,6 +1739,23 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     /// <summary>Exposes the live bus feed view-model (e.g. tests).</summary>
     public BusViewModel? BusViewModel => _busViewModel;
+
+    /// <summary>Opens a bus message's backing markdown <c>.md</c> file as a document (double-click a message).</summary>
+    public void OpenBusMessageDocument(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return;
+        OpenMarkdownDocument(new MarkdownDocumentViewModel(Path.GetFileNameWithoutExtension(path), path));
+    }
+
+    /// <summary>Opens a bus thread as a carousel document — page through all its messages rendered as markdown.</summary>
+    public void OpenBusThreadDocument(BusThreadItem thread)
+    {
+        if (_dockFactory?.DocumentDock is null || _dockFactory.RootDock is null) return;
+        var doc = new BusThreadDocumentViewModel(thread);
+        _dockFactory.AddDockable(_dockFactory.DocumentDock, doc);
+        _dockFactory.SetActiveDockable(doc);
+        _dockFactory.SetFocusedDockable(_dockFactory.RootDock, doc);
+    }
 
     /// <summary>
     /// Opens a markdown document in a new floating dockable tab in the centre DocumentDock.

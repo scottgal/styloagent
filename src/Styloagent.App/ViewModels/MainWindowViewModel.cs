@@ -748,6 +748,27 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    private int _consoleCount;
+
+    /// <summary>
+    /// Opens a plain shell terminal as a document tab — not an agent (no claude, no lifecycle). Useful
+    /// as a scratch console in the cockpit. Added to the centre dock and focused.
+    /// </summary>
+    [RelayCommand]
+    private void NewConsole()
+    {
+        if (_dockFactory?.DocumentDock is null || _launcher is null) return;
+        var cwd = _repoRoot ?? Environment.GetEnvironmentVariable("STYLOAGENT_REPO") ?? Directory.GetCurrentDirectory();
+
+        var n = ++_consoleCount;
+        var console = new ConsolePaneViewModel($"console-{n}", $"Console {n}");
+        _dockFactory.AddDockable(_dockFactory.DocumentDock, console);
+        _dockFactory.SetActiveDockable(console);
+        if (_dockFactory.RootDock is { } root) _dockFactory.SetFocusedDockable(root, console);
+
+        _ = console.StartAsync(_launcher, cwd);
+    }
+
     /// <summary>Turns a proposed subsystem into a live roster agent (mirrors AddAgent).</summary>
     public void SpawnProposed(ProposedAgent p)
     {

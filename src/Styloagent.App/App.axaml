@@ -32,6 +32,9 @@
     <DataTemplate DataType="vm:AgentPaneViewModel">
       <views:AgentPaneView />
     </DataTemplate>
+    <DataTemplate DataType="vm:ConsolePaneViewModel">
+      <views:ConsolePaneView />
+    </DataTemplate>
     <DataTemplate DataType="vm:BusViewModel">
       <views:BusView />
     </DataTemplate>

@@ -26,12 +26,22 @@
             Background="{DynamicResource CockpitAccentBrush}"
             Padding="8,4">
       <Grid ColumnDefinitions="Auto,*,Auto">
-        <Button Grid.Column="0" Command="{Binding AddAgentCommand}" Padding="10,4" FontSize="13">
-          <StackPanel Orientation="Horizontal" Spacing="6">
-            <ic:SymbolIcon Symbol="Add" FontSize="16" />
-            <TextBlock Text="Add agent" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+          <Button Command="{Binding AddAgentCommand}" Padding="10,4" FontSize="13">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ic:SymbolIcon Symbol="Add" FontSize="16" />
+              <TextBlock Text="Add agent" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Command="{Binding NewConsoleCommand}" Padding="10,4" FontSize="13"
+                  ToolTip.Tip="Open a plain shell terminal (not an agent)">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="›_" FontFamily="Menlo, Consolas, monospace" FontWeight="Bold"
+                         VerticalAlignment="Center" />
+              <TextBlock Text="New console" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
 
         <!-- Centre: layout-mode segmented switch (Tabs / Tile / Auto-tile) -->
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="0" HorizontalAlignment="Center"

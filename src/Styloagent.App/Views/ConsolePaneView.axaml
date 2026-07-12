@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
+             xmlns:terminal="clr-namespace:Styloagent.Terminal;assembly=Styloagent.Terminal"
+             x:Class="Styloagent.App.Views.ConsolePaneView"
+             x:DataType="vm:ConsolePaneViewModel">
+
+  <Border BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="4">
+    <Grid RowDefinitions="Auto,*">
+      <Border Grid.Row="0" Background="{DynamicResource PanelHeaderBgBrush}" Padding="8,4">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <TextBlock Text="›_" FontFamily="Menlo, Consolas, monospace" FontWeight="Bold"
+                     Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                     Foreground="{DynamicResource PrimaryTextBrush}" VerticalAlignment="Center" />
+          <TextBlock Text="shell" FontSize="10" Foreground="{DynamicResource MutedTextBrush}"
+                     VerticalAlignment="Center" />
+        </StackPanel>
+      </Border>
+      <terminal:TerminalControl Name="Terminal" Grid.Row="1" />
+    </Grid>
+  </Border>
+
+</UserControl>

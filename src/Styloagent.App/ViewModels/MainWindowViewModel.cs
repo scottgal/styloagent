@@ -1066,6 +1066,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             .ToList();
     }
 
+    /// <summary>Searches the document library (Lucene) — top matches so an agent reads only the relevant docs.</summary>
+    public IReadOnlyList<Styloagent.Core.Docs.DocSearchHit> SearchDocs(string query, int limit)
+    {
+        limit = Math.Clamp(limit <= 0 ? 8 : limit, 1, 30);
+        return _searchIndex.Search(query ?? "", limit);
+    }
+
     /// <summary>
     /// Core pane-creation path shared by SpawnProposed and SpawnChild.
     /// Builds the manifest entry, reserves the hook id, creates the AgentPaneViewModel

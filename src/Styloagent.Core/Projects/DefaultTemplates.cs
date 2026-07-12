@@ -71,6 +71,9 @@ You have these MCP tools from the `styloagent` server:
   file another agent may own, so you coordinate instead of colliding — context beyond worktrees.
 - `recent_files(limit)` — the files most recently touched across the fleet: a quick map of where
   everyone is working.
+- `search_docs(query, limit)` — search the project's documents (Lucene, prefix, title-boosted) and get
+  the top matches (title + path). Use it to find the protocol, design/lifecycle docs and plans and
+  read only what's relevant — cheaper than scanning files.
 - `spawn_agent(prefix, responsibility, dir, launchPrompt, worktree)` — launches a child agent under
   you. Set `worktree: true` **only** when the new agent's responsibility overlaps files an existing
   agent owns (so it works isolated on its own `agent/<prefix>` worktree); otherwise `false` to share

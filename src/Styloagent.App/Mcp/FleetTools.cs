@@ -132,6 +132,16 @@ public sealed class FleetTools
         return JsonSerializer.Serialize(_controller.ReadTimeline(limit), Json);
     }
 
+    [McpServerTool, Description("Search the project's documents (Lucene, as-you-type prefix, title-boosted) and get the top matches — title + path — so you can read only the relevant docs instead of scanning files. Great for finding design/lifecycle docs, the protocol, plans. Pass a query and optional limit (default 8, max 30). Saves tokens vs. reading whole files.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public string search_docs(string query, int limit)
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
+        return JsonSerializer.Serialize(_controller.SearchDocs(query, limit), Json);
+    }
+
     [McpServerTool, Description("Read what an agent last said — the text of its most recent assistant turn, from its transcript. Use to see what a specialist actually produced/reasoned, not just its state.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public async Task<string> read_agent(string prefix)

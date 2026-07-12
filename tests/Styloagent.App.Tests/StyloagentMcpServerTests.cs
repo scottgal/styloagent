@@ -24,6 +24,8 @@ public class StyloagentMcpServerTests
         public Task<string> ReadAgentAsync(string prefix) => Task.FromResult("done");
         public string WhoTouched(string path) => "none";
         public IReadOnlyList<string> RecentFiles(int limit) => Array.Empty<string>();
+        public IReadOnlyList<Styloagent.Core.Docs.DocSearchHit> SearchDocs(string query, int limit) =>
+            Array.Empty<Styloagent.Core.Docs.DocSearchHit>();
     }
 
     private sealed class FakeRouter : IRouterController

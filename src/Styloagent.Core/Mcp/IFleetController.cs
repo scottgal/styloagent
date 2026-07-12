@@ -23,4 +23,5 @@ public interface IFleetController
     Task<string> ReadAgentAsync(string prefix);
     string WhoTouched(string path);
     IReadOnlyList<string> RecentFiles(int limit);
+    IReadOnlyList<Docs.DocSearchHit> SearchDocs(string query, int limit);
 }

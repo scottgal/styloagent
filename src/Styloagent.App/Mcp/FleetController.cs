@@ -60,4 +60,9 @@ public sealed class FleetController : IFleetController
         => Dispatcher.UIThread.CheckAccess()
             ? _vm.RecentFiles(limit)
             : Dispatcher.UIThread.InvokeAsync(() => _vm.RecentFiles(limit)).GetTask().GetAwaiter().GetResult();
+
+    public IReadOnlyList<Styloagent.Core.Docs.DocSearchHit> SearchDocs(string query, int limit)
+        => Dispatcher.UIThread.CheckAccess()
+            ? _vm.SearchDocs(query, limit)
+            : Dispatcher.UIThread.InvokeAsync(() => _vm.SearchDocs(query, limit)).GetTask().GetAwaiter().GetResult();
 }

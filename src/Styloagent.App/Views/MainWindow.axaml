@@ -163,7 +163,13 @@
         <ColumnDefinition Width="{Binding IsSidePanelCollapsed, Converter={x:Static conv:CollapseToWidthConverter.Instance}, ConverterParameter=300}" />
       </Grid.ColumnDefinitions>
 
-      <views:AgentsView Grid.Column="0" IsVisible="{Binding !IsRosterCollapsed}" />
+      <!-- Left column: the agent roster on top, the Signal Bus below it (more room here than the
+           right panel). Draggable row splitter between them. -->
+      <Grid Grid.Column="0" IsVisible="{Binding !IsRosterCollapsed}" RowDefinitions="*,5,1.3*">
+        <views:AgentsView Grid.Row="0" />
+        <GridSplitter Grid.Row="1" Background="#222" HorizontalAlignment="Stretch" ResizeDirection="Rows" />
+        <views:BusView Grid.Row="2" DataContext="{Binding BusViewModel}" />
+      </Grid>
       <GridSplitter Grid.Column="1" Background="#222" IsVisible="{Binding !IsRosterCollapsed}" />
 
       <!-- Centre: agent terminals as dockable documents (tabs, float, split).
@@ -184,15 +190,6 @@
             <Setter Property="Foreground" Value="#9D7FE0" />
           </Style>
         </TabControl.Styles>
-        <TabItem>
-          <TabItem.Header>
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <ic:SymbolIcon Symbol="Communication" FontSize="15" VerticalAlignment="Center" />
-              <TextBlock Text="Signal Bus" VerticalAlignment="Center" />
-            </StackPanel>
-          </TabItem.Header>
-          <views:BusView DataContext="{Binding BusViewModel}" />
-        </TabItem>
         <TabItem>
           <TabItem.Header>
             <StackPanel Orientation="Horizontal" Spacing="6">

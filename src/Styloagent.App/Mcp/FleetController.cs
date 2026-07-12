@@ -70,4 +70,9 @@ public sealed class FleetController : IFleetController
         => Dispatcher.UIThread.CheckAccess()
             ? _vm.BuildRepoList()
             : Dispatcher.UIThread.InvokeAsync(_vm.BuildRepoList).GetTask().GetAwaiter().GetResult();
+
+    public IReadOnlyList<Styloagent.Core.Architecture.AuthorityViolation> LintAuthority()
+        => Dispatcher.UIThread.CheckAccess()
+            ? _vm.LintAuthority()
+            : Dispatcher.UIThread.InvokeAsync(_vm.LintAuthority).GetTask().GetAwaiter().GetResult();
 }

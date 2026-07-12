@@ -1245,6 +1245,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public IReadOnlyList<RepoInfo> BuildRepoList() => _repos;
 
     /// <summary>
+    /// Lints the fleet's C4 mutation-authority graph (one root, one owner per node, acyclic, no overseer
+    /// holds a worktree). Empty ⇒ a coherent authority tree. Backs the <c>lint_authority</c> MCP tool so
+    /// an orchestrator can check the org chart hasn't gone incoherent as overviews split.
+    /// </summary>
+    public IReadOnlyList<Styloagent.Core.Architecture.AuthorityViolation> LintAuthority()
+    {
+        var nodes = Panes
+            .Select(p => new Styloagent.Core.Architecture.AuthorityNode(p.Prefix, p.ParentPrefix, p.WorktreePath is not null))
+            .ToList();
+        return Styloagent.Core.Architecture.AuthorityTreeLint.Check(nodes);
+    }
+
+    /// <summary>
     /// Core pane-creation path shared by SpawnProposed and SpawnChild.
     /// Builds the manifest entry, reserves the hook id, creates the AgentPaneViewModel
     /// (with optional lineage), adds it to Panes + dock, and fires SpawnAsync.

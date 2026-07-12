@@ -152,6 +152,16 @@ public sealed class FleetTools
         return JsonSerializer.Serialize(_controller.ListRepos(), Json);
     }
 
+    [McpServerTool, Description("Lint the fleet's authority graph — the C4 mutation-authority ownership tree. Returns any violations of the invariants that keep the org chart coherent as overviews split: exactly one root, one owner per agent, acyclic, and no overseer (an agent with children) holds a worktree. Empty result means a coherent authority tree. Run after spawning/retiring to catch an incoherent org chart early.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public string lint_authority()
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
+        return JsonSerializer.Serialize(_controller.LintAuthority(), Json);
+    }
+
     [McpServerTool, Description("Read what an agent last said — the text of its most recent assistant turn, from its transcript. Use to see what a specialist actually produced/reasoned, not just its state.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public async Task<string> read_agent(string prefix)

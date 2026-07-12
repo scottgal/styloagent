@@ -43,6 +43,8 @@ public class FleetToolsTests
             new RepoInfo("styloagent", "/ws/styloagent", 0, "overview-", "#4C9AFF", true),
             new RepoInfo("lucidRESUME", "/ws/lucidRESUME", 1, "lucidresume-", "#5FD08A", false),
         };
+        public IReadOnlyList<Styloagent.Core.Architecture.AuthorityViolation> LintAuthority() =>
+            new[] { new Styloagent.Core.Architecture.AuthorityViolation("owner-has-worktree", "foss-", "holds a worktree yet has children") };
     }
 
     private static IHttpContextAccessor AccessorWith(string? agent, string? auth)
@@ -256,6 +258,22 @@ public class FleetToolsTests
     {
         var tools = new FleetTools(AccessorWith("overview-", "Bearer WRONG"), new FakeController(), new McpAuth("secret"));
         Assert.Contains("unauthorized", tools.list_repos());
+    }
+
+    [Fact]
+    public void lint_authority_serializes_violations()
+    {
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), new FakeController(), new McpAuth("secret"));
+        var json = tools.lint_authority();
+        Assert.Contains("owner-has-worktree", json);
+        Assert.Contains("foss-", json);
+    }
+
+    [Fact]
+    public void lint_authority_refuses_a_bad_token()
+    {
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer WRONG"), new FakeController(), new McpAuth("secret"));
+        Assert.Contains("unauthorized", tools.lint_authority());
     }
 
     [Fact]

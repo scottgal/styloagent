@@ -1,3 +1,4 @@
+using Styloagent.Core.Architecture;
 using Styloagent.Core.Git;
 
 namespace Styloagent.Core.Mcp;
@@ -25,4 +26,5 @@ public interface IFleetController
     IReadOnlyList<string> RecentFiles(int limit);
     IReadOnlyList<Docs.DocSearchHit> SearchDocs(string query, int limit);
     IReadOnlyList<RepoInfo> ListRepos();
+    IReadOnlyList<AuthorityViolation> LintAuthority();
 }

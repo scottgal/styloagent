@@ -1,6 +1,6 @@
 # Styloagent
 
-> CONTRIBUTOR POLICY: NONE ARE ACCEPTED ThIS IS MINE NOT YOURS.
+> CONTRIBUTOR POLICY: NONE ARE ACCEPTED FORK IT, MAKE IT YOUR OWN!
 
 A cross-platform desktop **cockpit** for a fleet of long-lived coding agents that
 coordinate through a git-backed, file-drop message bus and a worktree-per-responsibility

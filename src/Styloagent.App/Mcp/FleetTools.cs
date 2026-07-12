@@ -112,6 +112,17 @@ public sealed class FleetTools
         return outcome.Sent ? outcome.Message : $"rejected: {outcome.Message}";
     }
 
+    [McpServerTool, Description("Capture a screenshot of the cockpit UI to a PNG file and return its path, which you can then read to see the current UI. Requires the human to have enabled UI automation in Settings (off by default); returns 'rejected' otherwise. Pass an empty target for the whole window.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> screenshot(string target)
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
+
+        return await _controller.CaptureScreenshotAsync(string.IsNullOrWhiteSpace(target) ? null : target);
+    }
+
     [McpServerTool, Description("Signal you have finished your work in your worktree. Styloagent will guard-clean, run the project's tests, merge your branch to main and remove the worktree — or, on failure, keep your worktree and file an issue. Only call when your branch is committed and the work is complete.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public async Task<string> wrap_up()

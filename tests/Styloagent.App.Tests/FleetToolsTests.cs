@@ -24,6 +24,8 @@ public class FleetToolsTests
         public Task<IssueOutcome> ReportIssueAsync(IssueRequest req) { LastIssue = req; return Task.FromResult(NextIssue); }
         public Task<WrapUpOutcome> WrapUpAsync(string callerPrefix) { LastWrapUp = callerPrefix; return Task.FromResult(NextWrapUp); }
         public Task<MessageOutcome> SendMessageAsync(MessageRequest req) { LastMessage = req; return Task.FromResult(NextMessage); }
+        public string? LastShotTarget = "unset";
+        public Task<string> CaptureScreenshotAsync(string? target) { LastShotTarget = target; return Task.FromResult("/shots/x.png"); }
     }
 
     private static IHttpContextAccessor AccessorWith(string? agent, string? auth)
@@ -133,6 +135,26 @@ public class FleetToolsTests
         var tools = new FleetTools(AccessorWith("foss-", "Bearer WRONG"), ctrl, new McpAuth("secret"));
         var result = await tools.send_message("router-", "s", "b", "normal");
         Assert.Null(ctrl.LastMessage);        // never reached the controller
+        Assert.Contains("unauthorized", result);
+    }
+
+    [Fact]
+    public async Task screenshot_returns_the_capture_path()
+    {
+        var ctrl = new FakeController();
+        var tools = new FleetTools(AccessorWith("foss-", "Bearer secret"), ctrl, new McpAuth("secret"));
+        var result = await tools.screenshot("");
+        Assert.Null(ctrl.LastShotTarget);     // empty target normalized to null (whole window)
+        Assert.Contains(".png", result);
+    }
+
+    [Fact]
+    public async Task screenshot_refuses_a_bad_token()
+    {
+        var ctrl = new FakeController();
+        var tools = new FleetTools(AccessorWith("foss-", "Bearer WRONG"), ctrl, new McpAuth("secret"));
+        var result = await tools.screenshot("");
+        Assert.Equal("unset", ctrl.LastShotTarget);   // never reached the controller
         Assert.Contains("unauthorized", result);
     }
 

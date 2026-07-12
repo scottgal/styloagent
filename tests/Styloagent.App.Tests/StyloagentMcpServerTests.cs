@@ -16,6 +16,7 @@ public class StyloagentMcpServerTests
         public Task<IssueOutcome> ReportIssueAsync(IssueRequest req) => Task.FromResult(IssueOutcome.Ok("issue"));
         public Task<WrapUpOutcome> WrapUpAsync(string callerPrefix) => Task.FromResult(new WrapUpOutcome(WrapUpStatus.Merged, "merged", null));
         public Task<MessageOutcome> SendMessageAsync(MessageRequest req) => Task.FromResult(MessageOutcome.Ok("/ch/inbox/x.md"));
+        public Task<string> CaptureScreenshotAsync(string? target) => Task.FromResult("/shots/x.png");
     }
 
     private sealed class FakeRouter : IRouterController

@@ -117,6 +117,58 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     partial void OnMarkdownFontSizeChanged(double value) => SavePreferences();
 
+    /// <summary>
+    /// Whether the UI-automation surface (the MCP <c>screenshot</c> tool + the top-bar shot button) is
+    /// enabled. Off by default — a privileged introspection surface. Turning it on broadcasts a bus
+    /// notice so the fleet knows the cockpit can be observed.
+    /// </summary>
+    [ObservableProperty]
+    private bool _uiAutomationEnabled;
+
+    partial void OnUiAutomationEnabledChanged(bool value)
+    {
+        if (_prefsLoaded && value)
+            SendBusMessage(new MessageRequest(
+                "cockpit-", "all-", "UI automation enabled",
+                "The cockpit UI-automation surface is now enabled — agents may request screenshots via " +
+                "the styloagent MCP `screenshot` tool.", "info"));
+        SavePreferences();
+    }
+
+    /// <summary>Command behind the top-bar screenshot button (only shown when automation is enabled).</summary>
+    [RelayCommand]
+    private async Task CaptureScreenshot() => await CaptureScreenshotToFileAsync(null);
+
+    /// <summary>
+    /// Captures the cockpit window (or, unimplemented for now, a named control) to a timestamped PNG
+    /// under the project's <c>.styloagent/shots/</c> and returns the path. Gated on
+    /// <see cref="UiAutomationEnabled"/>. Shared by the top-bar button and the MCP tool.
+    /// </summary>
+    public async Task<string> CaptureScreenshotToFileAsync(string? target)
+    {
+        if (!UiAutomationEnabled) return "rejected: UI automation is disabled (enable it in Settings)";
+
+        var window = (Avalonia.Application.Current?.ApplicationLifetime
+            as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.MainWindow;
+        if (window is null) return "rejected: no cockpit window";
+
+        try
+        {
+            var dir = _project is not null
+                ? Path.Combine(_project.Root, ".styloagent", "shots")
+                : Path.Combine(Path.GetTempPath(), "styloagent-shots");
+            Directory.CreateDirectory(dir);
+            var stamp = DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
+            var path = Path.Combine(dir, $"cockpit-{stamp}.png");
+            await Mostlylucid.Avalonia.UITesting.Players.ScreenshotCapture.CaptureWindowAsync(window, path);
+            return path;
+        }
+        catch (Exception ex)
+        {
+            return $"rejected: {ex.Message}";
+        }
+    }
+
     // ── Persistence of the above (accent, theme, terminal theme, font sizes) ──────────────────
     private PreferencesStore? _prefsStore;
     private string? _prefsPath;
@@ -141,6 +193,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (theme is not null) GlobalTerminalTheme = theme;
         TerminalFontSize = prefs.TerminalFontSize;
         MarkdownFontSize = prefs.MarkdownFontSize;
+        UiAutomationEnabled = prefs.EnableUiAutomation;
         Styloagent.Terminal.TerminalControl.SetGlobalFontSize(TerminalFontSize);
 
         _prefsLoaded = true;   // seeding complete — subsequent changes persist
@@ -155,6 +208,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _prefs.TerminalTheme = GlobalTerminalTheme.Name;
         _prefs.TerminalFontSize = TerminalFontSize;
         _prefs.MarkdownFontSize = MarkdownFontSize;
+        _prefs.EnableUiAutomation = UiAutomationEnabled;
         _ = _prefsStore.SaveAsync(_prefsPath, _prefs);
     }
 

@@ -86,6 +86,12 @@
         </StackPanel>
 
         <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+          <!-- Screenshot button — only shown when UI automation is enabled in Settings -->
+          <Button Padding="6,3" ToolTip.Tip="Capture a cockpit screenshot"
+                  IsVisible="{Binding UiAutomationEnabled}"
+                  Command="{Binding CaptureScreenshotCommand}">
+            <ic:SymbolIcon Symbol="Camera" FontSize="15" />
+          </Button>
           <ToggleButton x:Name="RosterToggleButton" IsChecked="{Binding IsRosterCollapsed}" Padding="6,3"
                         ToolTip.Tip="Collapse roster">
             <ic:SymbolIcon Symbol="PanelLeft" FontSize="15" />
@@ -145,6 +151,12 @@
                                    Minimum="8" Maximum="32" Increment="1" FormatString="0"
                                    Value="{Binding MarkdownFontSize}" />
                   </Grid>
+                  <Border Height="1" Background="{DynamicResource SubtleBorderBrush}" />
+                  <TextBlock Text="Automation" FontWeight="SemiBold" FontSize="12"
+                             Foreground="{DynamicResource AccentBrush}" />
+                  <ToggleSwitch Content="Enable UI automation" IsChecked="{Binding UiAutomationEnabled}" />
+                  <TextBlock Text="Lets agents request cockpit screenshots via the MCP screenshot tool. Off by default; enabling broadcasts a bus notice and shows a shot button."
+                             FontSize="10" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" />
                 </StackPanel>
               </Flyout>
             </Button.Flyout>

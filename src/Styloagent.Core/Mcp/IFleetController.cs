@@ -13,4 +13,5 @@ public interface IFleetController
     Task<IssueOutcome> ReportIssueAsync(IssueRequest req);
     Task<WrapUpOutcome> WrapUpAsync(string callerPrefix);
     Task<MessageOutcome> SendMessageAsync(MessageRequest req);
+    Task<string> CaptureScreenshotAsync(string? target);
 }

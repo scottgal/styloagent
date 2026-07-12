@@ -24,6 +24,12 @@ public partial class AppPreferences
 
     /// <summary>Markdown / document font size in points.</summary>
     public double MarkdownFontSize { get; set; } = 14;
+
+    /// <summary>
+    /// Whether agents may drive/observe the cockpit via the UI-automation MCP tool (screenshots).
+    /// OFF by default — a privileged introspection surface. Enabling it broadcasts a bus notice.
+    /// </summary>
+    public bool EnableUiAutomation { get; set; }
 }
 
 /// <summary>One named accent: the bright accent (buttons/highlights) and its darker cockpit-bar shade.</summary>

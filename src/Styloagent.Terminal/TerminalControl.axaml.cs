@@ -373,12 +373,21 @@ public sealed partial class TerminalControl : UserControl
         int rows = _terminal.Rows;
         int yDisp = buffer.YDisp;
 
+        // Cursor position, drawn as an inverse block so the caret tracks the input point. XTerm.NET
+        // treats the cursor as a renderer concern (it is NOT composited into the buffer cells), so if
+        // we don't draw it here the terminal shows no moving caret — it looks "stuck". buffer.Y is the
+        // cursor row relative to YBase; its on-screen row subtracts the scroll offset (YDisp).
+        bool cursorVisible = _terminal.CursorVisible;
+        int cursorRow = buffer.YBase + buffer.Y - yDisp;
+        int cursorCol = buffer.X;
+
         var runText = new StringBuilder();
 
         for (int row = 0; row < rows; row++)
         {
             BufferLine? line = SafeLine(buffer, yDisp + row);
             int cols = line?.Length ?? 0;
+            bool rowHasCursor = cursorVisible && row == cursorRow && cursorCol >= 0 && cursorCol < cols;
 
             // Trim only trailing cells that are BOTH blank AND default-background — a trailing run
             // of coloured-background cells is a visible block and must be kept.
@@ -390,6 +399,9 @@ public sealed partial class TerminalControl : UserControl
                 bool blank = string.IsNullOrEmpty(c.Content) || c.Content == " ";
                 if (!blank || bg != _defaultBg) { lastVisible = col; break; }
             }
+            // Keep the cursor cell even when it sits on a trailing blank — typing at end-of-line is
+            // the common case, and trimming it away is exactly what makes the caret disappear/stick.
+            if (rowHasCursor) lastVisible = Math.Max(lastVisible, cursorCol);
 
             runText.Clear();
             uint runFg = _defaultFg, runBg = _defaultBg;
@@ -402,6 +414,10 @@ public sealed partial class TerminalControl : UserControl
 
                 string content = string.IsNullOrEmpty(cell.Content) ? " " : cell.Content;
                 (uint fg, uint bg, bool bold) = ResolveCell(cell.Attributes);
+
+                // The cursor cell is drawn inverse (block cursor): swap fg/bg so it renders as a solid
+                // block with the character showing through. This naturally breaks it into its own run.
+                if (rowHasCursor && col == cursorCol) (fg, bg) = (bg, fg);
 
                 if (!runOpen)
                 {

@@ -3,6 +3,7 @@ using Avalonia.Controls.Documents;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Styloagent.Terminal;
@@ -178,6 +179,42 @@ public class TerminalControlTests
             $"Expected a write containing '\\r' after SimulateKeyInput(Enter). " +
             $"fake.Writes={fake.Writes.Count}: [{string.Join(", ", fake.Writes.Select(w => $"\"{w}\""))}]. " +
             $"lambdaException={lambdaException?.Message ?? "none"}.");
+    }
+
+    /// <summary>
+    /// The VT cursor is rendered as an inverse block at the input point so typing is trackable.
+    /// After writing "hi", the cursor sits on the (blank) cell at column 2; rendering it inverse
+    /// produces a Run whose Background is the terminal's default foreground. Without cursor
+    /// rendering (the "stuck cursor" bug) there is no such run.
+    /// </summary>
+    [Fact]
+    public Task Cursor_IsRenderedAsAnInverseBlock_AtTheInputPoint()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);
+
+            var window = new Window { Content = control, Width = 800, Height = 400, Name = "CursorWindow" };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            fake.FireOutput("hi");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            var screen = control.GetVisualDescendants().OfType<SelectableTextBlock>().First(t => t.Name == "ScreenText");
+            var runs = screen.Inlines?.OfType<Run>().ToList() ?? new List<Run>();
+
+            // A block cursor is the cell drawn inverse → its Background is the default foreground.
+            bool hasCursorBlock = runs.Any(r =>
+                r.Background is SolidColorBrush b && b.Color == Color.FromUInt32(0xFFEDEDED));
+            Assert.True(hasCursorBlock,
+                "Expected an inverse block-cursor run at the input point; the terminal renders no cursor.");
+
+            window.Close();
+        });
     }
 
     /// <summary>

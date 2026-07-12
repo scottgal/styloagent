@@ -47,6 +47,25 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>HUD text for the attention queue: empty when nobody is waiting.</summary>
     public string AttentionHudText => WaitingCount == 0 ? "" : $"⚠ {WaitingCount} waiting";
 
+    // ── Cockpit instruments (bottom status strip) ────────────────────────────
+    /// <summary>Live agents in the fleet.</summary>
+    public int LiveAgentCount => Panes.Count;
+    /// <summary>Agents currently working (per their hook state).</summary>
+    public int WorkingCount => Panes.Count(p => p.HookState == Styloagent.Core.Hooks.AgentHookState.Working);
+    /// <summary>Agents currently idle.</summary>
+    public int IdleCount => Panes.Count(p => p.HookState == Styloagent.Core.Hooks.AgentHookState.Idle);
+    /// <summary>Operations recorded on the activity timeline.</summary>
+    public int TimelineCount => Timeline.Entries.Count;
+
+    /// <summary>Refreshes the instrument readouts (called whenever fleet/hook state changes).</summary>
+    private void RefreshInstruments()
+    {
+        OnPropertyChanged(nameof(LiveAgentCount));
+        OnPropertyChanged(nameof(WorkingCount));
+        OnPropertyChanged(nameof(IdleCount));
+        OnPropertyChanged(nameof(TimelineCount));
+    }
+
     [ObservableProperty]
     private AgentPaneViewModel? _selectedPane;
 
@@ -1108,8 +1127,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             pane.ApplyHookEvent(e);
             pane.WaitingSince = pane.NeedsYou ? (pane.WaitingSince ?? DateTimeOffset.UtcNow) : null;
-            RefreshAttention();
-            RecordTimelineFromHook(pane, e);
+            RecordTimelineFromHook(pane, e);   // add the timeline entry BEFORE the instrument refresh
+            RefreshAttention();                 // (which reads TimelineCount)
             if (!_interaction.IsBusy(IdleWindow)) AutoRevealHead();
 
             // When the agent goes idle, flush any NextPrompt messages that were deferred for it.
@@ -1170,6 +1189,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
         OnPropertyChanged(nameof(WaitingCount));
         OnPropertyChanged(nameof(AttentionHudText));
+        RefreshInstruments();
     }
 
     // ── Attention reveal + jump (Task 4) ─────────────────────────────────────

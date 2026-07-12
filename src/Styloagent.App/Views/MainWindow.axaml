@@ -165,6 +165,37 @@
       </Grid>
     </Border>
 
+    <!-- Fleet instruments strip (mission-control status bar) -->
+    <Border DockPanel.Dock="Bottom" Background="{DynamicResource PanelHeaderBgBrush}" Padding="12,3">
+      <StackPanel Orientation="Horizontal" Spacing="18">
+        <StackPanel.Styles>
+          <Style Selector="TextBlock"><Setter Property="FontSize" Value="11" /><Setter Property="VerticalAlignment" Value="Center" /></Style>
+        </StackPanel.Styles>
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <TextBlock Text="◆" Foreground="{DynamicResource AccentBrush}" />
+          <TextBlock Text="{Binding LiveAgentCount}" Foreground="{DynamicResource PrimaryTextBrush}" FontWeight="SemiBold" />
+          <TextBlock Text="agents" Foreground="{DynamicResource MutedTextBrush}" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <TextBlock Text="▶" Foreground="#57A64A" />
+          <TextBlock Text="{Binding WorkingCount}" Foreground="{DynamicResource PrimaryTextBrush}" FontWeight="SemiBold" />
+          <TextBlock Text="working" Foreground="{DynamicResource MutedTextBrush}" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="4"
+                    IsVisible="{Binding WaitingCount, Converter={x:Static conv:CountToBoolConverter.Instance}}">
+          <TextBlock Text="⚠" Foreground="{DynamicResource AttentionBrush}" />
+          <TextBlock Text="{Binding WaitingCount}" Foreground="{DynamicResource AttentionBrush}" FontWeight="SemiBold" />
+          <TextBlock Text="waiting" Foreground="{DynamicResource MutedTextBrush}" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <TextBlock Text="▤" Foreground="{DynamicResource MutedTextBrush}" />
+          <TextBlock Text="{Binding TimelineCount}" Foreground="{DynamicResource PrimaryTextBrush}" FontWeight="SemiBold" />
+          <TextBlock Text="ops" Foreground="{DynamicResource MutedTextBrush}" />
+        </StackPanel>
+        <TextBlock Text="{Binding FleetHudText}" Foreground="{DynamicResource MutedTextBrush}" />
+      </StackPanel>
+    </Border>
+
     <!-- Agents roster | selected terminal | signal bus. Roster/side columns collapse to 0. -->
     <Grid>
       <Grid.ColumnDefinitions>

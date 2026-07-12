@@ -625,6 +625,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         };
         vm.BuildSearchIndex(docRepoRoot, channelRoot);
         vm.Timeline.OpenSource = vm.OpenSourceDocument;
+        vm.Timeline.OpenDiff = vm.OpenDiffDocument;
 
         return vm;
     }
@@ -1160,8 +1161,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             && !string.IsNullOrWhiteSpace(e.ToolTarget) && e.ToolTarget.Contains('/')
                 ? e.ToolTarget : null;
 
+        // An Edit carries a before/after → the row opens a diff instead of the whole file.
+        string? diffOld = null, diffNew = null;
+        if (e.EventName == "PreToolUse" && e.ToolName == "Edit" && e.ToolOld is not null && e.ToolNew is not null)
+            (diffOld, diffNew) = (e.ToolOld, e.ToolNew);
+
         if (!string.IsNullOrEmpty(desc))
-            Timeline.Add(DateTimeOffset.Now, pane.DisplayName, desc, pane.BorderColorHex, path);
+            Timeline.Add(DateTimeOffset.Now, pane.DisplayName, desc, pane.BorderColorHex, path, diffOld, diffNew);
     }
 
     /// <summary>Formats a tool operation with its target — "editing · Foo.cs", "running commands · git status".</summary>
@@ -1187,6 +1193,24 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             return;
 
         var doc = new SourceDocumentViewModel(path) { Id = "Src-" + Guid.NewGuid().ToString("N"), CanFloat = true };
+        _dockFactory.AddDockable(_dockFactory.DocumentDock, doc);
+        _dockFactory.SetActiveDockable(doc);
+        _dockFactory.SetFocusedDockable(_dockFactory.RootDock, doc);
+    }
+
+    /// <summary>Opens an edit's before/after as a highlighted line-diff document (from a timeline click).</summary>
+    public void OpenDiffDocument(TimelineEntry entry)
+    {
+        if (entry.DiffOld is null || entry.DiffNew is null
+            || _dockFactory?.DocumentDock is null || _dockFactory.RootDock is null)
+            return;
+
+        var title = string.IsNullOrWhiteSpace(entry.Path) ? "diff" : Path.GetFileName(entry.Path);
+        var doc = new DiffDocumentViewModel(title, entry.DiffOld, entry.DiffNew)
+        {
+            Id = "Diff-" + Guid.NewGuid().ToString("N"),
+            CanFloat = true,
+        };
         _dockFactory.AddDockable(_dockFactory.DocumentDock, doc);
         _dockFactory.SetActiveDockable(doc);
         _dockFactory.SetFocusedDockable(_dockFactory.RootDock, doc);

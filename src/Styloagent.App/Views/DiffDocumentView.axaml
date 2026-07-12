@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
+             x:Class="Styloagent.App.Views.DiffDocumentView"
+             x:DataType="vm:DiffDocumentViewModel">
+
+  <ScrollViewer Background="#0F0F1A" Padding="0,6"
+                HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+    <ItemsControl ItemsSource="{Binding Rows}">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:DiffRow">
+          <Border Background="{Binding BgHex}" Padding="8,0">
+            <SelectableTextBlock Text="{Binding Text}"
+                                 FontFamily="Menlo, Monaco, Cascadia Mono, Consolas, monospace"
+                                 FontSize="12"
+                                 Foreground="{Binding FgHex}"
+                                 TextWrapping="NoWrap" />
+          </Border>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+  </ScrollViewer>
+
+</UserControl>

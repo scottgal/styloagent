@@ -30,7 +30,9 @@ public static class HookEventParser
                 SessionId: Str(root, "session_id"),
                 Cwd: Str(root, "cwd"),
                 ToolName: Str(root, "tool_name"),
-                ToolTarget: ToolTarget(root));
+                ToolTarget: ToolTarget(root),
+                ToolOld: ToolInput(root, "old_string"),
+                ToolNew: ToolInput(root, "new_string"));
             return true;
         }
         catch (JsonException)
@@ -57,4 +59,10 @@ public static class HookEventParser
             ?? Str(input, "command")
             ?? Str(input, "pattern");
     }
+
+    /// <summary>Reads a string field from <c>tool_input</c> (e.g. <c>old_string</c>/<c>new_string</c>).</summary>
+    private static string? ToolInput(JsonElement root, string name)
+        => root.TryGetProperty("tool_input", out var input) && input.ValueKind == JsonValueKind.Object
+            ? Str(input, name)
+            : null;
 }

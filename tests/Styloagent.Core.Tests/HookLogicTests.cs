@@ -45,6 +45,8 @@ public class HookLogicTests
         Assert.True(HookEventParser.TryParse(json, "foss-", out var e));
         Assert.Equal("Edit", e!.ToolName);
         Assert.Equal("/repo/src/Foo.cs", e.ToolTarget);
+        Assert.Equal("a", e.ToolOld);   // old_string → drives the diff view
+        Assert.Equal("b", e.ToolNew);   // new_string
     }
 
     [Fact]

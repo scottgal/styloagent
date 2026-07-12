@@ -47,6 +47,9 @@
     <DataTemplate DataType="vm:SourceDocumentViewModel">
       <views:SourceDocumentView />
     </DataTemplate>
+    <DataTemplate DataType="vm:DiffDocumentViewModel">
+      <views:DiffDocumentView />
+    </DataTemplate>
   </Application.DataTemplates>
 
 </Application>

@@ -10,6 +10,8 @@
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
         <ResourceInclude Source="avares://Styloagent.App/Themes/ThemeTokens.axaml" />
+        <!-- LiveMarkdown.Avalonia default resources (heading sizes, code/quote colours, etc.). -->
+        <ResourceInclude Source="avares://LiveMarkdown.Avalonia/Defaults.axaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Application.Resources>
@@ -18,22 +20,12 @@
     <FluentTheme />
     <StyleInclude Source="avares://Dock.Avalonia.Themes.Fluent/DockFluentTheme.axaml" />
 
-    <!-- Per-agent identity colour on the centre document tabs: an agent's dock tab uses the same
-         colour as its row in the roster (AgentPaneViewModel.BorderColorHex), so a terminal tab
-         reads as "the same agent" left-to-right. Non-agent documents (markdown/diagram/bus) have
-         no BorderColorHex, so the binding falls back to the default light tab colour. A coloured
-         underline reinforces the identity on the active tab. -->
-    <Style Selector="dockControls|DocumentTabStripItem">
-      <Setter Property="Foreground"
-              Value="{Binding BorderColorHex, FallbackValue=#C8C8E0, TargetNullValue=#C8C8E0}" />
-      <Setter Property="BorderBrush"
-              Value="{Binding BorderColorHex, FallbackValue=Transparent, TargetNullValue=Transparent}" />
-      <Setter Property="BorderThickness" Value="0,0,0,2" />
-    </Style>
-    <Style Selector="dockControls|DocumentTabStripItem:selected">
-      <Setter Property="Foreground"
-              Value="{Binding BorderColorHex, FallbackValue=#FFFFFF, TargetNullValue=#FFFFFF}" />
-    </Style>
+    <!-- Per-agent identity colour on the centre document tabs (shared with the UI test harness). -->
+    <StyleInclude Source="avares://Styloagent.App/Themes/DockTabStyles.axaml" />
+
+    <!-- Markdown typography (heading sizes/weights, lists, code blocks, quotes). Without this,
+         LiveMarkdown renders headings as plain body text. -->
+    <StyleInclude Source="avares://LiveMarkdown.Avalonia/Styles.axaml" />
   </Application.Styles>
 
   <Application.DataTemplates>

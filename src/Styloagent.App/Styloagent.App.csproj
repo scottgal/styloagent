@@ -15,10 +15,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="11.3.12" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.3.12" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.12" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12" />
+    <PackageReference Include="Avalonia" Version="11.3.18" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.18" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.18" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.18" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="Dock.Avalonia" Version="11.3.12.1" />
     <PackageReference Include="Dock.Avalonia.Themes.Fluent" Version="11.3.12.1" />
@@ -26,6 +26,8 @@
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.0.0-preview.2" />
     <PackageReference Include="VYaml" Version="1.4.0" />
     <PackageReference Include="FluentIcons.Avalonia.Fluent" Version="2.0.326" />
+    <!-- Real-platform UI driving/screenshots via the mlui-test / mlui-mcp launch flags (no-op otherwise). -->
+    <PackageReference Include="Mostlylucid.Avalonia.UITesting" Version="1.5.0" />
   </ItemGroup>
 
   <ItemGroup>

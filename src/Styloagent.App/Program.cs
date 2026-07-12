@@ -1,4 +1,5 @@
 using Avalonia;
+using Mostlylucid.Avalonia.UITesting;
 
 namespace Styloagent.App;
 
@@ -12,5 +13,9 @@ internal static class Program
         AppBuilder.Configure<App>()
             .UsePlatformDetect()
             .WithInterFont()
-            .LogToTrace();
+            .LogToTrace()
+            // Enables real-platform UX driving + screenshots when launched with --mlui-test/--mlui-mcp/
+            // --mlui-repl; a no-op for normal launches. Lets the UI test framework drive the actual
+            // rendered app (real frame loop → dock/terminal content realizes).
+            .UseUITesting();
 }

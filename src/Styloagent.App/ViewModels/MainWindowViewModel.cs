@@ -109,6 +109,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private WorktreeGitWatcher? _gitWatcher;
 
     private ProjectConfig? _project;
+    // The repo the project opened against — captured at InitializeAsync time (before AttachProject sets
+    // _project) so the Git panel can fall back to it for agents without their own worktree.
+    private string? _repoRoot;
     private RouterHost? _routerHost;
 
     private IFactory? _factory;
@@ -253,6 +256,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         CancellationToken ct = default)
     {
         var vm = new MainWindowViewModel();
+        vm._repoRoot = repoRoot;
         vm._launcher = launcher;
         vm._watcher = watcher;
         vm._git = gitService;
@@ -734,10 +738,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     public void RefreshGitPanelFor(AgentPaneViewModel? pane)
     {
-        // Re-point the live watcher at the selected pane's worktree (or stop if no worktree).
-        _gitWatcher?.Watch(pane?.WorktreePath);
+        // The Git panel shows the repo the selected agent works in: its own worktree if it was spawned
+        // with one, else the shared project repo. Falling back to the repo root means an existing
+        // repository is detected and its history/changes render even before any worktree agent exists
+        // (e.g. the overview agent, which shares the main checkout). _repoRoot is set in InitializeAsync
+        // — earlier than _project (AttachProject), which is null while the first pane is being selected.
+        var gitDir = pane?.WorktreePath ?? _repoRoot ?? _project?.Root;
 
-        if (pane?.WorktreePath is { } path)
+        // Re-point the live watcher at whichever checkout we're showing (or stop if there's none).
+        _gitWatcher?.Watch(gitDir);
+
+        if (gitDir is { } path && Directory.Exists(path))
         {
             if (GitGraph is not null) _ = GitGraph.LoadAsync(path);
             if (Changes is not null) _ = Changes.LoadAsync(path);

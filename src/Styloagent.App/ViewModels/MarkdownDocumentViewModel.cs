@@ -10,8 +10,13 @@ namespace Styloagent.App.ViewModels;
 /// the tab caption. Reads the file on construction; call <see cref="Refresh"/> to re-read after
 /// changes. Use <see cref="FromMarkdown"/> to create an in-memory instance without a backing file.
 /// </summary>
-public partial class MarkdownDocumentViewModel : Document
+public partial class MarkdownDocumentViewModel : Document, global::Dock.Controls.DeferredContentControl.IDeferredContentPresentation
 {
+    // Present immediately rather than via Dock's Background-priority deferred queue (which a live agent
+    // terminal starves), so opening a doc actually swaps the DocumentControl content. Inherited by
+    // DiagramDocumentViewModel. See AgentPaneViewModel for the full rationale.
+    public bool DeferContentPresentation => false;
+
     [ObservableProperty]
     private string _markdown;
 

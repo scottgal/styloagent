@@ -32,15 +32,15 @@
           </StackPanel>
         </Button>
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-          <ToggleButton IsChecked="{Binding IsRosterCollapsed}" Padding="6,3"
+          <ToggleButton x:Name="RosterToggleButton" IsChecked="{Binding IsRosterCollapsed}" Padding="6,3"
                         ToolTip.Tip="Collapse roster">
             <ic:SymbolIcon Symbol="PanelLeft" FontSize="15" />
           </ToggleButton>
-          <ToggleButton IsChecked="{Binding IsSidePanelCollapsed}" Padding="6,3"
+          <ToggleButton x:Name="SidePanelToggleButton" IsChecked="{Binding IsSidePanelCollapsed}" Padding="6,3"
                         ToolTip.Tip="Collapse side panel">
             <ic:SymbolIcon Symbol="PanelRight" FontSize="15" />
           </ToggleButton>
-          <Button Padding="6,3" ToolTip.Tip="Settings">
+          <Button x:Name="SettingsButton" Padding="6,3" ToolTip.Tip="Settings">
             <ic:SymbolIcon Symbol="Settings" FontSize="15" />
             <Button.Flyout>
               <Flyout>

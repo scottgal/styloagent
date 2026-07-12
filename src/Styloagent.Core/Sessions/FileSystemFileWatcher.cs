@@ -15,6 +15,11 @@ public sealed class FileSystemFileWatcher : IFileWatcher
 
     public async Task<bool> WaitForChangeAsync(string path, TimeSpan timeout, CancellationToken ct = default)
     {
+        // No path to watch (e.g. an agent with no saved-context file) → treat as "no change" rather
+        // than throw. A UI command awaiting this must never be able to crash the app on an empty path.
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
         var directory = Path.GetDirectoryName(Path.GetFullPath(path))
             ?? throw new ArgumentException($"Cannot determine directory for path '{path}'.", nameof(path));
         var fileName = Path.GetFileName(path);

@@ -28,7 +28,7 @@ public partial class App : Application
                 "Styloagent", "recent-projects.yaml");
             var recents = new RecentProjectsStore();
 
-            async Task OpenProjectAsync(string root, Window? welcomeWindow)
+            async Task OpenProjectAsync(string root, Window? welcomeWindow, MainWindow? existing = null)
             {
                 try
                 {
@@ -49,9 +49,19 @@ public partial class App : Application
 
                     await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
                     {
-                        var cockpit = new MainWindow { DataContext = vm };
-                        desktop.MainWindow = cockpit;
-                        cockpit.Show();
+                        if (existing is not null)
+                        {
+                            // Fast-path: the placeholder IS a MainWindow — populate it in place so there
+                            // is a single window (no swap). This also keeps any attached driver/UI-test
+                            // tooling pointed at the real cockpit rather than a discarded placeholder.
+                            existing.DataContext = vm;
+                        }
+                        else
+                        {
+                            var cockpit = new MainWindow { DataContext = vm };
+                            desktop.MainWindow = cockpit;
+                            cockpit.Show();
+                        }
                         welcomeWindow?.Close();
                     });
                 }
@@ -72,8 +82,10 @@ public partial class App : Application
                 // Fast-path: open directly without showing the Welcome screen.
                 var placeholder = new MainWindow();
                 desktop.MainWindow = placeholder;
-                placeholder.Show();
-                _ = OpenProjectAsync(repoEnv, welcomeWindow: null);
+                // Don't Show() here — let the desktop lifetime show MainWindow when its main loop
+                // starts. Showing it now would fire Window.Opened before post-Startup hooks (e.g. the
+                // UI-test driver) attach, so they'd miss it. The lifetime shows MainWindow for us.
+                _ = OpenProjectAsync(repoEnv, welcomeWindow: null, existing: placeholder);
             }
             else
             {

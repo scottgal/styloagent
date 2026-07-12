@@ -18,10 +18,33 @@
                  Text="No history — this agent has no worktree yet."
                  FontSize="11" Foreground="{DynamicResource MutedTextBrush}" Padding="12" />
 
-      <ScrollViewer Grid.Row="1" IsVisible="{Binding Graph, Converter={x:Static ObjectConverters.IsNotNull}}">
-        <graph:CommitGraphControl Graph="{Binding Graph}"
-                                  Layout="{Binding Layout}"
-                                  DotBrush="{DynamicResource AccentBrush}" />
+      <ScrollViewer Grid.Row="1" IsVisible="{Binding Graph, Converter={x:Static ObjectConverters.IsNotNull}}"
+                    HorizontalScrollBarVisibility="Disabled">
+        <!-- Graph lanes (col 0) beside the commit text rows (col 1). Both use a 24px row height so the
+             dots line up with their subjects. -->
+        <Grid ColumnDefinitions="40,*">
+          <graph:CommitGraphControl Grid.Column="0"
+                                    Graph="{Binding Graph}"
+                                    Layout="{Binding Layout}"
+                                    DotBrush="{DynamicResource AccentBrush}" />
+          <ItemsControl Grid.Column="1" ItemsSource="{Binding Commits}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:GitGraphViewModel+CommitRow">
+                <Grid Height="24" ColumnDefinitions="Auto,*,Auto">
+                  <TextBlock Grid.Column="0" Text="{Binding ShortSha}"
+                             FontFamily="Menlo, Cascadia Mono, Consolas, monospace" FontSize="10.5"
+                             Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Text="{Binding Subject}" FontSize="11.5"
+                             Foreground="{DynamicResource PrimaryTextBrush}" TextTrimming="CharacterEllipsis"
+                             VerticalAlignment="Center" Margin="8,0" />
+                  <TextBlock Grid.Column="2" Text="{Binding TimeText}" FontSize="10"
+                             Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center"
+                             Margin="0,0,8,0" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Grid>
       </ScrollViewer>
 
     </Grid>

@@ -10,7 +10,7 @@ public class AgentPaneViewModelTests
     private static AgentManifestEntry MakeEntry(
         string launchPromptPath = "",
         string restartPromptPath = "",
-        string savedContextPath = "") =>
+        string savedContextPath = "/repo/wt-foss/.context.md") =>
         new(
             Prefix: "foss-",
             Repo: "/repo",
@@ -66,6 +66,20 @@ public class AgentPaneViewModelTests
         await vm.DehydrateAsync();
 
         // watcher returned false → session stays Live; context must not be lost.
+        Assert.Equal(SessionState.Live, vm.State);
+    }
+
+    [Fact]
+    public async Task DehydrateCommand_WithNoSavedContextPath_StaysLive_AndDoesNotThrow()
+    {
+        // An agent with no checkpoint target (e.g. the overview agent) cannot dehydrate. This must be
+        // a safe no-op — not an empty-path ArgumentException that crashes the app (regression guard).
+        var vm = MakeVm(entry: MakeEntry(savedContextPath: ""),
+            watcher: new FakeWatcher { WillChange = true });
+
+        await vm.SpawnAsync();
+        await vm.DehydrateAsync();
+
         Assert.Equal(SessionState.Live, vm.State);
     }
 

@@ -36,6 +36,9 @@ public sealed class AgentSession
 
     public async Task SpawnAsync(string launchPrompt, CancellationToken ct = default)
     {
+        // Already running — re-spawning would overwrite _pty and orphan the live process (and leak its
+        // Output handler). Spawn is only valid from a non-Live state.
+        if (State == SessionState.Live) return;
         _pty = await _launcher.SpawnAsync(new PtySpawnOptions(
             Command: "claude", Args: _launchArgs,
             WorkingDirectory: _manifest.Worktree, Env: null, Cols: 120, Rows: 30), ct);
@@ -49,6 +52,9 @@ public sealed class AgentSession
     public async Task<bool> DehydrateAsync(TimeSpan ackTimeout, CancellationToken ct = default)
     {
         if (_pty is null || State != SessionState.Live) return false;
+        // No checkpoint target (e.g. the overview agent) — cannot dehydrate; keep it live rather than
+        // ask it to checkpoint to nowhere and then watch an empty path.
+        if (string.IsNullOrWhiteSpace(_manifest.SavedContextPath)) return false;
         await _pty.WriteAsync(
             $"Please checkpoint your context to {_manifest.SavedContextPath}, then stand by.\n", ct);
         var acked = await _watcher.WaitForChangeAsync(_manifest.SavedContextPath, ackTimeout, ct);

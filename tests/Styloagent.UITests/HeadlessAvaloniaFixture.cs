@@ -83,10 +83,28 @@ public sealed class TestApp : Application
         // Load the SAME themes the real App.axaml uses, so headless tests render with real control
         // templates. Without DockFluentTheme, DockControl has no dock-model→control templates and
         // renders nothing — which previously got misdiagnosed as "Dock.Avalonia is broken".
+        // App.axaml requests the Dark variant globally; match it so the Dock theme resolves the same
+        // (dark) tab-strip chrome the real app renders — otherwise headless screenshots show a light
+        // strip the user never sees. This is the app's real default, so all screenshot tests become
+        // faithful to what ships.
+        RequestedThemeVariant = Avalonia.Styling.ThemeVariant.Dark;
+
         Styles.Add(new FluentTheme());
         Styles.Add(new StyleInclude(new Uri("avares://Styloagent.App/App.axaml"))
         {
             Source = new Uri("avares://Dock.Avalonia.Themes.Fluent/DockFluentTheme.axaml"),
+        });
+        // The per-agent document-tab styles App.axaml applies (agent-colour tab titles); shared file
+        // so the harness tab strip renders identically to the real app instead of Dock's default.
+        Styles.Add(new StyleInclude(new Uri("avares://Styloagent.App/App.axaml"))
+        {
+            Source = new Uri("avares://Styloagent.App/Themes/DockTabStyles.axaml"),
+        });
+        // LiveMarkdown typography (heading sizes/weights, code, quotes) — App.axaml includes this, so
+        // the harness must too or markdown renders headings as plain body text.
+        Styles.Add(new StyleInclude(new Uri("avares://Styloagent.App/App.axaml"))
+        {
+            Source = new Uri("avares://LiveMarkdown.Avalonia/Styles.axaml"),
         });
 
         // The shared theme tokens (CockpitBgBrush etc.) the real App.axaml merges — so headless
@@ -95,6 +113,12 @@ public sealed class TestApp : Application
             new Avalonia.Markup.Xaml.Styling.ResourceInclude(new Uri("avares://Styloagent.App/App.axaml"))
             {
                 Source = new Uri("avares://Styloagent.App/Themes/ThemeTokens.axaml"),
+            });
+        // LiveMarkdown default resources (heading sizes, code/quote colours) — matches App.axaml.
+        Resources.MergedDictionaries.Add(
+            new Avalonia.Markup.Xaml.Styling.ResourceInclude(new Uri("avares://Styloagent.App/App.axaml"))
+            {
+                Source = new Uri("avares://LiveMarkdown.Avalonia/Defaults.axaml"),
             });
 
         // Application-level DataTemplates, exactly as App.axaml declares them, so dock-hosted

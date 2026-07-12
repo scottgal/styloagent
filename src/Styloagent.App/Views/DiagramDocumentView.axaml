@@ -9,18 +9,19 @@
 
     <!-- Row 0: Refresh / Live controls -->
     <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Margin="8,4"
-                Background="#1A1A2E">
+                Background="{DynamicResource PanelHeaderBgBrush}">
       <Button Content="⟳ Refresh" FontSize="10" Padding="6,1"
               Command="{Binding RegenerateCommand}" />
       <ToggleButton Content="Live" FontSize="10" Padding="6,1"
                     IsChecked="{Binding Live}" />
     </StackPanel>
 
-    <!-- Row 1: Markdown content -->
-    <ScrollViewer Grid.Row="1" Background="#FBFBFB" Padding="16,12">
+    <!-- Row 1: Themed document surface (dark under the default Dark theme, light under Light). -->
+    <ScrollViewer Grid.Row="1" Background="{DynamicResource PanelBgBrush}" Padding="16,12">
       <lucid:LucidMarkdownView Name="Md"
                                Markdown="{Binding Markdown}"
-                               SourcePath="{Binding SourcePath}" />
+                               SourcePath="{Binding SourcePath}"
+                               Foreground="{DynamicResource PrimaryTextBrush}" />
     </ScrollViewer>
 
   </Grid>

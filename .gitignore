@@ -20,3 +20,6 @@ publish/
 
 # Rider/ReSharper per-solution settings
 *.sln.DotSettings
+
+# Per-project runtime state the app scaffolds when a repo is opened (channel/router/issues/config)
+.styloagent/

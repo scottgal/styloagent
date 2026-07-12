@@ -16,8 +16,14 @@ namespace Styloagent.App.ViewModels;
 /// (AgentPaneViewModel → AgentPaneView) — the wrapper pattern (base Document + Context) does NOT
 /// render its body in Dock 11.3. All extra properties are observable (CommunityToolkit.Mvvm).
 /// </summary>
-public sealed partial class AgentPaneViewModel : Document
+public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls.DeferredContentControl.IDeferredContentPresentation
 {
+    // Present this document's content immediately instead of via Dock's Background-priority deferred
+    // queue. A live agent terminal continuously renders, starving that low-priority queue so a newly
+    // activated document's content would never materialise — the "docs don't open / spawn overflows"
+    // bug. Bypassing deferral makes the DocumentControl swap content synchronously on activation.
+    public bool DeferContentPresentation => false;
+
     private static readonly TimeSpan DehydrateTimeout = TimeSpan.FromSeconds(30);
 
     private readonly AgentSession _session;
@@ -40,7 +46,17 @@ public sealed partial class AgentPaneViewModel : Document
     private TerminalTheme _selectedTerminalTheme = TerminalTheme.Default;
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SpawnCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DehydrateCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RehydrateCommand))]
     private SessionState _state;
+
+    // Toolbar command guards: an agent can only Spawn from a non-live state, Dehydrate when live with a
+    // checkpoint target, and Rehydrate when dehydrated. Keeps the buttons disabled in invalid states so
+    // e.g. "Spawn" on an already-running agent can't orphan its process.
+    private bool CanSpawn => State != SessionState.Live;
+    private bool CanDehydrate => State == SessionState.Live && !string.IsNullOrWhiteSpace(_manifest.SavedContextPath);
+    private bool CanRehydrate => State == SessionState.Dehydrated;
 
     /// <summary>
     /// True when this pane is the one whose terminal is currently shown. Managed by
@@ -183,7 +199,7 @@ public sealed partial class AgentPaneViewModel : Document
     /// <see cref="AgentManifestEntry.LaunchPromptPath"/> if the file exists;
     /// otherwise falls back to a minimal built-in brief.
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanSpawn))]
     public async Task SpawnAsync(CancellationToken ct = default)
     {
         try
@@ -206,10 +222,16 @@ public sealed partial class AgentPaneViewModel : Document
     /// Requests the session to dehydrate.  If the watcher does not ack in time
     /// (returns false) the session stays Live and <see cref="State"/> reflects that.
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanDehydrate))]
     public async Task DehydrateAsync(CancellationToken ct = default)
     {
-        await _session.DehydrateAsync(DehydrateTimeout, ct);
+        try { await _session.DehydrateAsync(DehydrateTimeout, ct); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            // A toolbar click must never crash the app — surface, don't throw.
+            System.Diagnostics.Trace.WriteLine($"[AgentPaneViewModel] dehydrate failed for '{_manifest.Prefix}': {ex}");
+        }
         State = _session.State;
     }
 
@@ -218,12 +240,20 @@ public sealed partial class AgentPaneViewModel : Document
     /// <see cref="AgentManifestEntry.RestartPromptPath"/> if the file exists;
     /// otherwise falls back to a minimal built-in brief.
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRehydrate))]
     public async Task RehydrateAsync(CancellationToken ct = default)
     {
-        var prompt = await ReadPromptOrDefaultAsync(_manifest.RestartPromptPath,
-            $"You are agent '{_manifest.Prefix}'. Reload your saved context and resume.", ct);
-        await _session.RehydrateAsync(prompt, ct);
+        try
+        {
+            var prompt = await ReadPromptOrDefaultAsync(_manifest.RestartPromptPath,
+                $"You are agent '{_manifest.Prefix}'. Reload your saved context and resume.", ct);
+            await _session.RehydrateAsync(prompt, ct);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[AgentPaneViewModel] rehydrate failed for '{_manifest.Prefix}': {ex}");
+        }
         State = _session.State;
     }
 

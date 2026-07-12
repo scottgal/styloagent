@@ -1,0 +1,33 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:dockControls="clr-namespace:Dock.Avalonia.Controls;assembly=Dock.Avalonia">
+  <!-- Per-agent identity colour on the centre document tabs: an agent's dock tab uses the same
+       colour as its row in the roster (AgentPaneViewModel.BorderColorHex), so a terminal tab
+       reads as "the same agent" left-to-right. Non-agent documents (markdown/diagram/bus) have
+       no BorderColorHex, so the binding falls back to the default light tab colour. A coloured
+       underline reinforces the identity on the active tab.
+
+       Shared by App.axaml (the running app) and the UI test harness (TestApp) so headless
+       screenshots render the tab strip identically to the real app. -->
+  <Style Selector="dockControls|DocumentTabStripItem">
+    <Setter Property="Foreground"
+            Value="{Binding BorderColorHex, FallbackValue=#C8C8E0, TargetNullValue=#C8C8E0}" />
+    <Setter Property="BorderBrush"
+            Value="{Binding BorderColorHex, FallbackValue=Transparent, TargetNullValue=Transparent}" />
+    <Setter Property="BorderThickness" Value="0,0,0,2" />
+  </Style>
+  <Style Selector="dockControls|DocumentTabStripItem:selected">
+    <Setter Property="Foreground"
+            Value="{Binding BorderColorHex, FallbackValue=#FFFFFF, TargetNullValue=#FFFFFF}" />
+  </Style>
+
+  <!-- Use Dock's EAGER "cached content" DocumentControl template instead of the default deferred one.
+       The default template hosts document content in a DeferredContentControl that posts realization at
+       DispatcherPriority.Background; a live agent terminal renders continuously and starves that queue,
+       so a newly-activated document's content never materialises — the "docs don't open / spawning an
+       agent overflows into the previous one" bug (Dock #1086). The cached template realizes each
+       document's content synchronously and toggles visibility to the active one, so switching works. -->
+  <Style Selector="dockControls|DocumentControl">
+    <Setter Property="Template" Value="{StaticResource DockDocumentControlCachedContentTemplate}" />
+  </Style>
+</Styles>

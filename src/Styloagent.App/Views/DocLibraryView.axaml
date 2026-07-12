@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
-             xmlns:core="clr-namespace:Styloagent.Core.Docs;assembly=Styloagent.Core"
+             xmlns:ic="using:FluentIcons.Avalonia.Fluent"
              x:Class="Styloagent.App.Views.DocLibraryView"
              x:DataType="vm:DocLibraryViewModel">
 
@@ -19,39 +19,45 @@
         </StackPanel>
       </Border>
 
-      <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-        <ItemsControl ItemsSource="{Binding Groups}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate DataType="vm:DocLibraryViewModel+DocGroupViewModel">
-              <StackPanel>
-                <Border Background="#15152A" Padding="8,4" Margin="0,4,0,0">
-                  <TextBlock Text="{Binding Header}" FontSize="10" FontWeight="SemiBold"
-                             Foreground="{DynamicResource MutedTextBrush}" LetterSpacing="1" />
-                </Border>
-                <ItemsControl ItemsSource="{Binding Entries}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="core:DocEntry">
-                      <Button HorizontalAlignment="Stretch"
-                              HorizontalContentAlignment="Stretch"
-                              Background="Transparent"
-                              BorderThickness="0"
-                              Padding="8,4"
-                              Margin="0,1,0,0"
-                              Command="{Binding DataContext.OpenDocCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                              CommandParameter="{Binding}">
-                        <TextBlock Text="{Binding RelativePath}"
-                                   FontSize="11"
-                                   Foreground="#AAAACC"
-                                   TextTrimming="CharacterEllipsis" />
-                      </Button>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
+      <!-- File/folder tree of the docs. Folders expand/collapse; files are buttons that open. -->
+      <TreeView Grid.Row="1"
+                x:Name="DocsTree"
+                ItemsSource="{Binding Roots}"
+                Background="Transparent">
+        <TreeView.Styles>
+          <!-- Bind each container's expansion to the node so folders honour DocNode.IsExpanded. -->
+          <Style Selector="TreeViewItem">
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded}" />
+          </Style>
+        </TreeView.Styles>
+        <TreeView.ItemTemplate>
+          <TreeDataTemplate x:DataType="vm:DocLibraryViewModel+DocNode" ItemsSource="{Binding Children}">
+            <Panel>
+              <!-- Folder row -->
+              <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,1"
+                          IsVisible="{Binding IsFolder}">
+                <ic:SymbolIcon Symbol="Folder" FontSize="14" VerticalAlignment="Center"
+                               Foreground="#9D7FE0" />
+                <TextBlock Text="{Binding Name}" FontSize="11.5" VerticalAlignment="Center"
+                           Foreground="#CCCCDD" TextTrimming="CharacterEllipsis" />
               </StackPanel>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-      </ScrollViewer>
+              <!-- File row: a borderless button that opens the doc on click. -->
+              <Button IsVisible="{Binding !IsFolder}"
+                      Background="Transparent" BorderThickness="0" Padding="0,1"
+                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                      Command="{Binding $parent[TreeView].((vm:DocLibraryViewModel)DataContext).OpenDocCommand}"
+                      CommandParameter="{Binding Entry}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <ic:SymbolIcon Symbol="Document" FontSize="14" VerticalAlignment="Center"
+                                 Foreground="#8899BB" />
+                  <TextBlock Text="{Binding Name}" FontSize="11.5" VerticalAlignment="Center"
+                             Foreground="#CCCCDD" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+              </Button>
+            </Panel>
+          </TreeDataTemplate>
+        </TreeView.ItemTemplate>
+      </TreeView>
 
     </Grid>
   </Border>

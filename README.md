@@ -50,10 +50,18 @@ the roster, and relative time:
 
 ![Attention-first Signal Bus](docs/screenshots/bus-attention.png)
 
+### Git — history at a glance
+
+The embedded git client (vendored from [SourceGit](https://github.com/sourcegit-scm/sourcegit)'s
+MIT controls) shows the selected agent's worktree — or the shared project repo — as a commit
+graph with subject, short SHA and date per row, plus a Changes tab for staging and committing:
+
+![Git history](docs/screenshots/git-history.png)
+
 ### Document Library
 
-Repo and channel markdown grouped by source; click a doc to open it as a rendered document
-in the centre dock (tile it beside a terminal):
+A file/folder tree of the project's docs (and channel messages); click a file to open it as a
+rendered document in the centre dock (tile it beside a terminal):
 
 ![Document Library](docs/screenshots/doc-library.png)
 

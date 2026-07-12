@@ -62,16 +62,19 @@ public class MarkdownDocumentRenderTests : IDisposable
 
             using var bmp = SKBitmap.Decode(path);
             Assert.NotNull(bmp);
-            int darkText = 0, lightBg = 0;
+            // The document surface is themed: under the Dark theme (the app + harness default) it's a
+            // dark panel (#0D0D1A) with light text (#E0E0FF) — consistent with the cockpit, not a
+            // blinding-white paper. Assert that: a dark background dominates and light glyphs sit on it.
+            int lightText = 0, darkBg = 0;
             for (int y = 0; y < bmp!.Height; y++)
             for (int x = 0; x < bmp.Width; x++)
             {
                 var p = bmp.GetPixel(x, y);
-                if (p.Red < 90 && p.Green < 90 && p.Blue < 90) darkText++;       // glyphs
-                if (p.Red > 230 && p.Green > 230 && p.Blue > 230) lightBg++;     // paper
+                if (p.Red > 170 && p.Green > 170 && p.Blue > 190) lightText++;   // light glyphs
+                if (p.Red < 45 && p.Green < 45 && p.Blue < 65) darkBg++;         // dark panel surface
             }
-            Assert.True(lightBg > 1000, $"expected a light 'paper' background, found {lightBg} light pixels");
-            Assert.True(darkText > 50, $"expected dark markdown glyph pixels on the paper, found {darkText}");
+            Assert.True(darkBg > 1000, $"expected a dark themed document surface, found {darkBg} dark pixels");
+            Assert.True(lightText > 50, $"expected light markdown glyph pixels on the dark surface, found {lightText}");
         });
     }
 }

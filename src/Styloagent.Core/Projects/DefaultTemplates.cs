@@ -48,7 +48,8 @@ them yourself.
         responsibility: owns the FOSS packages
         dir: .
         launchPrompt: |
-          You are the `foss-` agent. You own the FOSS packages. Coordinate over the bus per PROTOCOL.md.
+          You are the `foss-` agent. You own the FOSS packages. Coordinate with the fleet via the
+          `send_message` MCP tool — read `.styloagent/PROTOCOL.md` first.
 
 ## Tools & evolving the design
 
@@ -65,9 +66,13 @@ You have these MCP tools from the `styloagent` server:
   include that summary when you tell the human what a proposal will change.
 - `agent_color(prefix)` — the roster colour for an agent prefix; use it as the component's `$bgColor`
   so the architecture C4 and the fleet share one colour scheme.
+- `send_message(to, subject, body, priority)` — coordinate with another agent: `to` is a prefix
+  (e.g. `foss-`) or `all-` to broadcast; `priority` is `urgent` / `normal` / `low` / `info`. The
+  message is delivered to the recipient immediately and kept as a durable trace. This is how you talk
+  to the fleet — do not hand-write channel files.
 - `report_issue(title, detail, severity)` — file a blocker, defect, or gap you cannot resolve into
   the shared issues list (severity `low` / `medium` / `high`). Use it for things the human or another
-  agent must pick up; use the bus for routine coordination.
+  agent must pick up; use `send_message` for routine coordination.
 - `wrap_up()` — when your branch is committed and the work is done, call this to hand off: Styloagent
   runs the project's tests, merges your branch to main and removes your worktree, or (on failure) keeps
   the worktree and files an issue for triage. Only agents spawned with a worktree can wrap up.
@@ -78,10 +83,10 @@ You have these MCP tools from the `styloagent` server:
   router serialises access (one holder per account, or N test slots) and cools an account after
   repeated auth failures. Deterministic; no need to reason about the queue — just claim and wait.
 
-As sub-agents learn the real system they report back over the bus (see `.styloagent/PROTOCOL.md`).
+As sub-agents learn the real system they report back via `send_message` (see `.styloagent/PROTOCOL.md`).
 Fold that back into the spec → re-derive the architecture → adjust the fleet, so the three docs stay a
 live projection of the design. A spawn may be rejected (`fleet full`, `max depth`, `paused`) — if so,
-coordinate via the channel instead of retrying blindly.
+coordinate via `send_message` instead of retrying blindly.
 """;
 
     /// <summary>
@@ -111,47 +116,77 @@ analysing existing code. Work top-down through the three layers, in order:
 3. **Fleet** — Propose the initial team (one agent per component, same colour) in
    `.styloagent/proposed-agents.yaml`. The human reviews and spawns them.
 
-Then **build the first feature** inside the agreed shape. Coordinate over the bus per
-`.styloagent/PROTOCOL.md`.
+Then **build the first feature** inside the agreed shape. Coordinate with the fleet via the
+`send_message` MCP tool; see `.styloagent/PROTOCOL.md`.
 """;
 
     public const string Protocol =
 """
-# Coordination Protocol
+# Fleet Coordination Protocol
 
-Agents coordinate over a git-backed, file-drop message bus under `.styloagent/channel/`.
+You are one long-lived agent in a fleet. You have a stable identity (your **prefix**, e.g. `foss-`),
+a responsibility you own, and you coordinate with the other agents through the **`styloagent` MCP
+server** — by calling its tools, not by editing files by hand.
 
-- `inbox/<prefix>-<slug>.md` — a message to an agent, awaiting a reply.
-- `outbox/<slug>.reply.md` — a reply.
-- `archive/` — resolved threads.
+## When you start
 
-Each message begins with `**From:** <prefix>` and `**Timestamp:** <ISO-8601>`. Keep replies sized
-to the question. A thread is *replied* once its reply exists; unreplied inbox messages need
-attention.
+1. Your launch prompt states your identity and responsibility — that is your charter. Re-read it.
+2. Call **`list_fleet()`** to see who else is live, what each agent owns, and the fleet's shape. Do
+   this before you assume another agent exists, hand off work, or spawn a new agent.
+3. You coordinate through the tools below. Messages other agents send you are **delivered straight
+   into this session** — when one arrives, handle it and reply with `send_message`. You never poll a
+   folder or read the channel by hand.
+4. Then get to work on your responsibility.
+
+## Talking to other agents — `send_message`
+
+**`send_message(to, subject, body, priority)`** is how you coordinate. It writes a durable trace to
+the channel **and** delivers to the recipient immediately.
+
+- `to` — the recipient's prefix (e.g. `router-`), or `all-` to broadcast to every live agent.
+- `subject` — a short topic line; it becomes the conversation thread.
+- `body` — your message, sized to the question.
+- `priority` — `urgent` | `normal` | `low` | `info` (see below).
+
+Do **not** hand-write files under `.styloagent/channel/`. The app writes the trace for you when you
+call `send_message`; those files are the audit history the bus and timeline display — the tool is how
+you send. Replying is just another `send_message` back to the sender on the same subject.
 
 ## Priority
 
-A message may add a `**Priority:** <level>` header. The level is a *hint*; how aggressively it
-interrupts the recipient is decided per project in `.styloagent/priority-policy.yaml`.
+`priority` is a *hint*; how aggressively it interrupts the recipient is decided per project in
+`.styloagent/priority-policy.yaml`.
 
 - `urgent` — break in as soon as allowed (default: interrupts the recipient's current turn).
-- `normal` — the default when the header is absent (default: delivered at the recipient's next prompt).
+- `normal` — the default (default: delivered at the recipient's next prompt).
 - `low` — no hurry (default: the recipient reads it when convenient).
 - `info` — FYI only, never actioned (default: shown, never delivered as work).
-
-Example:
-
-```
-**From:** overview-
-**Timestamp:** 2026-07-02T09:00:00Z
-**Priority:** urgent
-
-The build is broken on main — stop and look.
-```
 
 `priority-policy.yaml` maps each level to a delivery mode
 (`interrupt` / `nextprompt` / `poll` / `convenient` / `informational`); omit it to accept the
 defaults above.
+
+## Blockers — `report_issue`
+
+Use `send_message` for routine coordination. Use **`report_issue(title, detail, severity)`** for a
+blocker, defect, or gap you cannot resolve yourself and need the human or another agent to pick up
+(severity `low` / `medium` / `high`). It files into the shared issues list.
+
+## Shared environments — the router
+
+Before touching a shared environment (an SSH host, a deploy target, a test box), serialise access so
+agents don't collide or trip account lockouts: **`claim(env, resource, purpose)`** → poll
+**`router_status(env)`** until you hold it → connect → **`log_attempt(env, account, ok)`** after each
+auth → **`heartbeat(env, resource)`** while working → **`release(env, resource)`** when done. One
+holder per account (or N test slots); deterministic — just claim and wait.
+
+## Finishing — `wrap_up`
+
+When your branch is committed and your work is done, call **`wrap_up()`**: Styloagent runs the
+project's tests, merges your branch to main and removes your worktree — or, on failure, keeps the
+worktree and files an issue for triage. Only agents spawned with a worktree can wrap up.
+
+---
 
 The overview agent proposes the team in `.styloagent/proposed-agents.yaml`; each specialist owns a
 responsibility and may later split into more focused agents.

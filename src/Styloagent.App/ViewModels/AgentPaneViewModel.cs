@@ -34,7 +34,28 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectionBrushHex))]
+    [NotifyPropertyChangedFor(nameof(TabSelectedForegroundHex))]
     private string _borderColorHex;
+
+    /// <summary>
+    /// Legible caption colour for a tab FILLED with this agent's identity colour: black on a bright
+    /// accent, white on a dark one — so the active tab reads whatever the agent's colour is.
+    /// </summary>
+    public string TabSelectedForegroundHex => IsBrightColor(BorderColorHex) ? "#0A0A0A" : "#FFFFFF";
+
+    /// <summary>Perceived-luminance test (ITU-R BT.601) on a <c>#RRGGBB</c> string; false if unparseable.</summary>
+    private static bool IsBrightColor(string? hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex)) return false;
+        var h = hex.TrimStart('#');
+        if (h.Length < 6) return false;
+        const System.Globalization.NumberStyles Hex = System.Globalization.NumberStyles.HexNumber;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        if (!int.TryParse(h.AsSpan(0, 2), Hex, inv, out var r)) return false;
+        if (!int.TryParse(h.AsSpan(2, 2), Hex, inv, out var g)) return false;
+        if (!int.TryParse(h.AsSpan(4, 2), Hex, inv, out var b)) return false;
+        return (0.299 * r + 0.587 * g + 0.114 * b) > 150;
+    }
 
     /// <summary>Available per-terminal colour themes (for the pane's theme picker).</summary>
 #pragma warning disable CA1822 // instance property so XAML can bind {Binding TerminalThemes}

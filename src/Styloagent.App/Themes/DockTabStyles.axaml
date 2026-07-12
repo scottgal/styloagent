@@ -2,8 +2,12 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:conv="clr-namespace:Styloagent.App.Converters"
         xmlns:dockControls="clr-namespace:Dock.Avalonia.Controls;assembly=Dock.Avalonia">
-  <!-- Per-agent identity colour on the centre document tabs (shared with the UI test harness). -->
+  <!-- Per-agent identity colour on the centre document tabs (shared with the UI test harness).
+       INACTIVE tabs are dim: transparent fill, agent-colour caption, thin agent-colour underline.
+       The ACTIVE tab is FILLED with the agent's identity colour (not Dock's default blue), with a
+       luminance-picked caption (black on a bright colour, white on a dark one) so it stays legible. -->
   <Style Selector="dockControls|DocumentTabStripItem">
+    <Setter Property="Background" Value="Transparent" />
     <Setter Property="Foreground"
             Value="{Binding BorderColorHex, FallbackValue=#C8C8E0, TargetNullValue=#C8C8E0}" />
     <Setter Property="BorderBrush"
@@ -11,8 +15,19 @@
     <Setter Property="BorderThickness" Value="0,0,0,2" />
   </Style>
   <Style Selector="dockControls|DocumentTabStripItem:selected">
+    <Setter Property="Background"
+            Value="{Binding BorderColorHex, FallbackValue=#3B82F6, TargetNullValue=#3B82F6}" />
     <Setter Property="Foreground"
-            Value="{Binding BorderColorHex, FallbackValue=#FFFFFF, TargetNullValue=#FFFFFF}" />
+            Value="{Binding TabSelectedForegroundHex, FallbackValue=#FFFFFF, TargetNullValue=#FFFFFF}" />
+    <Setter Property="BorderBrush"
+            Value="{Binding BorderColorHex, FallbackValue=#3B82F6, TargetNullValue=#3B82F6}" />
+  </Style>
+  <!-- Keep the fill on hover/pointerover of the selected tab too (Dock would otherwise re-tint it). -->
+  <Style Selector="dockControls|DocumentTabStripItem:selected:pointerover">
+    <Setter Property="Background"
+            Value="{Binding BorderColorHex, FallbackValue=#3B82F6, TargetNullValue=#3B82F6}" />
+    <Setter Property="Foreground"
+            Value="{Binding TabSelectedForegroundHex, FallbackValue=#FFFFFF, TargetNullValue=#FFFFFF}" />
   </Style>
 
   <!-- DocumentControl content template. This is Dock 11.3.12.1's stock "cached content" template

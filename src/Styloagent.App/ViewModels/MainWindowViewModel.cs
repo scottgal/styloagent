@@ -147,7 +147,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     partial void OnUiAutomationEnabledChanged(bool value)
     {
         if (_prefsLoaded && value)
-            SendBusMessage(new MessageRequest(
+            _ = SendBusMessage(new MessageRequest(
                 "cockpit-", "all-", "UI automation enabled",
                 "The cockpit UI-automation surface is now enabled — agents may request screenshots via " +
                 "the styloagent MCP `screenshot` tool.", "info"));
@@ -423,12 +423,41 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // private ctor — callers must use InitializeAsync.
     private MainWindowViewModel()
     {
-        Panes.CollectionChanged += (_, _) =>
+        Panes.CollectionChanged += (_, e) =>
         {
             OnPropertyChanged(nameof(FleetCount));
             OnPropertyChanged(nameof(FleetHudText));
             ArmDiagramDebounce();
+
+            // Track each pane's lifecycle so dehydrate/rehydrate land on the activity timeline.
+            if (e.NewItems is not null)
+                foreach (AgentPaneViewModel p in e.NewItems)
+                {
+                    _paneState[p] = p.State;
+                    p.PropertyChanged += OnPaneLifecycleChanged;
+                }
         };
+    }
+
+    private readonly Dictionary<AgentPaneViewModel, SessionState> _paneState = new();
+
+    private void OnPaneLifecycleChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(AgentPaneViewModel.State) || sender is not AgentPaneViewModel p) return;
+        var prev = _paneState.TryGetValue(p, out var s) ? s : SessionState.Unspawned;
+        _paneState[p] = p.State;
+
+        string? desc = (p.State, prev) switch
+        {
+            (SessionState.Dehydrated, _)                  => "dehydrated",
+            (SessionState.Live, SessionState.Dehydrated)  => "rehydrated",
+            _                                             => null,   // Unspawned→Live is the initial spawn (hook covers it)
+        };
+        if (desc is not null)
+        {
+            Timeline.Add(DateTimeOffset.Now, p.DisplayName, desc, p.BorderColorHex);
+            RefreshInstruments();
+        }
     }
 
     /// <summary>
@@ -802,12 +831,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Sends a bus message on behalf of a caller agent (the <c>send_message</c> MCP tool): writes the
-    /// durable <c>.md</c> trace to the channel, then pumps delivery in-process so the recipient is
-    /// nudged immediately (no fs-watch round-trip). The fs watcher pumping the same file later is
-    /// deduped by the coordinator's seen-set, so the double path is harmless. Runs on the UI thread.
+    /// Sends a bus message on behalf of a caller agent (the <c>send_message</c> MCP tool): first wakes
+    /// a parked (dehydrated) direct recipient so the message actually lands, then writes the durable
+    /// <c>.md</c> trace and pumps delivery in-process. Writing the file only AFTER the rehydrate means
+    /// no pump can "deliver" it to a dead PTY and mark it seen. Runs on the UI thread.
     /// </summary>
-    public MessageOutcome SendBusMessage(MessageRequest req)
+    public async Task<MessageOutcome> SendBusMessage(MessageRequest req)
     {
         if (_channelRoot is null) return MessageOutcome.Fail("no active channel");
         if (string.IsNullOrWhiteSpace(req.To)) return MessageOutcome.Fail("recipient (to) is required");
@@ -815,6 +844,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         try
         {
+            // Auto-rehydrate a parked direct recipient (not broadcasts) before the message lands.
+            var recipient = ChannelMessageWriter.NormalizeRecipient(req.To);
+            if (recipient != "all-")
+            {
+                var pane = Panes.FirstOrDefault(p => p.Prefix == recipient);
+                if (pane is { State: SessionState.Dehydrated })
+                    await pane.RehydrateAsync();
+            }
+
             var path = ChannelMessageWriter.Write(
                 _channelRoot, req.From, req.To, req.Subject, req.Body ?? string.Empty,
                 req.Priority ?? "normal", DateTimeOffset.Now);

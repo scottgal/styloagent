@@ -27,7 +27,7 @@ public sealed class FleetController : IFleetController
         => Dispatcher.UIThread.InvokeAsync(() => _vm.WrapUp(callerPrefix)).GetTask();
 
     public Task<MessageOutcome> SendMessageAsync(MessageRequest req)
-        => Dispatcher.UIThread.InvokeAsync(() => _vm.SendBusMessage(req)).GetTask();
+        => Dispatcher.UIThread.InvokeAsync(() => _vm.SendBusMessage(req));
 
     public Task<string> CaptureScreenshotAsync(string? target)
         => Dispatcher.UIThread.InvokeAsync(() => _vm.CaptureScreenshotToFileAsync(target));

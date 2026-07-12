@@ -16,12 +16,30 @@ public sealed class PreferencesStore
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Styloagent", "preferences.yaml");
 
+    /// <summary>
+    /// Synchronous load — used at startup on the UI thread. Reads the small file directly rather than
+    /// blocking on an async read (which deadlocks: <c>ReadAllBytesAsync</c> without ConfigureAwait
+    /// recaptures the UI SynchronizationContext, and a blocking <c>.GetResult()</c> then waits on the
+    /// thread it needs). Any read/parse failure yields defaults.
+    /// </summary>
+    public AppPreferences Load(string path)
+    {
+        if (!File.Exists(path)) return new AppPreferences();
+        try
+        {
+            byte[] bytes = File.ReadAllBytes(path);
+            return YamlSerializer.Deserialize<AppPreferences>(new ReadOnlyMemory<byte>(bytes))
+                   ?? new AppPreferences();
+        }
+        catch { return new AppPreferences(); }
+    }
+
     public async Task<AppPreferences> LoadAsync(string path)
     {
         if (!File.Exists(path)) return new AppPreferences();
         try
         {
-            byte[] bytes = await File.ReadAllBytesAsync(path);
+            byte[] bytes = await File.ReadAllBytesAsync(path).ConfigureAwait(false);
             return YamlSerializer.Deserialize<AppPreferences>(new ReadOnlyMemory<byte>(bytes))
                    ?? new AppPreferences();
         }

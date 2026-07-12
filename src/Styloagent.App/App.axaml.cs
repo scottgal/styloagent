@@ -32,7 +32,7 @@ public partial class App : Application
             // old purple default. The file is tiny; a synchronous load at startup is fine.
             var prefsStore = new PreferencesStore();
             string prefsPath = PreferencesStore.DefaultPath;
-            var prefs = prefsStore.LoadAsync(prefsPath).GetAwaiter().GetResult();
+            var prefs = prefsStore.Load(prefsPath);
             ThemeApplier.ApplyThemeVariant(this, prefs.LightTheme);
             ThemeApplier.ApplyAccent(this, AccentPalette.Resolve(prefs.Accent));
 

@@ -15,16 +15,19 @@ public class PreferencesStoreTests
             await store.SaveAsync(path, new AppPreferences
             {
                 LightTheme = true, Accent = "Teal", TerminalTheme = "Dracula",
-                TerminalFontSize = 15, MarkdownFontSize = 16,
+                TerminalFontSize = 15, MarkdownFontSize = 16, EnableUiAutomation = true,
             });
 
-            var loaded = await store.LoadAsync(path);
+            // Sync Load (the startup path) and async LoadAsync must both round-trip.
+            var loaded = store.Load(path);
 
             Assert.True(loaded.LightTheme);
             Assert.Equal("Teal", loaded.Accent);
             Assert.Equal("Dracula", loaded.TerminalTheme);
             Assert.Equal(15, loaded.TerminalFontSize);
             Assert.Equal(16, loaded.MarkdownFontSize);
+            Assert.True(loaded.EnableUiAutomation);
+            Assert.True((await store.LoadAsync(path)).EnableUiAutomation);
         }
         finally { if (File.Exists(path)) File.Delete(path); }
     }

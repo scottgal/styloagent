@@ -1,5 +1,7 @@
 # Styloagent
 
+> CONTRIBUTOR POLICY: NONE ARE ACCEPTED ThIS IS MINE NOT YOURS.
+
 A cross-platform desktop **cockpit** for a fleet of long-lived coding agents that
 coordinate through a git-backed, file-drop message bus and a worktree-per-responsibility
 model. Built with .NET 10 and Avalonia.

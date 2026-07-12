@@ -18,7 +18,7 @@
     <PackageReference Include="Avalonia.Desktop" Version="11.3.18" />
     <PackageReference Include="Avalonia.Headless" Version="11.3.18" />
     <PackageReference Include="Dock.Model.Mvvm" Version="11.3.12.1" />
-    <PackageReference Include="Mostlylucid.Avalonia.UITesting" Version="1.5.0" />
+    <PackageReference Include="Mostlylucid.Avalonia.UITesting" Version="1.6.0" />
   </ItemGroup>
 
   <ItemGroup>

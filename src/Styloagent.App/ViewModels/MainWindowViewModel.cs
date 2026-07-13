@@ -756,7 +756,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 Worktree: string.Empty,
                 LaunchPromptPath: string.Empty,
                 RestartPromptPath: string.Empty,
-                SavedContextPath: string.Empty,
+                SavedContextPath: SavedContextPathFor(prefix),   // so it can be dehydrated / parked
                 Transport: AgentTransport.Local);
             presentation = new AgentPresentation(
                 Prefix: prefix,
@@ -1064,6 +1064,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         => Panes.FirstOrDefault(p => p.Prefix == "overview-")
            ?? Panes.FirstOrDefault(p => string.IsNullOrEmpty(p.ParentPrefix));
 
+    /// <summary>
+    /// The saved-context checkpoint path for a spawned agent, under the channel's <c>saved-context/</c> dir
+    /// (matching the reconstitution format: <c>&lt;prefix&gt;context.md</c>). Giving spawned agents this path
+    /// lets them be dehydrated (parked to free their PTY) and later revived — without it, Dehydrate is
+    /// disabled. Empty when there is no active channel.
+    /// </summary>
+    private string SavedContextPathFor(string prefix)
+    {
+        if (_channelRoot is null) return string.Empty;
+        var dir = Path.Combine(_channelRoot, "saved-context");
+        try { Directory.CreateDirectory(dir); } catch { /* checkpoint dir is best-effort */ }
+        return Path.Combine(dir, $"{HookSettings.SanitizeAgentId(prefix)}context.md");
+    }
+
     /// <summary>Turns a proposed subsystem into a live roster agent OWNED BY THE OVERVIEW (mirrors AddAgent).</summary>
     public void SpawnProposed(ProposedAgent p)
     {
@@ -1353,7 +1367,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             Worktree: resolvedWorktree,
             LaunchPromptPath: launchPromptPath,
             RestartPromptPath: string.Empty,
-            SavedContextPath: string.Empty,
+            SavedContextPath: SavedContextPathFor(p.Prefix),   // so it can be dehydrated / parked
             Transport: AgentTransport.Local);
 
         string hookId = ReserveHookId(entry.Prefix);

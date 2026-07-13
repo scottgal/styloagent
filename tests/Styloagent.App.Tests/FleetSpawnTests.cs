@@ -141,6 +141,10 @@ public class FleetSpawnTests
             // The authority graph is a single-rooted tree (overview owns; no multiple roots).
             var violations = vm.LintAuthority();
             Assert.DoesNotContain(violations, v => v.Kind == "multiple-roots");
+
+            // A spawned specialist can be dehydrated (parked): the Dehydrate command is enabled because it
+            // now has a checkpoint path under the channel (previously empty → command disabled).
+            Assert.True(child.DehydrateCommand.CanExecute(null), "spawned agent should be dehydratable");
         }
         finally { if (Directory.Exists(repo)) Directory.Delete(repo, recursive: true); }
     }

@@ -373,8 +373,12 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     {
         try
         {
-            var prompt = await ReadPromptOrDefaultAsync(_manifest.RestartPromptPath,
-                $"You are agent '{_manifest.Prefix}'. Reload your saved context and resume.", ct);
+            // Fallback points the revived agent at its own checkpoint file (written on dehydrate) so it
+            // resumes from where it left off; a configured restart prompt still wins.
+            var fallback = string.IsNullOrWhiteSpace(_manifest.SavedContextPath)
+                ? $"You are agent '{_manifest.Prefix}'. Reload your saved context and resume."
+                : $"You are agent '{_manifest.Prefix}'. Read your saved context at {_manifest.SavedContextPath} and resume where you left off.";
+            var prompt = await ReadPromptOrDefaultAsync(_manifest.RestartPromptPath, fallback, ct);
             await _session.RehydrateAsync(prompt, ct);
         }
         catch (OperationCanceledException) { }

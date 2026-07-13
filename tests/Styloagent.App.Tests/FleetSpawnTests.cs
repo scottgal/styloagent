@@ -148,4 +148,31 @@ public class FleetSpawnTests
         }
         finally { if (Directory.Exists(repo)) Directory.Delete(repo, recursive: true); }
     }
+
+    [Fact]
+    public async Task SpawnProposed_with_worktree_true_creates_an_agent_branch()
+    {
+        var repo = Path.Combine(Path.GetTempPath(), "psp-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(repo);
+        var git = new RecordingGitService();
+        try
+        {
+            var cfg = ProjectScaffolder.Ensure(repo);
+            var vm = await MainWindowViewModel.InitializeAsync(
+                cfg.ChannelRoot, new FakeLauncher(), new FakeWatcher(),
+                gitService: git, repoRoot: repo, overviewSystemPromptPath: cfg.SystemPromptPath);
+            vm.AttachProject(cfg);
+            Assert.Equal("overview-", vm.Panes[0].Prefix);
+
+            var outcome = vm.SpawnProposed(
+                new ProposedAgent("iso-", "overlaps foss", ".", "You are iso-.", Worktree: true));
+
+            Assert.True(outcome.Spawned);
+            Assert.Equal("agent/iso", git.AddedBranch);
+            var pane = vm.Panes.First(p => p.Prefix == "iso-");
+            Assert.Equal("agent/iso", pane.WorktreeBranch);
+            Assert.Equal("overview-", pane.ParentPrefix);   // still owned by the overview
+        }
+        finally { if (Directory.Exists(repo)) Directory.Delete(repo, recursive: true); }
+    }
 }

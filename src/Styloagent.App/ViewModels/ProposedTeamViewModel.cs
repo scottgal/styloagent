@@ -3,17 +3,22 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Styloagent.App.Config;
+using Styloagent.Core.Mcp;
 using Styloagent.Core.Projects;
 
 namespace Styloagent.App.ViewModels;
 
 /// <summary>One proposed subsystem card in the roster's PROPOSED section.</summary>
-public sealed class ProposedAgentItem
+public sealed partial class ProposedAgentItem : ObservableObject
 {
     public ProposedAgent Agent { get; init; } = null!;
     public string Prefix { get; init; } = "";
     public string Responsibility { get; init; } = "";
     public string ColorHex { get; init; } = "#888888";
+
+    /// <summary>Set when a Spawn is rejected by the governor; shown in red on the card.</summary>
+    [ObservableProperty]
+    private string? _rejectionMessage;
 }
 
 /// <summary>
@@ -25,7 +30,7 @@ public sealed partial class ProposedTeamViewModel : ObservableObject, IDisposabl
 {
     private readonly string _path;
     private readonly string? _teamPath;
-    private readonly Action<ProposedAgent> _spawn;
+    private readonly Func<ProposedAgent, SpawnOutcome> _spawn;
     private FileSystemWatcher? _watcher;
     private readonly Timer _debounce;
     private volatile bool _disposed;
@@ -37,7 +42,7 @@ public sealed partial class ProposedTeamViewModel : ObservableObject, IDisposabl
     /// The repo's committed <c>team.yaml</c> (the portable specialist team that travels with the repo),
     /// or null. Its agents are offered first, ahead of the overview's live <c>proposed-agents.yaml</c>.
     /// </param>
-    public ProposedTeamViewModel(string proposedAgentsPath, string? teamPath, Action<ProposedAgent> spawn)
+    public ProposedTeamViewModel(string proposedAgentsPath, string? teamPath, Func<ProposedAgent, SpawnOutcome> spawn)
     {
         _path = proposedAgentsPath;
         _teamPath = teamPath;
@@ -90,9 +95,11 @@ public sealed partial class ProposedTeamViewModel : ObservableObject, IDisposabl
     [RelayCommand]
     private void Spawn(ProposedAgent agent)
     {
-        _spawn(agent);
+        var outcome = _spawn(agent);
         var item = Proposals.FirstOrDefault(p => ReferenceEquals(p.Agent, agent));
-        if (item is not null) Proposals.Remove(item);
+        if (item is null) return;
+        if (outcome.Spawned) Proposals.Remove(item);
+        else item.RejectionMessage = outcome.Message;
     }
 
     [RelayCommand]

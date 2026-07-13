@@ -55,6 +55,7 @@ spawns them; do not spawn them yourself. Once the team is agreed, promote it to 
       - prefix: foss-
         responsibility: owns the FOSS packages
         dir: .
+        worktree: false   # true only when this agent's work overlaps files another agent owns
         launchPrompt: |
           You are the `foss-` agent. You own the FOSS packages. Coordinate with the fleet via the
           `send_message` MCP tool — read `.styloagent/PROTOCOL.md` first.

@@ -13,6 +13,17 @@ public class BusViewModelTests : IDisposable
     private static readonly string[] Prefix1 = { "alpha-" };
     private readonly string _channelRoot;
 
+    /// <summary>
+    /// Polls until <paramref name="condition"/> holds or the timeout elapses. BusViewModel updates its
+    /// collections via Dispatcher.UIThread.Post, so they are populated shortly AFTER LoadAsync returns —
+    /// a fixed delay races under parallel test load; this waits for the actual condition instead.
+    /// </summary>
+    private static async Task WaitUntil(Func<bool> condition, int timeoutMs = 2000)
+    {
+        for (int waited = 0; waited < timeoutMs && !condition(); waited += 10)
+            await Task.Delay(10);
+    }
+
     public BusViewModelTests()
     {
         _channelRoot = Path.Combine(Path.GetTempPath(), "busvm-" + Guid.NewGuid().ToString("N"));
@@ -49,10 +60,8 @@ public class BusViewModelTests : IDisposable
         // Call LoadAsync directly — deterministic, no FSW timing dependency
         await vm.LoadAsync();
 
-        // Wait for UI thread dispatch (Messages is updated via Dispatcher.UIThread.Post)
-        // In headless/test context, UIThread post executes synchronously when no dispatcher loop.
-        // Give it a brief yield just in case.
-        await Task.Delay(50);
+        // Messages is updated via Dispatcher.UIThread.Post — wait for the condition, not a fixed delay.
+        await WaitUntil(() => vm.Messages.Count > 0);
 
         Assert.NotEmpty(vm.Messages);
 
@@ -67,7 +76,7 @@ public class BusViewModelTests : IDisposable
         var prefixes = new[] { "alpha-", "beta-" };
         var vm = new BusViewModel(_channelRoot, prefixes, new ChannelProjection());
         await vm.LoadAsync();
-        await Task.Delay(50);
+        await WaitUntil(() => vm.Messages.Count > 0);
 
         Assert.All(vm.Messages, item =>
         {
@@ -156,7 +165,7 @@ public class BusViewModelTests : IDisposable
 
             var vm = new BusViewModel(root, Prefixes3, new ChannelProjection());
             await vm.LoadAsync();
-            await Task.Delay(50);
+            await WaitUntil(() => vm.AttentionThreads.Count > 0 && vm.RecentThreads.Count > 0 && vm.ArchivedThreads.Count > 0);
 
             Assert.Contains(vm.AttentionThreads, t => t.Subject.Contains("open"));
             Assert.All(vm.AttentionThreads, t => Assert.Equal("●", t.Glyph));

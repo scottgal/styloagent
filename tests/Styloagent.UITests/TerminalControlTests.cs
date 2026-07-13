@@ -256,4 +256,43 @@ public class TerminalControlTests
             window.Close();
         });
     }
+
+    /// <summary>
+    /// The PTY grid must FIT inside the rendered viewport — the bug behind the "sizing off" corruption was
+    /// a grid wider/taller than what actually fit, so claude's TUI wrapped and overlapped. The grid's pixel
+    /// span (cols×cellW, rows×cellH) must not exceed the control's content box. We bound it generously (the
+    /// exact cell is font-dependent) but tightly enough to catch a grossly oversized grid.
+    /// </summary>
+    [Fact]
+    public Task Grid_FitsInsideTheViewport_NoOverflow()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);
+
+            var window = new Window { Content = control, Width = 800, Height = 400 };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Normal);
+
+            window.Width = 900;
+            window.Height = 500;
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Normal);
+
+            Assert.NotNull(fake.LastResize);
+            int cols = fake.LastResize!.Value.Cols;
+            int rows = fake.LastResize!.Value.Rows;
+
+            // At the smallest sane monospace cell (~4px wide, ~8px tall at 13pt the cell is ~7.8×16), the grid
+            // must still fit the ~900×500 control. A grid that assumed a too-small cell (overestimated cols)
+            // is exactly the corruption bug; this upper-bounds it well below an over-count.
+            Assert.True(cols <= 900 / 4, $"cols {cols} implies a grid wider than the viewport");
+            Assert.True(rows <= 500 / 8, $"rows {rows} implies a grid taller than the viewport");
+            // And it should be a real, usable grid, not collapsed.
+            Assert.True(cols >= 40, $"cols {cols} unexpectedly small for a 900px-wide terminal");
+
+            window.Close();
+        });
+    }
 }

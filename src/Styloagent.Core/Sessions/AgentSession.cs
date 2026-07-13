@@ -23,6 +23,20 @@ public sealed class AgentSession
     public static TimeSpan InjectSettleDelay { get; set; } = TimeSpan.Zero;
     public static TimeSpan InjectEnterRetryDelay { get; set; } = TimeSpan.Zero;
 
+    // The PTY must spawn at ~the terminal's real grid, or claude draws its banner at one width and we
+    // resize to another — reflowing the banner into wrapped garbage. We can't know the exact size before
+    // the view lays out, so seed a classic 80×24 (fits the default pane without reflow) and let the terminal
+    // publish its real grid here as soon as it measures, so later spawns match. Clamped to sane bounds.
+    private static int _initialCols = 80;
+    private static int _initialRows = 24;
+
+    /// <summary>Publishes the terminal's real grid size so subsequent agent spawns start at the right width.</summary>
+    public static void SetInitialGrid(int cols, int rows)
+    {
+        if (cols >= 20 && cols <= 400) _initialCols = cols;
+        if (rows >= 6 && rows <= 200) _initialRows = rows;
+    }
+
     /// <param name="launchArgs">
     /// Extra CLI args passed to <c>claude</c> on every spawn/rehydrate — e.g. the
     /// <c>--settings</c> hooks blob (§4.4). Empty by default so the agent stays fully functional
@@ -53,7 +67,7 @@ public sealed class AgentSession
         if (State == SessionState.Live) return;
         _pty = await _launcher.SpawnAsync(new PtySpawnOptions(
             Command: "claude", Args: _launchArgs,
-            WorkingDirectory: _manifest.Worktree, Env: null, Cols: 120, Rows: 30), ct);
+            WorkingDirectory: _manifest.Worktree, Env: null, Cols: _initialCols, Rows: _initialRows), ct);
         _pty.Output += OnOutput;
         await InjectPromptAsync(_pty, launchPrompt, ct);
         CurrentPty = _pty;
@@ -102,7 +116,7 @@ public sealed class AgentSession
     {
         if (State != SessionState.Dehydrated) return;
         _pty = await _launcher.SpawnAsync(new PtySpawnOptions(
-            "claude", _launchArgs, _manifest.Worktree, null, 120, 30), ct);
+            "claude", _launchArgs, _manifest.Worktree, null, _initialCols, _initialRows), ct);
         _pty.Output += OnOutput;
         await InjectPromptAsync(_pty, restartPrompt, ct);
         CurrentPty = _pty;

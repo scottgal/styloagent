@@ -55,14 +55,49 @@ public sealed partial class TerminalControl : UserControl
     /// <summary>Terminal font size in points — drives the text and the PTY col/row cell metrics.</summary>
     private double _fontSize = 13.0;
 
+    // Measured monospace cell (px), from the ACTUAL typeface — not a guessed ratio. The PTY grid and the
+    // rendered text must use the SAME cell, or claude's full-width TUI wraps/overlaps ("sizing off"). Seeded
+    // with sane 13pt defaults; replaced by MeasureCell() as soon as the font system is up.
+    private double _cellW = 7.8;
+    private double _cellH = 16.0;
+
+    // The ScrollViewer's Padding="6,4" (see XAML): 6+6 horizontal, 4+4 vertical. The grid must fit the
+    // padded content box, not the full control, or cols/rows are overestimated and text wraps off the edge.
+    private const double PadX = 12.0;
+    private const double PadY = 8.0;
+
     /// <summary>Sets the terminal font size (points), rescales the row height, and re-fits the PTY grid.</summary>
     public void SetFontSize(double pt)
     {
         _fontSize = Math.Clamp(pt, 8.0, 32.0);
         ScreenText.FontSize = _fontSize;
-        ScreenText.LineHeight = Math.Round(_fontSize * 1.23);
+        MeasureCell();
         RefitGrid(Bounds.Size);
         Dispatcher.UIThread.Post(RebuildRows, DispatcherPriority.Render);
+    }
+
+    /// <summary>
+    /// Measures the real monospace cell (advance width + line height) from the current typeface at the
+    /// current font size, and renders the text at the measured line height. Using the measured cell for BOTH
+    /// the render and the PTY grid is what stops the "sizing off" corruption. Keeps last-known-good on failure.
+    /// </summary>
+    private void MeasureCell()
+    {
+        try
+        {
+            var typeface = new Typeface(ScreenText.FontFamily);
+            var ft = new FormattedText(
+                new string('0', 20),
+                System.Globalization.CultureInfo.InvariantCulture,
+                FlowDirection.LeftToRight,
+                typeface, _fontSize, Brushes.White);
+            double w = ft.WidthIncludingTrailingWhitespace / 20.0;
+            double h = ft.Height;
+            if (w > 0.5) _cellW = w;
+            if (h > 1.0) _cellH = h;
+            ScreenText.LineHeight = _cellH;   // render at the measured line height → no vertical overlap
+        }
+        catch { /* font system not ready — keep the last-known-good cell */ }
     }
 
     // ── App-wide terminal font size ──────────────────────────────────────────
@@ -115,7 +150,7 @@ public sealed partial class TerminalControl : UserControl
         // Adopt the current app-wide font size and track future changes.
         _fontSize = _globalFontSize;
         ScreenText.FontSize = _fontSize;
-        ScreenText.LineHeight = Math.Round(_fontSize * 1.23);
+        MeasureCell();
         GlobalFontSizeChanged += OnGlobalFontSizeChanged;
 
         // Start Avalonia size tracking.
@@ -312,16 +347,20 @@ public sealed partial class TerminalControl : UserControl
     private void OnSizeChanged(object? sender, SizeChangedEventArgs e) => RefitGrid(e.NewSize);
 
     /// <summary>
-    /// Re-fits the terminal grid (cols/rows) to <paramref name="size"/> at the current font size.
-    /// Monospace cell metrics scale with the font: ~0.6× wide, ~1.23× tall (≈8×16 at 13pt).
+    /// Re-fits the terminal grid (cols/rows) to <paramref name="size"/> using the MEASURED monospace cell,
+    /// minus the ScrollViewer padding — so the PTY grid matches exactly what is rendered and claude's TUI
+    /// neither wraps early nor overflows. Re-measures first in case the font system came up after construction.
     /// </summary>
     private void RefitGrid(Size size)
     {
-        double charWidth = _fontSize * 0.6;
-        double charHeight = _fontSize * 1.23;
+        MeasureCell();
 
-        int cols = Math.Max(10, (int)(size.Width / charWidth));
-        int rows = Math.Max(4, (int)(size.Height / charHeight));
+        int cols = Math.Max(10, (int)((size.Width - PadX) / _cellW));
+        int rows = Math.Max(4, (int)((size.Height - PadY) / _cellH));
+
+        // Publish the real grid so the NEXT agent spawns at this width (not a hardcoded default) and its
+        // banner isn't drawn wide then reflowed narrow.
+        Styloagent.Core.Sessions.AgentSession.SetInitialGrid(cols, rows);
 
         if (cols != _terminal.Cols || rows != _terminal.Rows)
         {

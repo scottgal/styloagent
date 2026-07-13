@@ -16,14 +16,41 @@ public sealed class PortaPtySession : IPtySession
     // Torn-read-safe: updated via Volatile.Write in the read loop, read via Volatile.Read in IsIdle.
     private long _lastOutputTicks = DateTime.UtcNow.Ticks;
 
+    // Output arrives the instant the PTY spawns (claude's banner), but the terminal view subscribes a beat
+    // later (PtyStarted → Dispatcher.Post → Attach). A plain event drops everything emitted before that first
+    // subscribe — the "missing letters at the top of the banner" race. So we buffer output and replay the
+    // backlog to each new subscriber, under a lock, so no byte is lost or duplicated regardless of timing.
+    private readonly object _outputGate = new();
+    private readonly StringBuilder _backlog = new();
+    private Action<string>? _output;
+
+    // The backlog only bridges the spawn→attach gap (and re-attaches). Cap it so a long-lived, chatty agent
+    // can't grow it without bound; the XTerm engine keeps its own scrollback for history.
+    private const int BacklogCap = 256 * 1024;
+
     /// <summary>
-    /// Raised when the PTY process writes output.
+    /// Raised when the PTY process writes output. On subscribe, the accumulated backlog is replayed to the
+    /// new handler first (so a late subscriber still sees the banner), then live output follows.
     /// </summary>
     /// <remarks>
     /// Raised on a background thread. Consumers must marshal to their own synchronization context
     /// (e.g. the UI thread) before touching UI state.
     /// </remarks>
-    public event Action<string>? Output;
+    public event Action<string>? Output
+    {
+        add
+        {
+            lock (_outputGate)
+            {
+                if (value is not null && _backlog.Length > 0) value(_backlog.ToString());
+                _output += value;
+            }
+        }
+        remove
+        {
+            lock (_outputGate) { _output -= value; }
+        }
+    }
 
     /// <summary>
     /// Raised when the PTY process exits.
@@ -120,7 +147,16 @@ public sealed class PortaPtySession : IPtySession
 
             Volatile.Write(ref _lastOutputTicks, DateTime.UtcNow.Ticks);
             var text = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-            Output?.Invoke(text);
+
+            // Append to the replay backlog AND deliver live, under one lock: a subscriber that attaches
+            // between these would otherwise either miss this chunk or get it twice.
+            lock (_outputGate)
+            {
+                _backlog.Append(text);
+                if (_backlog.Length > BacklogCap)
+                    _backlog.Remove(0, _backlog.Length - BacklogCap);
+                _output?.Invoke(text);
+            }
         }
     }
 }

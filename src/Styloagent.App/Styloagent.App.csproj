@@ -36,6 +36,10 @@
     <ProjectReference Include="..\Styloagent.Terminal\Styloagent.Terminal.csproj" />
     <!-- lucidVIEW's markdown render control (cross-repo project ref; publish to NuGet later). -->
     <ProjectReference Include="..\..\..\lucidview\Mostlylucid.LucidView.Markdown\Mostlylucid.LucidView.Markdown.csproj" />
+    <!-- Naiad (MermaidSharp / C4 diagrams) is used DIRECTLY by Mcp/ArchitectureImpact.cs, so reference it
+         explicitly rather than relying on it flowing transitively through LucidView.Markdown — a clean
+         build otherwise risks CS0246 (MermaidSharp not found). -->
+    <ProjectReference Include="..\..\..\lucidview\Naiad\src\Naiad\Naiad.csproj" />
   </ItemGroup>
 
   <ItemGroup>

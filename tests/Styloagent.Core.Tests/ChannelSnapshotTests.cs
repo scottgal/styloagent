@@ -61,4 +61,35 @@ public class ChannelSnapshotTests
             if (Directory.Exists(dest)) Directory.Delete(dest, recursive: true);
         }
     }
+
+    [Fact]
+    public void CopyTo_reroots_channel_paths_that_hardcode_a_DIFFERENT_original_location()
+    {
+        // The gap the dress rehearsal caught: docs reference the channel by an ORIGINAL path
+        // (/tmp/agent-channel) that differs from the path we snapshot from (a renamed/moved copy).
+        // The structural re-root (on channel-subdir tails) must still redirect them to the snapshot.
+        var src = Path.Combine(Path.GetTempPath(), "chsnap-reroot-src-" + Guid.NewGuid().ToString("N"));
+        var dest = Path.Combine(Path.GetTempPath(), "chsnap-reroot-dst-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(src, "saved-context"));
+            File.WriteAllText(Path.Combine(src, "saved-context", "foss-context.md"),
+                "Read your running context doc: `/tmp/agent-channel/saved-context/foss-context.md`\n" +
+                "And the protocol: /tmp/agent-channel/PROTOCOL.md\n" +
+                "Check /tmp/agent-channel/inbox/foss-*.md before resuming.");
+
+            ChannelSnapshot.CopyTo(src, dest);
+
+            var copied = File.ReadAllText(Path.Combine(dest, "saved-context", "foss-context.md"));
+            Assert.DoesNotContain("agent-channel", copied);                     // no leak to the original
+            Assert.Contains($"{dest}/saved-context/foss-context.md", copied);   // re-rooted to the snapshot
+            Assert.Contains($"{dest}/PROTOCOL.md", copied);
+            Assert.Contains($"{dest}/inbox/foss-*.md", copied);
+        }
+        finally
+        {
+            if (Directory.Exists(src)) Directory.Delete(src, recursive: true);
+            if (Directory.Exists(dest)) Directory.Delete(dest, recursive: true);
+        }
+    }
 }

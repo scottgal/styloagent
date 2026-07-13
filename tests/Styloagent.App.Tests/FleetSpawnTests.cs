@@ -115,4 +115,33 @@ public class FleetSpawnTests
         }
         finally { Directory.Delete(root, recursive: true); }
     }
+
+    [Fact]
+    public async Task SpawnProposed_is_owned_by_the_overview_keeping_the_authority_tree_single_rooted()
+    {
+        var repo = Path.Combine(Path.GetTempPath(), "hw-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(repo);
+        try
+        {
+            // Overview mode: the first pane is the overview (root, no worktree).
+            var cfg = ProjectScaffolder.Ensure(repo);
+            var vm = await MainWindowViewModel.InitializeAsync(
+                cfg.ChannelRoot, new FakeLauncher(), new FakeWatcher(),
+                repoRoot: repo, overviewSystemPromptPath: cfg.SystemPromptPath);
+            vm.AttachProject(cfg);
+            var overview = vm.Panes[0];
+            Assert.Equal("overview-", overview.Prefix);
+
+            vm.SpawnProposed(new Styloagent.Core.Projects.ProposedAgent("hello-", "writes hello world", ".", "You are hello-."));
+
+            var child = vm.Panes.First(p => p.Prefix == "hello-");
+            Assert.Equal("overview-", child.ParentPrefix);       // the overview OWNS it
+            Assert.Equal(overview.Depth + 1, child.Depth);
+
+            // The authority graph is a single-rooted tree (overview owns; no multiple roots).
+            var violations = vm.LintAuthority();
+            Assert.DoesNotContain(violations, v => v.Kind == "multiple-roots");
+        }
+        finally { if (Directory.Exists(repo)) Directory.Delete(repo, recursive: true); }
+    }
 }

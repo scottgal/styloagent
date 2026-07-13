@@ -767,6 +767,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         entry = WithWorkingDir(entry);
         string hookId = ReserveHookId(entry.Prefix);
         var session = new AgentSession(entry, _launcher, _watcher, HookArgs(hookId, entry));
+        var owner = OverviewPane();   // the overview owns agents added to its fleet
         var paneVm = new AgentPaneViewModel(
             session,
             entry,
@@ -774,6 +775,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             presentation.BorderColorHex)
         {
             UserInteracted = _interaction.RecordInput,
+            ParentPrefix = owner is not null && owner.Prefix != entry.Prefix ? owner.Prefix : null,
+            Depth = owner is not null && owner.Prefix != entry.Prefix ? owner.Depth + 1 : 0,
         };
         Panes.Add(paneVm);
         SelectedPane = paneVm;
@@ -1051,10 +1054,24 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         catch { return ""; }
     }
 
-    /// <summary>Turns a proposed subsystem into a live roster agent (mirrors AddAgent).</summary>
+    /// <summary>
+    /// The overview (root) pane that owns the fleet: the <c>overview-</c> agent, or failing that the first
+    /// rootless pane. Null when no overview is present (e.g. a bare worktree roster). Used to parent
+    /// human-spawned agents to the overview so ownership shows in the lineage and the authority tree stays
+    /// single-rooted.
+    /// </summary>
+    private AgentPaneViewModel? OverviewPane()
+        => Panes.FirstOrDefault(p => p.Prefix == "overview-")
+           ?? Panes.FirstOrDefault(p => string.IsNullOrEmpty(p.ParentPrefix));
+
+    /// <summary>Turns a proposed subsystem into a live roster agent OWNED BY THE OVERVIEW (mirrors AddAgent).</summary>
     public void SpawnProposed(ProposedAgent p)
     {
-        CreatePaneForProposed(p);
+        var owner = OverviewPane();
+        if (owner is not null && owner.Prefix != p.Prefix)
+            CreatePaneForProposed(p, parentPrefix: owner.Prefix, depth: owner.Depth + 1);
+        else
+            CreatePaneForProposed(p);
     }
 
     /// <summary>

@@ -559,7 +559,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             var worktreeMap = Styloagent.Core.Channel.WorktreeMapReader.Read(channelRoot);
             var channelFleet = await new ChannelManifestSeeder().SeedAsync(channelRoot, worktreeMap);
             entries = new[] { overviewEntry }
-                .Concat(channelFleet.Where(e => e.Prefix != "overview-"))
+                .Concat(channelFleet
+                    .Where(e => e.Prefix != "overview-")
+                    .Select(e => EnsureRevivePrompt(e, channelRoot)))
                 .ToList();
 
             vm._overviewSystemPromptArgs = File.Exists(overviewSystemPromptPath)
@@ -1448,6 +1450,31 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             id = $"{baseId}-{n++}";
         _panesByHookId[id] = null!; // reserve the slot; the real pane is set by the caller
         return id;
+    }
+
+    /// <summary>
+    /// Ensures a channel fleet agent can revive from its OWN saved-context doc: if it has a saved-context
+    /// doc but no restart prompt (the channel's launch-prompts were consumed/absent), generate one from
+    /// HydrationText (identity + re-read your context doc + inbox + stay in scope) and wire it as the
+    /// agent's launch/restart prompt — the same treatment the overview gets. Otherwise the agent is
+    /// returned unchanged. Best-effort; a write failure falls back to the default "begin your work" prompt.
+    /// </summary>
+    private static AgentManifestEntry EnsureRevivePrompt(AgentManifestEntry e, string channelRoot)
+    {
+        if (string.IsNullOrWhiteSpace(e.SavedContextPath) || !string.IsNullOrWhiteSpace(e.LaunchPromptPath))
+            return e;
+        try
+        {
+            var dir = Path.Combine(channelRoot, "launch-prompts");
+            Directory.CreateDirectory(dir);
+            var restart = Path.Combine(dir, $"{e.Prefix}restart.md");
+            if (!File.Exists(restart))
+                File.WriteAllText(restart, Styloagent.Core.Hooks.HydrationText.For(
+                    e.Prefix, e.SavedContextPath,
+                    Path.Combine(channelRoot, "PROTOCOL.md"), channelRoot));
+            return e with { LaunchPromptPath = restart, RestartPromptPath = restart };
+        }
+        catch { return e; }
     }
 
     /// <summary>The <c>--settings</c> hook args for a hook id, or none if the channel is unavailable.</summary>

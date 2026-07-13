@@ -41,4 +41,29 @@ public class ProposedAgentsReaderTests
         try { Assert.Empty(ProposedAgentsReader.Read(bad)); }
         finally { File.Delete(bad); }
     }
+
+    [Fact]
+    public void Read_parses_the_worktree_flag_and_defaults_it_false()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "pa-" + Guid.NewGuid().ToString("N") + ".yaml");
+        File.WriteAllText(path,
+            "agents:\n" +
+            "  - prefix: iso-\n" +
+            "    responsibility: overlaps foss\n" +
+            "    dir: .\n" +
+            "    worktree: true\n" +
+            "    launchPrompt: You are iso-.\n" +
+            "  - prefix: share-\n" +
+            "    responsibility: shares the repo\n" +
+            "    dir: .\n" +
+            "    launchPrompt: You are share-.\n");   // no worktree key → defaults false
+        try
+        {
+            var agents = ProposedAgentsReader.Read(path);
+            Assert.Equal(2, agents.Count);
+            Assert.True(agents[0].Worktree);
+            Assert.False(agents[1].Worktree);
+        }
+        finally { File.Delete(path); }
+    }
 }

@@ -109,6 +109,9 @@
                       <StackPanel Grid.Column="1" Margin="8,5" Spacing="1">
                         <TextBlock Text="{Binding Prefix}" FontWeight="SemiBold" FontSize="12" Foreground="{Binding ColorHex}" />
                         <TextBlock Text="{Binding Responsibility}" FontSize="10" Foreground="#8888AA" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding RejectionMessage}" FontSize="10" Foreground="#E5736B"
+                                   TextWrapping="Wrap"
+                                   IsVisible="{Binding RejectionMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                       </StackPanel>
                       <Button Grid.Column="2" Content="Spawn" FontSize="10" Margin="0,0,6,0" VerticalAlignment="Center"
                               Command="{Binding DataContext.ProposedTeam.SpawnCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"

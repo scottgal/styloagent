@@ -1092,14 +1092,50 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         return Path.Combine(dir, $"{HookSettings.SanitizeAgentId(prefix)}context.md");
     }
 
-    /// <summary>Turns a proposed subsystem into a live roster agent OWNED BY THE OVERVIEW (mirrors AddAgent).</summary>
-    public void SpawnProposed(ProposedAgent p)
+    /// <summary>
+    /// Turns a proposed subsystem into a live roster agent. Normal case: routes through the governed
+    /// <see cref="SpawnChild"/>, so a human-spawn gets the same governor + worktree + lineage as an
+    /// agent's <c>spawn_agent</c>. Sole exception: with no overview owner (a bare worktree roster) this
+    /// is a ROOT spawn — the parent-centric governor can't check a root without risking a second root
+    /// (breaking single-rooted authority), so it creates the pane directly, still honouring the
+    /// proposal's worktree decision.
+    /// </summary>
+    public SpawnOutcome SpawnProposed(ProposedAgent p)
     {
         var owner = OverviewPane();
         if (owner is not null && owner.Prefix != p.Prefix)
-            CreatePaneForProposed(p, parentPrefix: owner.Prefix, depth: owner.Depth + 1);
-        else
-            CreatePaneForProposed(p);
+            return SpawnChild(new SpawnRequest(
+                owner.Prefix, p.Prefix, p.Responsibility, p.Dir, p.LaunchPrompt, p.Worktree));
+
+        // Root / no-owner exception: establish the single root directly.
+        string? worktreePath = null, worktreeBranch = null;
+        if (p.Worktree && !TryAddWorktree(p.Prefix, out worktreePath, out worktreeBranch, out var wtError))
+            return SpawnOutcome.Reject(RejectReason.InvalidPrefix, $"worktree add failed: {wtError}");
+        var pane = CreatePaneForProposed(p, worktreeOverride: worktreePath, worktreeBranch: worktreeBranch);
+        if (worktreePath is not null && _git is not null && pane is not null)
+            _ = pane.RefreshGitStatusAsync(_git);
+        return pane is null
+            ? SpawnOutcome.Reject(RejectReason.InvalidPrefix, "could not create pane")
+            : SpawnOutcome.Ok(p.Prefix);
+    }
+
+    /// <summary>
+    /// Creates an isolated <c>agent/&lt;prefix&gt;</c> worktree for a spawning agent when a git service and
+    /// project are present. Returns true and sets <paramref name="path"/>/<paramref name="branch"/> on
+    /// success; false with <paramref name="error"/> if the worktree add fails. A no-op that returns true
+    /// with null path/branch when there is no git service or project — the agent then shares the repo.
+    /// </summary>
+    private bool TryAddWorktree(string prefix, out string? path, out string? branch, out string? error)
+    {
+        path = null; branch = null; error = null;
+        if (_git is null || _project is null) return true;   // nothing to isolate; share the repo
+        var existing = Panes.Where(p => p.WorktreePath is not null).Select(p => p.WorktreePath!);
+        var (wtPath, wtBranch) = WorktreeNaming.For(_project.Root, prefix, existing);
+        var add = _git.AddWorktreeAsync(_project.Root, wtPath, wtBranch).GetAwaiter().GetResult();
+        if (!add.Ok) { error = add.Error; return false; }
+        EnsureWorktreesIgnored(_project.Root);
+        path = wtPath; branch = wtBranch;
+        return true;
     }
 
     /// <summary>
@@ -1115,17 +1151,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         int parentDepth = Panes.First(p => p.Prefix == req.ParentPrefix).Depth;
 
         string? worktreePath = null, worktreeBranch = null;
-        if (req.Worktree && _git is not null && _project is not null)
-        {
-            var existing = Panes.Where(p => p.WorktreePath is not null).Select(p => p.WorktreePath!);
-            var (path, branch) = WorktreeNaming.For(_project.Root, req.Prefix, existing);
-            var add = _git.AddWorktreeAsync(_project.Root, path, branch).GetAwaiter().GetResult();
-            if (!add.Ok)
-                return SpawnOutcome.Reject(RejectReason.InvalidPrefix, $"worktree add failed: {add.Error}");
-            EnsureWorktreesIgnored(_project.Root);
-            worktreePath = path;
-            worktreeBranch = branch;
-        }
+        if (req.Worktree && !TryAddWorktree(req.Prefix, out worktreePath, out worktreeBranch, out var wtError))
+            return SpawnOutcome.Reject(RejectReason.InvalidPrefix, $"worktree add failed: {wtError}");
 
         var proposed = new ProposedAgent(req.Prefix, req.Responsibility, req.Dir, req.LaunchPrompt);
         var paneVm = CreatePaneForProposed(proposed, parentPrefix: req.ParentPrefix, depth: parentDepth + 1,

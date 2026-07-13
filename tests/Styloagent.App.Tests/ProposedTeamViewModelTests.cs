@@ -1,4 +1,5 @@
 using Styloagent.App.ViewModels;
+using Styloagent.Core.Mcp;
 using Styloagent.Core.Projects;
 using Xunit;
 
@@ -15,7 +16,7 @@ public class ProposedTeamViewModelTests
         try
         {
             ProposedAgent? spawned = null;
-            var vm = new ProposedTeamViewModel(path, null, a => spawned = a);
+            var vm = new ProposedTeamViewModel(path, null, a => { spawned = a; return SpawnOutcome.Ok(a.Prefix); });
             vm.Refresh();
 
             Assert.Single(vm.Proposals);
@@ -40,7 +41,7 @@ public class ProposedTeamViewModelTests
         try
         {
             var spawned = new List<ProposedAgent>();
-            var vm = new ProposedTeamViewModel(path, null, a => spawned.Add(a));
+            var vm = new ProposedTeamViewModel(path, null, a => { spawned.Add(a); return SpawnOutcome.Ok(a.Prefix); });
             vm.Refresh();
 
             Assert.Equal(2, vm.Proposals.Count);
@@ -69,7 +70,7 @@ public class ProposedTeamViewModelTests
             "  - prefix: ui-\n    responsibility: frontend\n    dir: .\n    launchPrompt: y\n");
         try
         {
-            var vm = new ProposedTeamViewModel(proposed, team, _ => { });
+            var vm = new ProposedTeamViewModel(proposed, team, _ => SpawnOutcome.Ok("x-"));
             vm.Refresh();
 
             // Committed team first (foss-, test-), then the non-dup proposal (ui-). foss- appears once.
@@ -80,5 +81,39 @@ public class ProposedTeamViewModelTests
             Assert.Contains(vm.Proposals, p => p.Prefix == "ui-");
         }
         finally { File.Delete(proposed); File.Delete(team); }
+    }
+
+    [Fact]
+    public void Spawn_removes_card_on_success()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "pt-" + Guid.NewGuid().ToString("N") + ".yaml");
+        File.WriteAllText(path,
+            "agents:\n  - prefix: foss-\n    responsibility: packages\n    dir: .\n    launchPrompt: hi\n");
+        try
+        {
+            var vm = new ProposedTeamViewModel(path, null, a => SpawnOutcome.Ok(a.Prefix));
+            vm.Refresh();
+            vm.SpawnCommand.Execute(vm.Proposals[0].Agent);
+            Assert.Empty(vm.Proposals);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void Spawn_keeps_card_and_shows_message_when_rejected()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "pt-" + Guid.NewGuid().ToString("N") + ".yaml");
+        File.WriteAllText(path,
+            "agents:\n  - prefix: foss-\n    responsibility: packages\n    dir: .\n    launchPrompt: hi\n");
+        try
+        {
+            var vm = new ProposedTeamViewModel(path, null,
+                _ => SpawnOutcome.Reject(RejectReason.FleetFull, "fleet full (12/12)"));
+            vm.Refresh();
+            vm.SpawnCommand.Execute(vm.Proposals[0].Agent);
+            Assert.Single(vm.Proposals);                                   // card stays
+            Assert.Equal("fleet full (12/12)", vm.Proposals[0].RejectionMessage);
+        }
+        finally { File.Delete(path); }
     }
 }

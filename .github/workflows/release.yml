@@ -19,10 +19,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: windows-latest, rid: win-x64,  asset: styloagent-windows-x64 }
-          - { os: ubuntu-latest,  rid: linux-x64, asset: styloagent-linux-x64 }
-          - { os: macos-latest,   rid: osx-arm64, asset: styloagent-macos-arm64 }
-          - { os: macos-latest,   rid: osx-x64,   asset: styloagent-macos-x64 }
+          - { os: windows-latest, rid: win-x64,    asset: styloagent-windows-x64 }
+          - { os: windows-latest, rid: win-arm64,  asset: styloagent-windows-arm64 }
+          - { os: ubuntu-latest,  rid: linux-x64,   asset: styloagent-linux-x64 }
+          - { os: ubuntu-latest,  rid: linux-arm64, asset: styloagent-linux-arm64 }
+          - { os: macos-latest,   rid: osx-arm64,  asset: styloagent-macos-arm64 }
+          - { os: macos-latest,   rid: osx-x64,    asset: styloagent-macos-x64 }
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout styloagent
@@ -111,6 +113,53 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: styloagent/${{ matrix.asset }}.zip
+          name: Styloagent ${{ github.ref_name }}
+          body: |
+            ![Styloagent cockpit](https://raw.githubusercontent.com/scottgal/styloagent/main/docs/cockpit.png)
+
+            **Styloagent** is a cross-platform cockpit for orchestrating a fleet of long-lived Claude Code agents — each agent a live terminal, coordinated over a message bus, with hydrate / dehydrate / rehydrate lifecycle, an MCP control plane, and a living view of the fleet.
+
+            ## Downloads
+
+            | Platform | Arch | File |
+            |----------|------|------|
+            | macOS (Apple Silicon) | arm64 | `styloagent-macos-arm64.zip` |
+            | macOS (Intel) | x64 | `styloagent-macos-x64.zip` |
+            | Windows | x64 | `styloagent-windows-x64.zip` |
+            | Windows | arm64 | `styloagent-windows-arm64.zip` |
+            | Linux | x64 | `styloagent-linux-x64.zip` |
+            | Linux | arm64 | `styloagent-linux-arm64.zip` |
+
+            ## Install
+
+            ### macOS — getting past Gatekeeper
+            The app is **ad-hoc signed** (there is no paid Apple Developer ID yet), so on first launch macOS Gatekeeper will block it. Pick one:
+
+            **Option A — right-click Open (once):**
+            1. Unzip `styloagent-macos-<arch>.zip`.
+            2. **Right-click** (or Control-click) `Styloagent.app` → **Open** → click **Open** in the dialog.
+            3. It launches normally from then on.
+
+            **Option B — clear the quarantine flag in Terminal:**
+            ```bash
+            xattr -dr com.apple.quarantine Styloagent.app
+            open Styloagent.app
+            ```
+
+            > If you see **"Styloagent is damaged and can't be opened"**, that is the quarantine flag on a downloaded ad-hoc-signed app — Option B clears it. (This is expected without notarization; a signed/notarized build is a future improvement.)
+
+            ### Windows
+            Unzip and run `Styloagent.App.exe`. SmartScreen may warn on first run (unsigned): **More info → Run anyway**.
+
+            ### Linux
+            ```bash
+            unzip styloagent-linux-<arch>.zip -d styloagent && cd styloagent
+            chmod +x Styloagent.App
+            ./Styloagent.App
+            ```
+
+            ---
+            Requires no runtime install — each build is self-contained (.NET 10 bundled). Release `${{ github.ref_name }}`.
 
       - name: Upload artifact (manual runs)
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}

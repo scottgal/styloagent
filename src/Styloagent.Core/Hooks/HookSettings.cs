@@ -4,6 +4,14 @@ using System.Text.Json;
 namespace Styloagent.Core.Hooks;
 
 /// <summary>
+/// How much permission a fleet agent is granted at launch, so it can act without a human approving every
+/// tool use. <see cref="Prompt"/> = default Claude behaviour (approve everything). <see cref="Scoped"/> =
+/// auto-accept file edits and pre-approve the styloagent MCP tools, but still prompt for other commands.
+/// <see cref="Bypass"/> = skip all permission prompts (fully autonomous — trusted repos only).
+/// </summary>
+public enum FleetPermissionMode { Prompt, Scoped, Bypass }
+
+/// <summary>
 /// Builds the <c>claude --settings &lt;json&gt;</c> blob that streams hook events for one agent (§4.4),
 /// and the filename convention used to correlate a dropped event file back to its agent.
 ///
@@ -65,7 +73,18 @@ public static class HookSettings
     /// <c>source=compact|resume</c> — the guard against an agent compacting away its own identity.
     /// The returned string is compact JSON, ready to pass as one CLI arg.
     /// </summary>
-    public static string BuildSettingsJson(string agentId, string hooksDir, string? hydrationFile = null)
+    /// <summary>
+    /// The extra CLI flag(s) a permission mode needs beyond the <c>--settings</c> block. Only
+    /// <see cref="FleetPermissionMode.Bypass"/> needs one (<c>--dangerously-skip-permissions</c>); Scoped is
+    /// expressed entirely inside the settings JSON (see <see cref="BuildSettingsJson"/>).
+    /// </summary>
+    public static IReadOnlyList<string> PermissionArgs(FleetPermissionMode mode)
+        => mode == FleetPermissionMode.Bypass
+            ? new[] { "--dangerously-skip-permissions" }
+            : Array.Empty<string>();
+
+    public static string BuildSettingsJson(string agentId, string hooksDir, string? hydrationFile = null,
+        FleetPermissionMode permissionMode = FleetPermissionMode.Prompt)
     {
         string safeId = SanitizeAgentId(agentId);
         // Observe: write raw stdin JSON to a unique per-event file tagged with the agent id.
@@ -94,6 +113,18 @@ public static class HookSettings
         }
 
         var settings = new Dictionary<string, object> { ["hooks"] = hooks };
+
+        // Scoped: auto-accept file edits and pre-approve the styloagent MCP tools, so agents coordinate and
+        // do their work without a prompt per action, while other shell commands still gate. Bypass carries no
+        // settings block (its --dangerously-skip-permissions flag covers everything); Prompt adds nothing.
+        if (permissionMode == FleetPermissionMode.Scoped)
+        {
+            settings["permissions"] = new Dictionary<string, object>
+            {
+                ["allow"] = new[] { "mcp__styloagent" },
+                ["defaultMode"] = "acceptEdits",
+            };
+        }
         return JsonSerializer.Serialize(settings);
     }
 
@@ -115,6 +146,7 @@ public static class HookSettings
     }
 
     /// <summary>The CLI args (<c>--settings &lt;json&gt;</c>) to append to a <c>claude</c> launch.</summary>
-    public static IReadOnlyList<string> BuildSettingsArgs(string agentId, string hooksDir, string? hydrationFile = null)
-        => new[] { "--settings", BuildSettingsJson(agentId, hooksDir, hydrationFile) };
+    public static IReadOnlyList<string> BuildSettingsArgs(string agentId, string hooksDir, string? hydrationFile = null,
+        FleetPermissionMode permissionMode = FleetPermissionMode.Prompt)
+        => new[] { "--settings", BuildSettingsJson(agentId, hooksDir, hydrationFile, permissionMode) };
 }

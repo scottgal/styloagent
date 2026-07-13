@@ -152,6 +152,14 @@
                                    Value="{Binding MarkdownFontSize}" />
                   </Grid>
                   <Border Height="1" Background="{DynamicResource SubtleBorderBrush}" />
+                  <TextBlock Text="Agent permissions" FontWeight="SemiBold" FontSize="12"
+                             Foreground="{DynamicResource AccentBrush}" />
+                  <ComboBox ItemsSource="{Binding PermissionModes}"
+                            SelectedItem="{Binding SelectedPermissionMode}"
+                            HorizontalAlignment="Stretch" />
+                  <TextBlock Text="How much new agents can do without asking. Scoped (default): auto-accept edits + fleet tools, other commands still prompt. Bypass: no prompts (trusted repos). Prompt: approve every action. Applies to newly spawned agents."
+                             FontSize="10" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" />
+                  <Border Height="1" Background="{DynamicResource SubtleBorderBrush}" />
                   <TextBlock Text="Automation" FontWeight="SemiBold" FontSize="12"
                              Foreground="{DynamicResource AccentBrush}" />
                   <ToggleSwitch Content="Enable UI automation" IsChecked="{Binding UiAutomationEnabled}" />

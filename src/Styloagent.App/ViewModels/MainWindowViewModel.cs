@@ -213,6 +213,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         TerminalFontSize = prefs.TerminalFontSize;
         MarkdownFontSize = prefs.MarkdownFontSize;
         UiAutomationEnabled = prefs.EnableUiAutomation;
+        SelectedPermissionMode = Enum.TryParse<Styloagent.Core.Hooks.FleetPermissionMode>(prefs.PermissionMode, out var pm)
+            ? pm : Styloagent.Core.Hooks.FleetPermissionMode.Scoped;
         Styloagent.Terminal.TerminalControl.SetGlobalFontSize(TerminalFontSize);
 
         _prefsLoaded = true;   // seeding complete — subsequent changes persist
@@ -228,8 +230,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _prefs.TerminalFontSize = TerminalFontSize;
         _prefs.MarkdownFontSize = MarkdownFontSize;
         _prefs.EnableUiAutomation = UiAutomationEnabled;
+        _prefs.PermissionMode = SelectedPermissionMode.ToString();
         _ = _prefsStore.SaveAsync(_prefsPath, _prefs);
     }
+
+    /// <summary>The permission modes offered in Settings (bound to the picker).</summary>
+    public IReadOnlyList<Styloagent.Core.Hooks.FleetPermissionMode> PermissionModes { get; } =
+        new[] { Styloagent.Core.Hooks.FleetPermissionMode.Prompt, Styloagent.Core.Hooks.FleetPermissionMode.Scoped, Styloagent.Core.Hooks.FleetPermissionMode.Bypass };
+
+    /// <summary>The chosen fleet permission mode — new agents launch with it; persisted. Drives <see cref="PermissionMode"/>.</summary>
+    [ObservableProperty]
+    private Styloagent.Core.Hooks.FleetPermissionMode _selectedPermissionMode = Styloagent.Core.Hooks.FleetPermissionMode.Scoped;
+
+    partial void OnSelectedPermissionModeChanged(Styloagent.Core.Hooks.FleetPermissionMode value)
+        => SavePreferences();   // new spawns read PermissionMode (=> SelectedPermissionMode)
 
     [ObservableProperty]
     private IRootDock? _layout;
@@ -1512,21 +1526,26 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private IReadOnlyList<string> HookArgs(string hookId)
         => _hookChannel?.SettingsArgsFor(hookId) ?? Array.Empty<string>();
 
+    /// <summary>The fleet permission mode agents launch with (from Settings; default Scoped so agents can
+    /// coordinate + edit without a prompt per action).</summary>
+    public Styloagent.Core.Hooks.FleetPermissionMode PermissionMode => SelectedPermissionMode;
+
     /// <summary>
-    /// Hook args PLUS the compaction guard: writes this agent's hydration text (re-read your context
-    /// doc, hold your scope, hand off/dehydrate rather than dilute) and wires the SessionStart hook to
-    /// re-inject it on compact/resume — so an agent can't compact away its own identity.
+    /// Hook args PLUS the compaction guard (re-inject hydration on compact/resume) PLUS the permission mode
+    /// (Scoped/Bypass) so an agent can actually act without a human approving every tool use.
     /// </summary>
     private IReadOnlyList<string> HookArgs(string hookId, AgentManifestEntry entry)
     {
-        if (_hookChannel is null) return Array.Empty<string>();
+        if (_hookChannel is null) return Styloagent.Core.Hooks.HookSettings.PermissionArgs(PermissionMode);
         var hydration = Styloagent.Core.Hooks.HydrationText.For(
             entry.Prefix,
             string.IsNullOrWhiteSpace(entry.SavedContextPath) ? null : entry.SavedContextPath,
             _project?.ProtocolPath,
             _channelRoot);
         var file = _hookChannel.WriteHydrationFile(hookId, hydration);
-        return _hookChannel.SettingsArgsFor(hookId, file);
+        return _hookChannel.SettingsArgsFor(hookId, file, PermissionMode)
+            .Concat(Styloagent.Core.Hooks.HookSettings.PermissionArgs(PermissionMode))
+            .ToList();
     }
 
     /// <summary>Routes a hook event (raised on a background thread) to the owning pane on the UI thread.</summary>

@@ -30,6 +30,13 @@ public partial class AppPreferences
     /// OFF by default — a privileged introspection surface. Enabling it broadcasts a bus notice.
     /// </summary>
     public bool EnableUiAutomation { get; set; }
+
+    /// <summary>
+    /// How much permission fleet agents launch with: <c>Prompt</c> (approve every action), <c>Scoped</c>
+    /// (auto-accept edits + styloagent MCP tools; default — agents can coordinate and work without a prompt
+    /// per action) or <c>Bypass</c> (skip all prompts; trusted repos only). Stored as the enum name.
+    /// </summary>
+    public string PermissionMode { get; set; } = Styloagent.Core.Hooks.FleetPermissionMode.Scoped.ToString();
 }
 
 /// <summary>One named accent: the bright accent (buttons/highlights) and its darker cockpit-bar shade.</summary>

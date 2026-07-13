@@ -34,8 +34,9 @@ public sealed class HookChannel : IAsyncDisposable
     /// <paramref name="hydrationFile"/> is supplied, the SessionStart hook re-injects that file's
     /// hydration text on compact/resume (the compaction guard).
     /// </summary>
-    public IReadOnlyList<string> SettingsArgsFor(string agentId, string? hydrationFile = null)
-        => HookSettings.BuildSettingsArgs(agentId, _hooksDir, hydrationFile);
+    public IReadOnlyList<string> SettingsArgsFor(string agentId, string? hydrationFile = null,
+        FleetPermissionMode permissionMode = FleetPermissionMode.Prompt)
+        => HookSettings.BuildSettingsArgs(agentId, _hooksDir, hydrationFile, permissionMode);
 
     /// <summary>
     /// Writes <paramref name="hydrationText"/> as a JSON string to a stable per-agent file under the

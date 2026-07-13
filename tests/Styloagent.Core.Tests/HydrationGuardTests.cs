@@ -73,4 +73,30 @@ public class HydrationGuardTests
     private static string HookCommand(JsonDocument doc, string ev)
         => doc.RootElement.GetProperty("hooks").GetProperty(ev)[0]
               .GetProperty("hooks")[0].GetProperty("command").GetString()!;
+
+    [Fact]
+    public void Scoped_permission_mode_allows_the_styloagent_mcp_tools_and_accepts_edits()
+    {
+        var json = HookSettings.BuildSettingsJson("foss-", "/tmp/hooks", null, FleetPermissionMode.Scoped);
+        using var doc = JsonDocument.Parse(json);
+        var perms = doc.RootElement.GetProperty("permissions");
+        Assert.Equal("acceptEdits", perms.GetProperty("defaultMode").GetString());
+        var allow = perms.GetProperty("allow").EnumerateArray().Select(e => e.GetString()).ToList();
+        Assert.Contains("mcp__styloagent", allow);
+        // Scoped needs no extra CLI flag.
+        Assert.Empty(HookSettings.PermissionArgs(FleetPermissionMode.Scoped));
+    }
+
+    [Fact]
+    public void Prompt_mode_adds_no_permissions_block_or_flag()
+    {
+        var json = HookSettings.BuildSettingsJson("foss-", "/tmp/hooks", null, FleetPermissionMode.Prompt);
+        using var doc = JsonDocument.Parse(json);
+        Assert.False(doc.RootElement.TryGetProperty("permissions", out _));
+        Assert.Empty(HookSettings.PermissionArgs(FleetPermissionMode.Prompt));
+    }
+
+    [Fact]
+    public void Bypass_mode_adds_the_skip_permissions_flag()
+        => Assert.Contains("--dangerously-skip-permissions", HookSettings.PermissionArgs(FleetPermissionMode.Bypass));
 }

@@ -218,6 +218,75 @@ public class TerminalControlTests
     }
 
     /// <summary>
+    /// Fix 1 (scrollback) — regression for `docked-agent-terminal-panes-have-no-scrollbar`.
+    /// The terminal must render the FULL VT transcript (scrollback + live screen), not clip to the
+    /// visible viewport — otherwise there is nothing for the ScrollViewer to scroll and earlier output
+    /// is unreachable. Writing far more lines than fit the viewport must leave BOTH the earliest and the
+    /// latest line in the render.
+    /// </summary>
+    [Fact]
+    public Task Scrollback_RendersFullTranscript_NotJustTheViewport()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);
+            var window = new Window { Content = control, Width = 800, Height = 300, Name = "ScrollbackWindow" };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            for (int i = 1; i <= 60; i++)
+                fake.FireOutput($"L{i:D2}\r\n");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            var text = control.RenderedText;
+            Assert.Contains("L60", text);   // latest (live) line
+            Assert.Contains("L01", text);   // earliest line — in scrollback, must still be rendered
+
+            window.Close();
+        });
+    }
+
+    /// <summary>
+    /// Fix 1 (prompt visibility) — regression for `docked-agent-panes-pending-prompts-unreachable`.
+    /// While the operator is at the bottom, new output must auto-scroll the viewport to the end so the
+    /// live prompt / last line stays visible. After a burst of output the content overflows the viewport
+    /// (a scrollbar is now warranted) AND the scroll offset sits at the bottom.
+    /// </summary>
+    [Fact]
+    public Task Output_AtBottom_AutoScrollsToEnd_KeepingPromptVisible()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);
+            var window = new Window { Content = control, Width = 800, Height = 300, Name = "FollowWindow" };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            for (int i = 1; i <= 60; i++)
+                fake.FireOutput($"L{i:D2}\r\n");
+            fake.FireOutput("PROMPT>");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            var sv = control.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Name == "ScrollArea");
+            Assert.True(sv.Extent.Height > sv.Viewport.Height,
+                $"content should overflow the viewport so a scrollbar is warranted " +
+                $"(extent {sv.Extent.Height} vs viewport {sv.Viewport.Height})");
+            Assert.True(sv.Offset.Y >= sv.Extent.Height - sv.Viewport.Height - 2.0,
+                $"viewport should auto-scroll to the end so the prompt stays visible; " +
+                $"offset {sv.Offset.Y}, max {sv.Extent.Height - sv.Viewport.Height}");
+
+            window.Close();
+        });
+    }
+
+    /// <summary>
     /// SizeChanged on the control calls session.Resize with the calculated cols/rows.
     /// </summary>
     [Fact]

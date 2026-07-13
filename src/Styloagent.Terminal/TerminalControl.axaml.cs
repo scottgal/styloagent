@@ -30,6 +30,13 @@ public sealed partial class TerminalControl : UserControl
     private readonly AvaloniaList<string> _rows = new();
     private IPtySession? _session;
 
+    /// <summary>
+    /// Whether the viewport is pinned to the tail. True while the operator is at (or near) the bottom, so
+    /// new output auto-scrolls to keep the live prompt/last line visible; false once they scroll up to
+    /// review scrollback, so their position is preserved. Recomputed from the ScrollViewer on every scroll.
+    /// </summary>
+    private bool _followTail = true;
+
     /// <summary>Default foreground when a cell uses the terminal's default fg (colour index 256).</summary>
     private const uint DefaultFgArgb = 0xFFEDEDED;
 
@@ -156,6 +163,9 @@ public sealed partial class TerminalControl : UserControl
         // Start Avalonia size tracking.
         SizeChanged += OnSizeChanged;
 
+        // Track scroll position so output follows the tail only while the operator is at the bottom.
+        ScrollArea.ScrollChanged += OnScrollChanged;
+
         // Register for both Tunnel and Bubble strategies:
         // - Tunnel: captures keys as they route from the visual root down through TerminalControl,
         //   intercepting them before any child controls can handle them (correct production behavior).
@@ -215,8 +225,34 @@ public sealed partial class TerminalControl : UserControl
         // Write to XTerm engine — Terminal.Write is safe to call from any thread.
         _terminal.Write(text);
 
-        // Marshal the buffer rebuild to the UI thread.
-        Dispatcher.UIThread.Post(RebuildRows, DispatcherPriority.Render);
+        // Marshal the buffer rebuild to the UI thread. If the operator is following the tail, scroll to
+        // the end AFTER layout has taken in the new content (a lower-priority post) so the last line — a
+        // Claude Code prompt, say — stays visible; if they've scrolled up, leave their position alone.
+        Dispatcher.UIThread.Post(() =>
+        {
+            RebuildRows();
+            if (_followTail)
+                Dispatcher.UIThread.Post(ScrollToTail, DispatcherPriority.Loaded);
+        }, DispatcherPriority.Render);
+    }
+
+    /// <summary>Pins the viewport to the bottom of the transcript (keeps the live prompt/last line in view).</summary>
+    private void ScrollToTail()
+    {
+        double max = ScrollArea.Extent.Height - ScrollArea.Viewport.Height;
+        if (max > 0) ScrollArea.Offset = ScrollArea.Offset.WithY(max);
+    }
+
+    /// <summary>
+    /// Recomputes <see cref="_followTail"/> from the scroll position: following iff the viewport is at (or
+    /// within a line of) the bottom. This makes output auto-follow the tail until the operator scrolls up,
+    /// and resume following once they scroll back down — with no need to distinguish user vs programmatic
+    /// scrolls (a programmatic ScrollToEnd simply leaves us following).
+    /// </summary>
+    private void OnScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        double max = ScrollArea.Extent.Height - ScrollArea.Viewport.Height;
+        _followTail = ScrollArea.Offset.Y >= max - _cellH;   // within one row of the bottom counts as "at bottom"
     }
 
     private void OnSessionExited()
@@ -379,17 +415,35 @@ public sealed partial class TerminalControl : UserControl
     /// </summary>
     private void RebuildRows()
     {
+        TerminalBuffer buffer = _terminal.Buffer;
+
+        // Render the FULL transcript — scrollback + the live screen — so the ScrollViewer can scroll the
+        // whole VT buffer (wheel + scrollbar) and no earlier output is clipped away. The live screen is
+        // always Rows tall and usually mostly blank below the cursor, so trim trailing blank rows (but
+        // never above the cursor) — that way ScrollToEnd lands on the prompt, not on empty space below it.
+        int total = buffer.YBase + _terminal.Rows;
+        int cursorAbsRow = buffer.YBase + buffer.Y;
+        int lastRow = cursorAbsRow;
+        for (int r = total - 1; r > lastRow; r--)
+        {
+            BufferLine? l = SafeLine(buffer, r);
+            if (l is not null && l.GetTrimmedLength() > 0) { lastRow = r; break; }
+        }
+        int count = Math.Max(1, lastRow + 1);
+
         // Plain-text rows — kept for RenderedText and test assertions.
-        string[] lines = _terminal.GetVisibleLines();
-        while (_rows.Count < lines.Length) _rows.Add(string.Empty);
-        while (_rows.Count > lines.Length) _rows.RemoveAt(_rows.Count - 1);
-        for (int i = 0; i < lines.Length; i++)
-            _rows[i] = lines[i];
+        while (_rows.Count < count) _rows.Add(string.Empty);
+        while (_rows.Count > count) _rows.RemoveAt(_rows.Count - 1);
+        for (int r = 0; r < count; r++)
+        {
+            BufferLine? l = SafeLine(buffer, r);
+            _rows[r] = l is null ? string.Empty : l.TranslateToString(true, 0, l.Length);
+        }
 
         // Coloured render: walk the XTerm cell grid and emit one Run per contiguous
         // same-colour span. A single control with inline runs renders reliably (an
         // ItemsControl-of-rows silently failed to materialize).
-        BuildColoredInlines();
+        BuildColoredInlines(count, cursorAbsRow);
     }
 
     /// <summary>
@@ -398,7 +452,7 @@ public sealed partial class TerminalControl : UserControl
     /// weight become one Run. Handles per-cell background, inverse video (fg/bg swapped) and bold.
     /// Falls back gracefully (default colours) if the buffer can't be read.
     /// </summary>
-    private void BuildColoredInlines()
+    private void BuildColoredInlines(int count, int cursorAbsRow)
     {
         var inlines = ScreenText.Inlines;
         if (inlines is null)
@@ -409,24 +463,21 @@ public sealed partial class TerminalControl : UserControl
         inlines.Clear();
 
         TerminalBuffer buffer = _terminal.Buffer;
-        int rows = _terminal.Rows;
-        int yDisp = buffer.YDisp;
 
         // Cursor position, drawn as an inverse block so the caret tracks the input point. XTerm.NET
         // treats the cursor as a renderer concern (it is NOT composited into the buffer cells), so if
-        // we don't draw it here the terminal shows no moving caret — it looks "stuck". buffer.Y is the
-        // cursor row relative to YBase; its on-screen row subtracts the scroll offset (YDisp).
+        // we don't draw it here the terminal shows no moving caret — it looks "stuck". Because we now
+        // render the full transcript, the cursor's row is its ABSOLUTE buffer row (YBase + buffer.Y).
         bool cursorVisible = _terminal.CursorVisible;
-        int cursorRow = buffer.YBase + buffer.Y - yDisp;
         int cursorCol = buffer.X;
 
         var runText = new StringBuilder();
 
-        for (int row = 0; row < rows; row++)
+        for (int row = 0; row < count; row++)
         {
-            BufferLine? line = SafeLine(buffer, yDisp + row);
+            BufferLine? line = SafeLine(buffer, row);
             int cols = line?.Length ?? 0;
-            bool rowHasCursor = cursorVisible && row == cursorRow && cursorCol >= 0 && cursorCol < cols;
+            bool rowHasCursor = cursorVisible && row == cursorAbsRow && cursorCol >= 0 && cursorCol < cols;
 
             // Trim only trailing cells that are BOTH blank AND default-background — a trailing run
             // of coloured-background cells is a visible block and must be kept.
@@ -474,7 +525,7 @@ public sealed partial class TerminalControl : UserControl
             if (runOpen) FlushRun(inlines, runText, runFg, runBg, runBold);
 
             // Newline separator between rows (not after the final row).
-            if (row < rows - 1)
+            if (row < count - 1)
                 inlines.Add(new Run("\n"));
         }
     }

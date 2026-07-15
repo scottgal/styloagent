@@ -104,6 +104,92 @@ public class ShellLayoutTests
         Assert.Empty(documentDock!.VisibleDockables!.OfType<Document>());
     }
 
+    /// <summary>An agent pane with a distinct prefix (so tiled OneDoc ids don't collide).</summary>
+    private static AgentPaneViewModel MakeVm(string prefix)
+    {
+        var entry = new AgentManifestEntry(
+            Prefix: prefix, Repo: "/repo", Worktree: "/repo/wt-" + prefix.TrimEnd('-'),
+            LaunchPromptPath: "", RestartPromptPath: "", SavedContextPath: "/ctx.md",
+            Transport: AgentTransport.Local);
+        var session = new AgentSession(entry, new FakePtyLauncher(), new FakeFileWatcher());
+        return new AgentPaneViewModel(session, entry, prefix + " Agent", "#E57373");
+    }
+
+    private static IDock? OwnerDockOf(IDockable root, IDockable target)
+    {
+        if (root is IDock d && d.VisibleDockables is not null)
+        {
+            if (d.VisibleDockables.Contains(target)) return d;
+            foreach (var c in d.VisibleDockables)
+                if (OwnerDockOf(c, target) is { } found) return found;
+        }
+        return null;
+    }
+
+    private static IEnumerable<IDockable> AllDeep(IDockable root)
+    {
+        yield return root;
+        if (root is IDock d && d.VisibleDockables is not null)
+            foreach (var c in d.VisibleDockables)
+                foreach (var x in AllDeep(c))
+                    yield return x;
+    }
+
+    /// <summary>
+    /// Dock creates a fresh DocumentDock for each runtime drag-split; it must be collapsable so closing the
+    /// last document in a hand-split region collapses it and the sibling reflows to fill the space.
+    /// </summary>
+    [Fact]
+    public void CreateDocumentDock_IsCollapsable_SoRuntimeDragSplitsReflowOnClose()
+        => Assert.True(new StyloagentDockFactory().CreateDocumentDock().IsCollapsable);
+
+    /// <summary>
+    /// The "Close empty docks" tidy walk finds NESTED empty document docks (leftover split/tile regions)
+    /// but preserves the sole centre document surface (a root-level document dock) — you always want a
+    /// place to open documents.
+    /// </summary>
+    [Fact]
+    public void EmptyCollapsibleDocks_FindsNestedEmpties_ButPreservesTheCentre()
+    {
+        var emptyTile = new DocumentDock { Id = "empty", VisibleDockables = new List<IDockable>() };
+        var fullTile = new DocumentDock { Id = "full", VisibleDockables = new List<IDockable> { MakeVm("x-") } };
+        var row = new ProportionalDock { VisibleDockables = new List<IDockable> { emptyTile, fullTile } };
+        var centre = new DocumentDock { Id = "centre", VisibleDockables = new List<IDockable>() };   // root-level, empty
+        var root = new RootDock { VisibleDockables = new List<IDockable> { row, centre } };
+
+        var found = StyloagentDockFactory.EmptyCollapsibleDocks(root);
+
+        Assert.Contains(emptyTile, found);          // a nested empty tile → collapse it
+        Assert.DoesNotContain(fullTile, found);     // non-empty → keep
+        Assert.DoesNotContain(centre, found);       // the sole centre surface → preserved
+    }
+
+    /// <summary>
+    /// Fix E: closing the last document in a tiled dock area must collapse that empty area so the layout
+    /// reflows — an emptied tile must not linger as a dead pane.
+    /// </summary>
+    [Fact]
+    public void ClosingTheLastDocumentInATile_CollapsesTheEmptyArea()
+    {
+        var a = MakeVm("a-");
+        var b = MakeVm("b-");
+        var factory = new StyloagentDockFactory();
+        var layout = factory.BuildLayout(new[] { a, b }, CockpitLayoutMode.Tile);
+        factory.InitLayout(layout);
+
+        var tileA = OwnerDockOf(layout, a);
+        Assert.NotNull(tileA);
+        var parent = tileA!.Owner as IDock;
+        Assert.NotNull(parent);
+        Assert.Contains(tileA, parent!.VisibleDockables!);   // sanity: the tile is in its row
+
+        factory.CloseDockable(a);                            // close the tile's only document
+
+        Assert.DoesNotContain(tileA, parent.VisibleDockables!);   // emptied tile removed
+        Assert.DoesNotContain(a, AllDeep(layout));                // pane a is gone
+        Assert.Contains(b, AllDeep(layout));                      // pane b's area survives + reflows
+    }
+
     // ── AgentPaneView ─────────────────────────────────────────────────────────
 
     /// <summary>

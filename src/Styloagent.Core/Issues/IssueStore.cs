@@ -43,6 +43,27 @@ public static partial class IssueStore
         return issue;
     }
 
+    /// <summary>
+    /// Resolves (closes) an issue by rewriting ONLY its <c>**Status:**</c> line to <c>closed</c> — a
+    /// lossless edit that preserves the title, body and every other field. Returns false if the issue
+    /// file is missing or unreadable. Callers filter <c>closed</c> issues out of the active list.
+    /// </summary>
+    public static bool Resolve(string issuesDir, string id)
+    {
+        var path = Path.Combine(issuesDir, id + ".md");
+        if (!File.Exists(path)) return false;
+        try
+        {
+            var body = File.ReadAllText(path);
+            var updated = StatusRx().IsMatch(body)
+                ? StatusRx().Replace(body, "**Status:** closed", 1)
+                : body.TrimEnd('\n') + "\n**Status:** closed\n";
+            File.WriteAllText(path, updated);
+            return true;
+        }
+        catch { return false; }
+    }
+
     /// <summary>Reads all issues, newest first. Never throws.</summary>
     public static IReadOnlyList<Issue> Read(string issuesDir)
     {

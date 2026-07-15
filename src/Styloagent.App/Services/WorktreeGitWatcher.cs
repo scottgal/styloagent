@@ -14,11 +14,23 @@ public sealed class WorktreeGitWatcher : IDisposable
     /// </summary>
     public event EventHandler? Changed;
 
+    /// <summary>
+    /// Raised (on a thread-pool thread) when the watched worktree's BRANCH changes — i.e. <c>.git/HEAD</c>
+    /// now points at a different <c>refs/heads/&lt;branch&gt;</c>. The argument is the new branch name, or
+    /// null for a detached HEAD. This is the structured "an agent switched branch" signal, distinct from
+    /// the noisy <see cref="Changed"/> (which fires for any git-dir write). Only fires on an actual change.
+    /// </summary>
+    public event EventHandler<string?>? BranchChanged;
+
     private FileSystemWatcher? _fsWatcher;
     private System.Threading.Timer? _debounceTimer;
     private const int DebounceMs = 300;
     private readonly object _lock = new();
     private volatile bool _disposed;
+
+    /// <summary>The resolved git dir currently watched, and the last branch seen there (for change detection).</summary>
+    private string? _gitDir;
+    private string? _lastBranch;
 
     /// <summary>
     /// Points the watcher at the given worktree path, replacing any previous watch.
@@ -33,6 +45,8 @@ public sealed class WorktreeGitWatcher : IDisposable
             if (_disposed) return;
 
             DisposeInternals();
+            _gitDir = null;
+            _lastBranch = null;
 
             if (worktreePath is null) return;
 
@@ -41,8 +55,12 @@ public sealed class WorktreeGitWatcher : IDisposable
                 string? gitDir = ResolveGitDir(worktreePath);
                 if (gitDir is null) return;
 
+                // Seed the branch so switching the watched worktree doesn't spuriously fire BranchChanged.
+                _gitDir = gitDir;
+                _lastBranch = ReadBranch(gitDir);
+
                 _debounceTimer = new System.Threading.Timer(
-                    _ => { if (!_disposed) Changed?.Invoke(this, EventArgs.Empty); },
+                    _ => OnDebounceElapsed(),
                     state: null,
                     dueTime: Timeout.Infinite,
                     period: Timeout.Infinite);
@@ -107,6 +125,49 @@ public sealed class WorktreeGitWatcher : IDisposable
     private void OnFsEvent(object sender, FileSystemEventArgs e) => ResetTimer();
 
     private void OnFsRenamed(object sender, RenamedEventArgs e) => ResetTimer();
+
+    /// <summary>
+    /// Fired once per debounce window: always raises <see cref="Changed"/> (panel refresh), and if the
+    /// worktree's branch has actually changed since last seen, also raises <see cref="BranchChanged"/> —
+    /// the structured signal for the "switched branch" timeline op. Comparing to the last branch keeps
+    /// ordinary git-dir churn (index writes, packs) from firing BranchChanged.
+    /// </summary>
+    private void OnDebounceElapsed()
+    {
+        if (_disposed) return;
+        Changed?.Invoke(this, EventArgs.Empty);
+
+        string? gitDir;
+        string? last;
+        lock (_lock) { gitDir = _gitDir; last = _lastBranch; }
+        if (gitDir is null) return;
+
+        var current = ReadBranch(gitDir);
+        if (!string.Equals(current, last, StringComparison.Ordinal))
+        {
+            lock (_lock) { if (!_disposed) _lastBranch = current; }
+            if (!_disposed) BranchChanged?.Invoke(this, current);
+        }
+    }
+
+    /// <summary>
+    /// Reads the current branch from a git dir's <c>HEAD</c> file: the name for
+    /// <c>ref: refs/heads/&lt;branch&gt;</c>, or null for a detached HEAD (a raw SHA) or an unreadable HEAD.
+    /// </summary>
+    internal static string? ReadBranch(string gitDir)
+    {
+        try
+        {
+            var head = Path.Combine(gitDir, "HEAD");
+            if (!File.Exists(head)) return null;
+            var content = File.ReadAllText(head).Trim();
+            const string prefix = "ref: refs/heads/";
+            return content.StartsWith(prefix, StringComparison.Ordinal)
+                ? content[prefix.Length..].Trim()
+                : null;   // detached HEAD (raw SHA) or unexpected content
+        }
+        catch { return null; }
+    }
 
     private void ResetTimer()
     {

@@ -25,6 +25,17 @@ public class FleetSpawnTests
     /// Builds a VM the same way as the other FleetSpawnTests do but accepts an optional
     /// gitService and repoRoot (new params for Task 7). Existing tests call without args (defaults to null).
     /// </summary>
+    /// <summary>
+    /// Polls until <paramref name="condition"/> holds or the timeout elapses. VM collections update on the
+    /// (shared, headless) UI dispatcher, so under parallel test load they populate shortly AFTER the call
+    /// that triggers them returns — a fixed delay races; this waits for the actual condition.
+    /// </summary>
+    private static async Task WaitUntil(Func<bool> condition, int timeoutMs = 3000)
+    {
+        for (int waited = 0; waited < timeoutMs && !condition(); waited += 10)
+            await Task.Delay(10);
+    }
+
     private static async Task<MainWindowViewModel> BuildOverviewVmAsync(
         string? repoRoot = null,
         IGitService? gitService = null)
@@ -129,11 +140,16 @@ public class FleetSpawnTests
                 cfg.ChannelRoot, new FakeLauncher(), new FakeWatcher(),
                 repoRoot: repo, overviewSystemPromptPath: cfg.SystemPromptPath);
             vm.AttachProject(cfg);
-            var overview = vm.Panes[0];
+            // Panes populate via the (shared, headless) UI dispatcher, so under parallel load they aren't
+            // guaranteed present the instant InitializeAsync/SpawnProposed return — wait for the condition
+            // instead of a fixed delay (de-flake; mirrors the bus de-flake in ddb84cf).
+            await WaitUntil(() => vm.Panes.Any(p => p.Prefix == "overview-"));
+            var overview = vm.Panes.First(p => p.Prefix == "overview-");
             Assert.Equal("overview-", overview.Prefix);
 
             vm.SpawnProposed(new Styloagent.Core.Projects.ProposedAgent("hello-", "writes hello world", ".", "You are hello-."));
 
+            await WaitUntil(() => vm.Panes.Any(p => p.Prefix == "hello-"));
             var child = vm.Panes.First(p => p.Prefix == "hello-");
             Assert.Equal("overview-", child.ParentPrefix);       // the overview OWNS it
             Assert.Equal(overview.Depth + 1, child.Depth);

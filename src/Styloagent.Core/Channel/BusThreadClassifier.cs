@@ -32,15 +32,18 @@ public static class BusThreadClassifier
         bool hasReplied = messages.Any(m => m.State == BusMessageState.Replied);
         bool hasBroadcast = messages.Any(m => m.Kind is BusMessageKind.Broadcast or BusMessageKind.BroadcastReply);
 
+        // Attention first: an outstanding unreplied inbound always wins. Otherwise a HANDLED thread —
+        // replied to, or fully archived — leaves the active groups and moves to Archive so the bus stays
+        // glanceable at volume; everything else (broadcasts, sent-and-waiting, follow-ups) is Recent.
         BusThreadSection section =
-            allArchived ? BusThreadSection.Archive :
             hasUnrepliedInbox ? BusThreadSection.Attention :
+            (allArchived || hasReplied) ? BusThreadSection.Archive :
             BusThreadSection.Recent;
 
         string glyph =
-            section == BusThreadSection.Archive ? "▤" :
             hasUnrepliedInbox ? "●" :
-            hasReplied ? "↩" :
+            hasReplied ? "↩" :                                  // replied (now archived) keeps its reply mark
+            section == BusThreadSection.Archive ? "▤" :         // plainly archived, never replied
             hasBroadcast ? "◆" :
             "○";
 

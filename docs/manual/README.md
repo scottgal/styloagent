@@ -368,10 +368,9 @@ Open **Settings** from the top bar. Everything here is **persisted** across sess
   keep the figure legible, `Manual_document_library` feeds a flat list of files under each source root
   (repo / channel) rather than nested folders. When the tree template renders non-leaf headers with
   height headlessly, the figure will regenerate cleanly with no code change.
-- **Some live-UI behaviours are being fixed concurrently** — notably terminal-pane scroll and message
-  delivery flakiness (the latter tracked to `PtyMessageInjector` not retrying its submit the way the
-  spawn path does). The *headless control rendering* used for these figures is unaffected by those
-  live-behaviour bugs, but if you're driving the real app you may hit them until they land.
+- **Some live-UI behaviours may still be in flux** — notably terminal-pane scrollback in docked agent
+  panes. The *headless control rendering* used for these figures is unaffected by such live-behaviour
+  bugs, but if you're driving the real app you may encounter them until they land.
 
 ---
 

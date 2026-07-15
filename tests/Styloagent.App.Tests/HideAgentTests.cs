@@ -37,4 +37,29 @@ public class HideAgentTests
         }
         finally { if (Directory.Exists(repo)) Directory.Delete(repo, recursive: true); }
     }
+
+    [Fact]
+    public async Task Selecting_a_hidden_agent_in_the_roster_reopens_its_pane()
+    {
+        var repo = Path.Combine(Path.GetTempPath(), "reopen-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(repo);
+        try
+        {
+            var cfg = ProjectScaffolder.Ensure(repo);
+            var vm = await MainWindowViewModel.InitializeAsync(
+                cfg.ChannelRoot, new FakeLauncher(), new FakeWatcher(),
+                repoRoot: repo, overviewSystemPromptPath: cfg.SystemPromptPath);
+            vm.AttachProject(cfg);
+
+            var pane = vm.Panes[0];
+            vm.HideAgentCommand.Execute(pane);   // removes the dockable (a closed tab is the same shape)
+            Assert.True(pane.IsHidden);
+
+            vm.SelectPaneCommand.Execute(pane);  // a roster click must bring it back
+
+            Assert.False(pane.IsHidden);         // reopened
+            Assert.NotNull(pane.Owner);          // re-docked
+        }
+        finally { if (Directory.Exists(repo)) Directory.Delete(repo, recursive: true); }
+    }
 }

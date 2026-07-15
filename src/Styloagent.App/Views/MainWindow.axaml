@@ -226,6 +226,8 @@
       <!-- Centre: agent terminals as dockable documents (tabs, float, split).
            DataTemplates (AgentPaneViewModel→AgentPaneView) come from App.axaml. -->
       <dock:DockControl Grid.Column="2"
+                        x:Name="DocumentSurface"
+                        DragDrop.AllowDrop="True"
                         Layout="{Binding Layout}"
                         InitializeLayout="False"
                         InitializeFactory="False"

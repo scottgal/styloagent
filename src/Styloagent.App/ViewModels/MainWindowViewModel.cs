@@ -1038,7 +1038,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     partial void OnSelectedSearchResultChanged(Styloagent.Core.Docs.DocSearchHit? value)
     {
         if (value is null) return;
-        OpenMarkdownDocument(new MarkdownDocumentViewModel(value.Title, value.FullPath));
+        OpenDocumentByPath(value.FullPath);   // shared viewer-by-type dispatch (same as drag-to-surface)
         // Reset the box for the next search (deferred so we don't fight the AutoCompleteBox's own update).
         Dispatcher.UIThread.Post(() =>
         {
@@ -1659,6 +1659,36 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _dockFactory.AddDockable(_dockFactory.DocumentDock, doc);
         _dockFactory.SetActiveDockable(doc);
         _dockFactory.SetFocusedDockable(_dockFactory.RootDock, doc);
+    }
+
+    /// <summary>
+    /// Viewer-by-type dispatch for the document surface: markdown files (<c>.md</c>/<c>.markdown</c>) get
+    /// the rendered-markdown viewer, everything else the read-only source viewer. Pure so it is unit-testable
+    /// without a dock.
+    /// </summary>
+    internal static DocViewerKind ViewerKindForPath(string path)
+    {
+        var ext = Path.GetExtension(path).ToLowerInvariant();
+        return ext is ".md" or ".markdown" ? DocViewerKind.Markdown : DocViewerKind.Source;
+    }
+
+    /// <summary>
+    /// Opens a file as the dock document that matches its type (see <see cref="ViewerKindForPath"/>). This is
+    /// the single open path shared by the top-bar document search and the drag-onto-the-doc-surface drop, so
+    /// they behave identically. No-ops for a blank path or before the dock is initialised.
+    /// </summary>
+    public void OpenDocumentByPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+        switch (ViewerKindForPath(path))
+        {
+            case DocViewerKind.Markdown:
+                OpenMarkdownDocument(new MarkdownDocumentViewModel(Path.GetFileNameWithoutExtension(path), path));
+                break;
+            default:
+                OpenSourceDocument(path);
+                break;
+        }
     }
 
     /// <summary>Opens an edit's before/after as a highlighted line-diff document (from a timeline click).</summary>

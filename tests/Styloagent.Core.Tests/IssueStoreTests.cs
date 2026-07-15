@@ -47,6 +47,29 @@ public class IssueStoreTests
     }
 
     [Fact]
+    public void Resolve_marks_the_issue_closed_losslessly()
+    {
+        var dir = NewDir();
+        try
+        {
+            var w = IssueStore.Write(dir, "foss-", "Flaky test", "sometimes red on CI", "medium", DateTimeOffset.UtcNow);
+
+            var ok = IssueStore.Resolve(dir, w.Id);
+
+            Assert.True(ok);
+            var issue = Assert.Single(IssueStore.Read(dir));
+            Assert.Equal("closed", issue.Status);
+            Assert.Equal("Flaky test", issue.Title);              // title preserved
+            Assert.Contains("sometimes red on CI", issue.Detail); // detail preserved (lossless)
+        }
+        finally { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void Resolve_missing_issue_returns_false()
+        => Assert.False(IssueStore.Resolve(NewDir(), "no-such-id"));
+
+    [Fact]
     public void Unknown_severity_normalises_to_medium()
         => Assert.Equal("medium", IssueStore.NormalizeSeverity("whatever"));
 

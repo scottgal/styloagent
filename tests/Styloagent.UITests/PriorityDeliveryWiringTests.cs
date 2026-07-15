@@ -60,6 +60,8 @@ public class PriorityDeliveryWiringTests
 
                 var pty = (FakePtySession)pane.CurrentPty!;
                 pane.HookState = AgentHookState.Working;   // mid-turn → urgent should ESC-break
+                pty.IsIdle = false;                         // ...and the PTY is actually mid-turn, so the
+                                                            //    injector's IsIdle-gated ESC break fires
                 pty.ClearWrites();                          // ignore the spawn's own writes
 
                 // A new urgent message addressed to this agent arrives on the channel.

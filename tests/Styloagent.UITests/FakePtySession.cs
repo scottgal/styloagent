@@ -15,7 +15,12 @@ public sealed class FakePtySession : IPtySession
     public event Action<string>? Output;
     public event Action? Exited;
 
-    public bool IsIdle => true;
+    /// <summary>
+    /// Whether the fake PTY looks idle. Defaults true (no output flowing) like a settled session; set it
+    /// false to simulate a MID-TURN session (output streaming) so the injector's ESC turn-break actually
+    /// fires — the real PortaPtySession.IsIdle is false while Claude is producing output.
+    /// </summary>
+    public bool IsIdle { get; set; } = true;
 
     public IReadOnlyList<string> Writes => _writes.AsReadOnly();
 

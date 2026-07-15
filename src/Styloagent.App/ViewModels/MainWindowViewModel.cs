@@ -281,11 +281,43 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private void RebuildCenterLayout()
     {
         if (_dockFactory is null) return;
-        var active = SelectedPane ?? Panes.FirstOrDefault();
-        var layout = _dockFactory.BuildLayout(Panes.ToList(), LayoutMode);
+        // Hidden agents are kept off the document surface (Fix F) — their sessions run on, but they don't
+        // take a tile/tab, even across a layout-mode switch.
+        var visible = Panes.Where(p => !p.IsHidden).ToList();
+        var active = (SelectedPane is { IsHidden: false } sel ? sel : null) ?? visible.FirstOrDefault();
+        var layout = _dockFactory.BuildLayout(visible, LayoutMode);
         Layout = layout;
         _dockFactory.InitLayout(layout);
         if (active is not null) _dockFactory.SetActiveDockable(active);
+    }
+
+    /// <summary>
+    /// Fix F — HIDE a live agent: take its pane off the document surface to free screen space while its PTY
+    /// keeps running (it stays in the roster, still working). Distinct from Dehydrate, which kills the PTY:
+    /// the session is left untouched, only its dockable is removed. Restore with <see cref="ShowAgentCommand"/>.
+    /// </summary>
+    [RelayCommand]
+    private void HideAgent(AgentPaneViewModel? pane)
+    {
+        if (pane is null || pane.IsHidden) return;
+        pane.IsHidden = true;
+        if (_dockFactory is not null && pane.Owner is global::Dock.Model.Core.IDock)
+            _dockFactory.RemoveDockable(pane, collapse: true);   // drop the dockable; the session runs on
+    }
+
+    /// <summary>Fix F — RESTORE a hidden agent's pane to the document surface. No rehydrate: it never stopped.</summary>
+    [RelayCommand]
+    private void ShowAgent(AgentPaneViewModel? pane)
+    {
+        if (pane is null || !pane.IsHidden) return;
+        pane.IsHidden = false;
+        if (_dockFactory?.DocumentDock is { } dock)
+        {
+            if (!ReferenceEquals(pane.Owner, dock))
+                _dockFactory.AddDockable(dock, pane);
+            _dockFactory.SetActiveDockable(pane);
+            if (_dockFactory.RootDock is { } root) _dockFactory.SetFocusedDockable(root, pane);
+        }
     }
 
     [ObservableProperty]

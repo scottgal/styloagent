@@ -296,6 +296,15 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     [ObservableProperty]
     private string _gitBadgeText = "";
 
+    /// <summary>
+    /// True when the operator has HIDDEN this agent — its pane is removed from the visible dock surface to
+    /// free screen space, but the session/PTY keeps running (it still shows as working in the roster).
+    /// Distinct from Dehydrate, which kills the PTY. Toggled from the roster; the shell drops/re-adds the
+    /// dockable while the session is left untouched.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isHidden;
+
     /// <summary>Recomputes the git badge for this pane's worktree (no-op if it has none).</summary>
     public async Task RefreshGitStatusAsync(IGitService git)
     {

@@ -154,7 +154,10 @@ public class BusViewModelTests : IDisposable
             // alpha: unreplied inbox -> Attention
             File.WriteAllText(Path.Combine(root, "inbox", "alpha-open-question.md"),
                 "**From:** ops\n**Timestamp:** 2024-01-10T10:00:00Z\n\nQ?");
-            // beta: inbox + reply -> Recent
+            // broadcast: informational, no reply expected -> Recent
+            File.WriteAllText(Path.Combine(root, "inbox", "all-heads-up.md"),
+                "**From:** ops\n**Timestamp:** 2024-01-10T10:30:00Z\n\nFYI.");
+            // beta: inbox + reply -> handled, so it must LEAVE the active groups -> Archive
             File.WriteAllText(Path.Combine(root, "inbox", "beta-done-task.md"),
                 "**From:** ops\n**Timestamp:** 2024-01-10T11:00:00Z\n\nTask.");
             File.WriteAllText(Path.Combine(root, "outbox", "beta-done-task.reply.md"),
@@ -165,11 +168,18 @@ public class BusViewModelTests : IDisposable
 
             var vm = new BusViewModel(root, Prefixes3, new ChannelProjection());
             await vm.LoadAsync();
-            await WaitUntil(() => vm.AttentionThreads.Count > 0 && vm.RecentThreads.Count > 0 && vm.ArchivedThreads.Count > 0);
+            await WaitUntil(() => vm.AttentionThreads.Count > 0 && vm.RecentThreads.Count > 0 && vm.ArchivedThreads.Count > 1);
 
+            // Attention: the unreplied inbound.
             Assert.Contains(vm.AttentionThreads, t => t.Subject.Contains("open"));
             Assert.All(vm.AttentionThreads, t => Assert.Equal("●", t.Glyph));
-            Assert.Contains(vm.RecentThreads, t => t.Subject.Contains("done"));
+            // Recent: the broadcast (nothing to action, not handled).
+            Assert.Contains(vm.RecentThreads, t => t.Subject.Contains("heads"));
+            // A replied thread must NOT linger in the active groups...
+            Assert.DoesNotContain(vm.AttentionThreads, t => t.Subject.Contains("done"));
+            Assert.DoesNotContain(vm.RecentThreads, t => t.Subject.Contains("done"));
+            // ...it moves to Archive, alongside the plainly-archived thread.
+            Assert.Contains(vm.ArchivedThreads, t => t.Subject.Contains("done"));
             Assert.Contains(vm.ArchivedThreads, t => t.Subject.Contains("old"));
         }
         finally

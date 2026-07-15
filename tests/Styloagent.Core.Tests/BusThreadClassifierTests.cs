@@ -22,13 +22,29 @@ public class BusThreadClassifierTests
     }
 
     [Fact]
-    public void RepliedInbox_IsRecent_WithReplyGlyph()
+    public void RepliedInbox_IsArchive_WithReplyGlyph()
     {
+        // A replied thread is handled — it must leave the active groups (Attention/Recent) and move to
+        // Archive so the bus stays glanceable. The reply glyph is kept so it still reads as "replied",
+        // distinct from a plainly-archived thread's "▤".
         var v = BusThreadClassifier.Classify(Thread(
             Msg(BusMessageKind.Inbox, BusMessageState.Replied),
             Msg(BusMessageKind.Reply, BusMessageState.New)));
-        Assert.Equal(BusThreadSection.Recent, v.Section);
+        Assert.Equal(BusThreadSection.Archive, v.Section);
         Assert.Equal("↩", v.Glyph);
+    }
+
+    [Fact]
+    public void UnrepliedInbox_StillWins_OverAReplyOnAnotherMessage()
+    {
+        // A thread with an outstanding unreplied inbound stays in Attention even if an earlier message
+        // was replied — an unread inbound always demands attention first.
+        var v = BusThreadClassifier.Classify(Thread(
+            Msg(BusMessageKind.Inbox, BusMessageState.Replied, slug: "alpha-topic"),
+            Msg(BusMessageKind.Reply, BusMessageState.New, slug: "alpha-topic"),
+            Msg(BusMessageKind.Inbox, BusMessageState.New, slug: "alpha-topic")));
+        Assert.Equal(BusThreadSection.Attention, v.Section);
+        Assert.Equal("●", v.Glyph);
     }
 
     [Fact]

@@ -136,6 +136,14 @@ public class ShellLayoutTests
     }
 
     /// <summary>
+    /// Dock creates a fresh DocumentDock for each runtime drag-split; it must be collapsable so closing the
+    /// last document in a hand-split region collapses it and the sibling reflows to fill the space.
+    /// </summary>
+    [Fact]
+    public void CreateDocumentDock_IsCollapsable_SoRuntimeDragSplitsReflowOnClose()
+        => Assert.True(new StyloagentDockFactory().CreateDocumentDock().IsCollapsable);
+
+    /// <summary>
     /// The "Close empty docks" tidy walk finds NESTED empty document docks (leftover split/tile regions)
     /// but preserves the sole centre document surface (a root-level document dock) — you always want a
     /// place to open documents.

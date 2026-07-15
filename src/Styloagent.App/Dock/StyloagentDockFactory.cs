@@ -40,6 +40,19 @@ public sealed class StyloagentDockFactory : Factory
         _agentPane = agentPane;
     }
 
+    /// <summary>
+    /// Dock creates a fresh <see cref="DocumentDock"/> for every runtime drag-split. Make those collapsable
+    /// so closing the last document in a HAND-SPLIT region removes it and the sibling reflows to fill the
+    /// space — Fix E only covered our programmatic tiles, not Dock's own runtime splits. The sole centre
+    /// surface is still protected in <see cref="CollapseDock"/> (root-owned docks never collapse).
+    /// </summary>
+    public override IDocumentDock CreateDocumentDock()
+    {
+        var dock = base.CreateDocumentDock();
+        dock.IsCollapsable = true;
+        return dock;
+    }
+
     public override IRootDock CreateLayout()
     {
         var documentDock = new DocumentDock

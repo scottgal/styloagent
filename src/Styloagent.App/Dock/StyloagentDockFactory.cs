@@ -192,18 +192,37 @@ public sealed class StyloagentDockFactory : Factory
         return row;
     }
 
-    /// <summary>A single-pane document dock (one tile).</summary>
+    /// <summary>A single-pane document dock (one tile). Collapsable so that emptying a TILE (a nested
+    /// dock with siblings) removes it and the layout reflows; the sole centre dock is protected in
+    /// <see cref="CollapseDock"/> by its root owner.</summary>
     private DocumentDock OneDoc(AgentPaneViewModel pane) => new()
     {
         Id = "doc-" + pane.Prefix,
         Title = pane.DisplayName,
         Proportion = double.NaN,
-        IsCollapsable = false,
+        IsCollapsable = true,
         CanCreateDocument = false,
         VisibleDockables = CreateList<IDockable>(pane),
         ActiveDockable = pane,
         DefaultDockable = pane,
     };
+
+    /// <summary>
+    /// Fix E: when the last document in a tiled area is closed, collapse the now-empty tile so the layout
+    /// reflows into the freed space. Guards two cases: (1) never collapse the SOLE centre dock — its owner
+    /// is the root, and you always want a document surface; (2) if the collapsed tile was the current
+    /// add-target, re-point <see cref="DocumentDock"/> at a surviving document dock so later
+    /// <c>OpenDocument…</c> calls still land somewhere visible.
+    /// </summary>
+    public override void CollapseDock(IDock dock)
+    {
+        if (dock.Owner is IRootDock) return;   // the centre document surface must persist
+
+        base.CollapseDock(dock);
+
+        if (ReferenceEquals(dock, DocumentDock) && RootDock is not null)
+            DocumentDock = FirstDocumentDock(RootDock);
+    }
 
     /// <summary>Depth-first find of the first <see cref="DocumentDock"/> in a built tree.</summary>
     private static DocumentDock? FirstDocumentDock(IDock dock)

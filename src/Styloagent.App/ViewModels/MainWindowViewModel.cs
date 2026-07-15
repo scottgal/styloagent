@@ -320,6 +320,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// "Close empty docks": collapses any leftover NESTED empty document areas (split/tile regions with no
+    /// documents) so the layout reflows into the freed space. The sole centre surface is preserved (you
+    /// always want somewhere to open documents). Complements the automatic last-document-close collapse.
+    /// </summary>
+    [RelayCommand]
+    private void TidyEmptyDocks()
+    {
+        if (_dockFactory is null || Layout is not global::Dock.Model.Core.IDock root) return;
+        foreach (var dock in StyloagentDockFactory.EmptyCollapsibleDocks(root))
+            _dockFactory.CollapseDock(dock);
+    }
+
     [ObservableProperty]
     private DocLibraryViewModel? _docLibrary;
 

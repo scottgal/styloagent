@@ -83,6 +83,10 @@
                         Command="{Binding SetLayoutModeCommand}" CommandParameter="AutoTile"
                         ToolTip.Tip="Auto-tile: starter on top, agents tiled below"
                         Content="Auto-tile" />
+          <!-- Close leftover empty document areas and reflow the layout -->
+          <Button Content="Tidy" FontSize="12" Padding="8,3" Margin="8,0,0,0" VerticalAlignment="Center"
+                  Command="{Binding TidyEmptyDocksCommand}"
+                  ToolTip.Tip="Close empty document areas and reflow the layout" />
         </StackPanel>
 
         <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">

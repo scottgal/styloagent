@@ -136,6 +136,27 @@ public class ShellLayoutTests
     }
 
     /// <summary>
+    /// The "Close empty docks" tidy walk finds NESTED empty document docks (leftover split/tile regions)
+    /// but preserves the sole centre document surface (a root-level document dock) — you always want a
+    /// place to open documents.
+    /// </summary>
+    [Fact]
+    public void EmptyCollapsibleDocks_FindsNestedEmpties_ButPreservesTheCentre()
+    {
+        var emptyTile = new DocumentDock { Id = "empty", VisibleDockables = new List<IDockable>() };
+        var fullTile = new DocumentDock { Id = "full", VisibleDockables = new List<IDockable> { MakeVm("x-") } };
+        var row = new ProportionalDock { VisibleDockables = new List<IDockable> { emptyTile, fullTile } };
+        var centre = new DocumentDock { Id = "centre", VisibleDockables = new List<IDockable>() };   // root-level, empty
+        var root = new RootDock { VisibleDockables = new List<IDockable> { row, centre } };
+
+        var found = StyloagentDockFactory.EmptyCollapsibleDocks(root);
+
+        Assert.Contains(emptyTile, found);          // a nested empty tile → collapse it
+        Assert.DoesNotContain(fullTile, found);     // non-empty → keep
+        Assert.DoesNotContain(centre, found);       // the sole centre surface → preserved
+    }
+
+    /// <summary>
     /// Fix E: closing the last document in a tiled dock area must collapse that empty area so the layout
     /// reflows — an emptied tile must not linger as a dead pane.
     /// </summary>

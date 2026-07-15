@@ -224,6 +224,29 @@ public sealed class StyloagentDockFactory : Factory
             DocumentDock = FirstDocumentDock(RootDock);
     }
 
+    /// <summary>
+    /// Finds the NESTED empty document docks in a layout tree — leftover split/tile regions holding no
+    /// documents — for the "Close empty docks" tidy action. A root-level document dock (the sole centre
+    /// surface) is deliberately excluded: you always want somewhere to open documents. Mirrors the guard
+    /// in <see cref="CollapseDock"/>.
+    /// </summary>
+    internal static IReadOnlyList<IDock> EmptyCollapsibleDocks(IDock root)
+    {
+        var result = new List<IDock>();
+        Walk(root, parentIsRoot: false);
+        return result;
+
+        void Walk(IDockable node, bool parentIsRoot)
+        {
+            if (node is not IDock d) return;
+            bool empty = d is DocumentDock && (d.VisibleDockables is null || d.VisibleDockables.Count == 0);
+            if (empty && !parentIsRoot) result.Add(d);
+            if (d.VisibleDockables is not null)
+                foreach (var child in d.VisibleDockables)
+                    Walk(child, parentIsRoot: d is IRootDock);
+        }
+    }
+
     /// <summary>Depth-first find of the first <see cref="DocumentDock"/> in a built tree.</summary>
     private static DocumentDock? FirstDocumentDock(IDock dock)
     {

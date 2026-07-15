@@ -57,12 +57,15 @@ public sealed class PtyMessageInjector : IMessageInjector
     /// </summary>
     private static async Task BreakTurnAsync(IPtySession pty, CancellationToken ct)
     {
+        // Always press ESC at least once: an urgent break must attempt to interrupt even when the agent
+        // LOOKS idle — IsIdle is just "no output for ~250ms", which a mid-turn agent that's quietly thinking
+        // trips. So press, THEN check idle; keep pressing until the turn actually dies, bounded.
         for (int attempt = 0; attempt < MaxBreakAttempts; attempt++)
         {
-            if (pty.IsIdle) return;   // turn already broken — stop pressing ESC
             await pty.WriteAsync(Escape, ct).ConfigureAwait(false);
             if (BreakPollDelay > TimeSpan.Zero)
                 await Task.Delay(BreakPollDelay, ct).ConfigureAwait(false);
+            if (pty.IsIdle) return;   // turn broken — stop pressing ESC
         }
     }
 

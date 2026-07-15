@@ -30,6 +30,15 @@ public partial class App : Application
             Styloagent.Core.Sessions.AgentSession.InjectSettleDelay = TimeSpan.FromMilliseconds(2500);
             Styloagent.Core.Sessions.AgentSession.InjectEnterRetryDelay = TimeSpan.FromMilliseconds(2000);
 
+            // Same story for the message-injection fallback: one ESC doesn't reliably break a live claude
+            // turn (pause between presses so it can actually die before we re-check idle), and an Enter
+            // typed the instant the nudge lands is dropped — so settle before submitting and press once
+            // more as a safety net. Otherwise a delivered bus message lingers unsent, needing a manual
+            // Enter. (Zero in tests, where no real claude runs.)
+            Services.PtyMessageInjector.BreakPollDelay = TimeSpan.FromMilliseconds(150);
+            Services.PtyMessageInjector.SubmitSettleDelay = TimeSpan.FromMilliseconds(400);
+            Services.PtyMessageInjector.SubmitRetryDelay = TimeSpan.FromMilliseconds(500);
+
             string recentsPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "Styloagent", "recent-projects.yaml");

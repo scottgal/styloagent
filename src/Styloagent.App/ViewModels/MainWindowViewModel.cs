@@ -281,11 +281,43 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private void RebuildCenterLayout()
     {
         if (_dockFactory is null) return;
-        var active = SelectedPane ?? Panes.FirstOrDefault();
-        var layout = _dockFactory.BuildLayout(Panes.ToList(), LayoutMode);
+        // Hidden agents are kept off the document surface (Fix F) — their sessions run on, but they don't
+        // take a tile/tab, even across a layout-mode switch.
+        var visible = Panes.Where(p => !p.IsHidden).ToList();
+        var active = (SelectedPane is { IsHidden: false } sel ? sel : null) ?? visible.FirstOrDefault();
+        var layout = _dockFactory.BuildLayout(visible, LayoutMode);
         Layout = layout;
         _dockFactory.InitLayout(layout);
         if (active is not null) _dockFactory.SetActiveDockable(active);
+    }
+
+    /// <summary>
+    /// Fix F — HIDE a live agent: take its pane off the document surface to free screen space while its PTY
+    /// keeps running (it stays in the roster, still working). Distinct from Dehydrate, which kills the PTY:
+    /// the session is left untouched, only its dockable is removed. Restore with <see cref="ShowAgentCommand"/>.
+    /// </summary>
+    [RelayCommand]
+    private void HideAgent(AgentPaneViewModel? pane)
+    {
+        if (pane is null || pane.IsHidden) return;
+        pane.IsHidden = true;
+        if (_dockFactory is not null && pane.Owner is global::Dock.Model.Core.IDock)
+            _dockFactory.RemoveDockable(pane, collapse: true);   // drop the dockable; the session runs on
+    }
+
+    /// <summary>Fix F — RESTORE a hidden agent's pane to the document surface. No rehydrate: it never stopped.</summary>
+    [RelayCommand]
+    private void ShowAgent(AgentPaneViewModel? pane)
+    {
+        if (pane is null || !pane.IsHidden) return;
+        pane.IsHidden = false;
+        if (_dockFactory?.DocumentDock is { } dock)
+        {
+            if (!ReferenceEquals(pane.Owner, dock))
+                _dockFactory.AddDockable(dock, pane);
+            _dockFactory.SetActiveDockable(pane);
+            if (_dockFactory.RootDock is { } root) _dockFactory.SetFocusedDockable(root, pane);
+        }
     }
 
     [ObservableProperty]
@@ -625,6 +657,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         vm._gitWatcher = new WorktreeGitWatcher();
         vm._gitWatcher.Changed += (_, _) =>
             Avalonia.Threading.Dispatcher.UIThread.Post(() => vm.RefreshGitPanelFor(vm.SelectedPane));
+        // Structured git-op visibility: a branch switch in the watched worktree logs a timeline line
+        // (the panel refresh above already reflects the new state).
+        vm._gitWatcher.BranchChanged += (_, branch) =>
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => vm.LogGitBranchChange(branch));
 
         if (entries.Count == 0)
         {
@@ -1038,7 +1074,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     partial void OnSelectedSearchResultChanged(Styloagent.Core.Docs.DocSearchHit? value)
     {
         if (value is null) return;
-        OpenMarkdownDocument(new MarkdownDocumentViewModel(value.Title, value.FullPath));
+        OpenDocumentByPath(value.FullPath);   // shared viewer-by-type dispatch (same as drag-to-surface)
         // Reset the box for the next search (deferred so we don't fight the AutoCompleteBox's own update).
         Dispatcher.UIThread.Post(() =>
         {
@@ -1483,6 +1519,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (pane is not null && _git is not null) _ = pane.RefreshGitStatusAsync(_git);
     }
 
+    /// <summary>
+    /// Git-op visibility: logs a structured timeline op when the watched worktree switches branch, so an
+    /// agent's <c>git checkout</c> is reflected in the cockpit ("switched branch · fix/…") instead of being
+    /// invisible. Attributed to the selected agent (whose worktree the watcher tracks).
+    /// </summary>
+    internal void LogGitBranchChange(string? branch)
+    {
+        var pane = SelectedPane;
+        string who   = pane?.DisplayName ?? "git";
+        string color = pane?.BorderColorHex ?? "#8899BB";
+        string desc  = string.IsNullOrEmpty(branch) ? "detached HEAD" : $"switched branch · {branch}";
+        Timeline.Add(DateTimeOffset.Now, who, desc, color);
+    }
+
     /// <summary>Keeps each pane's <see cref="AgentPaneViewModel.IsSelected"/> in sync so the roster
     /// outlines only the active agent. Also refreshes the Git panel for the new pane.</summary>
     partial void OnSelectedPaneChanged(AgentPaneViewModel? oldValue, AgentPaneViewModel? newValue)
@@ -1659,6 +1709,36 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _dockFactory.AddDockable(_dockFactory.DocumentDock, doc);
         _dockFactory.SetActiveDockable(doc);
         _dockFactory.SetFocusedDockable(_dockFactory.RootDock, doc);
+    }
+
+    /// <summary>
+    /// Viewer-by-type dispatch for the document surface: markdown files (<c>.md</c>/<c>.markdown</c>) get
+    /// the rendered-markdown viewer, everything else the read-only source viewer. Pure so it is unit-testable
+    /// without a dock.
+    /// </summary>
+    internal static DocViewerKind ViewerKindForPath(string path)
+    {
+        var ext = Path.GetExtension(path).ToLowerInvariant();
+        return ext is ".md" or ".markdown" ? DocViewerKind.Markdown : DocViewerKind.Source;
+    }
+
+    /// <summary>
+    /// Opens a file as the dock document that matches its type (see <see cref="ViewerKindForPath"/>). This is
+    /// the single open path shared by the top-bar document search and the drag-onto-the-doc-surface drop, so
+    /// they behave identically. No-ops for a blank path or before the dock is initialised.
+    /// </summary>
+    public void OpenDocumentByPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+        switch (ViewerKindForPath(path))
+        {
+            case DocViewerKind.Markdown:
+                OpenMarkdownDocument(new MarkdownDocumentViewModel(Path.GetFileNameWithoutExtension(path), path));
+                break;
+            default:
+                OpenSourceDocument(path);
+                break;
+        }
     }
 
     /// <summary>Opens an edit's before/after as a highlighted line-diff document (from a timeline click).</summary>

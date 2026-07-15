@@ -35,8 +35,13 @@
             <!-- Per-agent identity colour (same as its terminal accent) -->
             <Border Grid.Column="0" Background="{Binding BorderColorHex}" Width="4" />
             <StackPanel Grid.Column="1" Margin="8,6" Spacing="2">
-              <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="12"
-                         Foreground="{Binding BorderColorHex}" />
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="12"
+                           Foreground="{Binding BorderColorHex}" />
+                <!-- Hidden marker: the agent is off-screen but still running (Fix F) -->
+                <TextBlock Text="hidden" FontSize="9" FontStyle="Italic" VerticalAlignment="Center"
+                           Foreground="{DynamicResource MutedTextBrush}" IsVisible="{Binding IsHidden}" />
+              </StackPanel>
               <!-- Live hook state (§4.4): glyph + activity headline ("indexing repo"), coloured by state -->
               <StackPanel Orientation="Horizontal" Spacing="5">
                 <TextBlock Text="{Binding HookStateGlyph}" FontSize="11"
@@ -54,9 +59,21 @@
                          Foreground="{DynamicResource MutedTextBrush}"
                          IsVisible="{Binding HasUsage}" />
             </StackPanel>
-            <!-- Identity dot; amber when the agent needs you -->
-            <Ellipse Grid.Column="2" Width="8" Height="8" Margin="0,0,10,0"
-                     VerticalAlignment="Center" Fill="{Binding HookStateColorHex}" />
+            <!-- Hide / Show affordance + identity dot (amber when the agent needs you) -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                        VerticalAlignment="Center" Margin="0,0,8,0">
+              <Button Content="Hide" FontSize="9" Padding="4,1" VerticalAlignment="Center"
+                      IsVisible="{Binding !IsHidden}"
+                      Command="{Binding DataContext.HideAgentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                      CommandParameter="{Binding}"
+                      ToolTip.Tip="Hide this agent's pane — it keeps running (not Dehydrate)" />
+              <Button Content="Show" FontSize="9" Padding="4,1" VerticalAlignment="Center"
+                      IsVisible="{Binding IsHidden}"
+                      Command="{Binding DataContext.ShowAgentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                      CommandParameter="{Binding}"
+                      ToolTip.Tip="Bring this agent's pane back on screen" />
+              <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{Binding HookStateColorHex}" />
+            </StackPanel>
           </Grid>
         </Border>
       </Button>

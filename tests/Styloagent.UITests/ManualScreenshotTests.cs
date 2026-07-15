@@ -257,16 +257,20 @@ public class ManualScreenshotTests
         {
             var repo = Path.Combine(Path.GetTempPath(), "manual-repo-" + Guid.NewGuid().ToString("N"));
             var chan = Path.Combine(Path.GetTempPath(), "manual-chan-" + Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(Path.Combine(repo, "docs", "manual"));
-            Directory.CreateDirectory(Path.Combine(repo, "docs", "superpowers", "specs"));
-            Directory.CreateDirectory(Path.Combine(chan, "saved-context"));
+            // Flat tree: files directly under each source root, no sub-folders. The DocLibrary TreeView
+            // auto-expands every folder, and a folder node that itself contains a sub-folder collapses to
+            // ~zero height under headless render — the sub-tree then paints on top of its parent (garbled,
+            // overlapping labels), a headless-only artifact no amount of settling clears. A flat file list
+            // under the two source roots (repo / channel) renders cleanly and is representative of the panel.
+            Directory.CreateDirectory(repo);
+            Directory.CreateDirectory(chan);
             try
             {
                 File.WriteAllText(Path.Combine(repo, "README.md"), "# readme");
-                File.WriteAllText(Path.Combine(repo, "docs", "manual", "README.md"), "# manual");
-                File.WriteAllText(Path.Combine(repo, "docs", "superpowers", "specs", "cockpit-design.md"), "# design");
+                File.WriteAllText(Path.Combine(repo, "ARCHITECTURE.md"), "# architecture");
+                File.WriteAllText(Path.Combine(repo, "CONTRIBUTING.md"), "# contributing");
                 File.WriteAllText(Path.Combine(chan, "PROTOCOL.md"), "# protocol");
-                File.WriteAllText(Path.Combine(chan, "saved-context", "foss-context.md"), "# ctx");
+                File.WriteAllText(Path.Combine(chan, "foss-context.md"), "# ctx");
 
                 var vm = new DocLibraryViewModel(repo, chan, _ => { });
                 var view = new DocLibraryView { DataContext = vm };

@@ -320,6 +320,40 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
         Id = manifest.Prefix;
         Title = displayName;
         CanFloat = true;
+
+        // Force Exited when the PTY process ends. A hard kill / crash does NOT fire Claude's SessionEnd
+        // hook, so the hook state would otherwise stay stuck (e.g. ⚠ needs-you) on a dead agent. Wire every
+        // spawn/rehydrate, plus the current PTY if this pane is created for an already-live session.
+        _session.PtyStarted += WirePtyExit;
+        if (_session.CurrentPty is { } livePty) WirePtyExit(livePty);
+    }
+
+    // ── Session exit → force Exited (independent of the hook stream) ─────────────
+
+    private IPtySession? _wiredPty;
+
+    /// <summary>Subscribes the pane to a PTY's Exited signal (idempotent; drops any prior wiring first).</summary>
+    private void WirePtyExit(IPtySession pty)
+    {
+        if (ReferenceEquals(_wiredPty, pty)) return;
+        if (_wiredPty is not null) _wiredPty.Exited -= OnPtyExited;
+        _wiredPty = pty;
+        pty.Exited += OnPtyExited;
+    }
+
+    /// <summary>
+    /// The PTY process ended (natural exit, crash, or hard kill). A hard kill does NOT fire Claude's
+    /// SessionEnd hook, so we force <see cref="AgentHookState.Exited"/> here regardless of hook events —
+    /// otherwise a killed tab stays stuck on its last state (e.g. ⚠ needs-you). PortaPtySession raises
+    /// Exited on a background thread and suppresses it on a graceful dehydrate-dispose (it unsubscribes
+    /// ProcessExited before Kill), so this fires only on a genuine exit — never on a dehydrate.
+    /// </summary>
+    private void OnPtyExited()
+    {
+        if (global::Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+            HookState = AgentHookState.Exited;
+        else
+            global::Avalonia.Threading.Dispatcher.UIThread.Post(() => HookState = AgentHookState.Exited);
     }
 
     /// <summary>

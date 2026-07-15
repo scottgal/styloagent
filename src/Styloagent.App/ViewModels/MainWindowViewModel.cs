@@ -657,6 +657,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         vm._gitWatcher = new WorktreeGitWatcher();
         vm._gitWatcher.Changed += (_, _) =>
             Avalonia.Threading.Dispatcher.UIThread.Post(() => vm.RefreshGitPanelFor(vm.SelectedPane));
+        // Structured git-op visibility: a branch switch in the watched worktree logs a timeline line
+        // (the panel refresh above already reflects the new state).
+        vm._gitWatcher.BranchChanged += (_, branch) =>
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => vm.LogGitBranchChange(branch));
 
         if (entries.Count == 0)
         {
@@ -1513,6 +1517,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             Changes?.Clear();
         }
         if (pane is not null && _git is not null) _ = pane.RefreshGitStatusAsync(_git);
+    }
+
+    /// <summary>
+    /// Git-op visibility: logs a structured timeline op when the watched worktree switches branch, so an
+    /// agent's <c>git checkout</c> is reflected in the cockpit ("switched branch · fix/…") instead of being
+    /// invisible. Attributed to the selected agent (whose worktree the watcher tracks).
+    /// </summary>
+    internal void LogGitBranchChange(string? branch)
+    {
+        var pane = SelectedPane;
+        string who   = pane?.DisplayName ?? "git";
+        string color = pane?.BorderColorHex ?? "#8899BB";
+        string desc  = string.IsNullOrEmpty(branch) ? "detached HEAD" : $"switched branch · {branch}";
+        Timeline.Add(DateTimeOffset.Now, who, desc, color);
     }
 
     /// <summary>Keeps each pane's <see cref="AgentPaneViewModel.IsSelected"/> in sync so the roster

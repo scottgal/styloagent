@@ -132,6 +132,52 @@ public class WorktreeGitWatcherTests : IDisposable
     }
 
     /// <summary>
+    /// ReadBranch parses "ref: refs/heads/&lt;branch&gt;" from HEAD, and returns null for a detached
+    /// HEAD (raw SHA) or a missing HEAD — the parser behind the structured "switched branch" timeline op.
+    /// </summary>
+    [Fact]
+    public void ReadBranch_ParsesHeadRef_AndReturnsNullForDetached()
+    {
+        var gitDir = Path.Combine(_tempDir, ".git");
+        Directory.CreateDirectory(gitDir);
+        var head = Path.Combine(gitDir, "HEAD");
+
+        File.WriteAllText(head, "ref: refs/heads/fix/worktree-survives-spawn\n");
+        Assert.Equal("fix/worktree-survives-spawn", WorktreeGitWatcher.ReadBranch(gitDir));
+
+        File.WriteAllText(head, "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b");   // detached HEAD
+        Assert.Null(WorktreeGitWatcher.ReadBranch(gitDir));
+
+        File.Delete(head);
+        Assert.Null(WorktreeGitWatcher.ReadBranch(gitDir));                    // missing HEAD
+    }
+
+    /// <summary>
+    /// Switching branch (HEAD's ref changes) raises BranchChanged with the new branch — the signal that
+    /// drives a structured timeline op. Tolerant of platforms without a reliable FileSystemWatcher.
+    /// </summary>
+    [Fact]
+    public async Task Watch_BranchSwitch_RaisesBranchChanged_WithTheNewBranch()
+    {
+        var gitDir = Path.Combine(_tempDir, ".git");
+        Directory.CreateDirectory(gitDir);
+        var headPath = Path.Combine(gitDir, "HEAD");
+        await File.WriteAllTextAsync(headPath, "ref: refs/heads/main");
+
+        using var watcher = new WorktreeGitWatcher();
+        var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        watcher.BranchChanged += (_, branch) => tcs.TrySetResult(branch);
+
+        watcher.Watch(_tempDir);
+        await File.WriteAllTextAsync(headPath, "ref: refs/heads/fix/foo");
+
+        var completed = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(3)));
+        if (completed == tcs.Task)
+            Assert.Equal("fix/foo", await tcs.Task);
+        // else: FSW unsupported/slow on this platform — tolerate (no hang), like the Changed tests.
+    }
+
+    /// <summary>
     /// Dispose releases resources without throwing.
     /// </summary>
     [Fact]

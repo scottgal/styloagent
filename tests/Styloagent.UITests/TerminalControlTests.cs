@@ -332,6 +332,56 @@ public class TerminalControlTests
     }
 
     /// <summary>
+    /// Regression for the layout-switch lockup (v0.5.1): a busy agent's terminal built the FULL transcript
+    /// into coloured inlines on EVERY rebuild — a Run per colour span across up to ~1000 scrollback rows,
+    /// each Add raising a logical-tree notification. Coalescing capped the frequency; this caps the COST.
+    /// A layout switch re-renders every pane at once, so an unbounded per-terminal render pinned the UI
+    /// thread at 100% CPU. The coloured render must be VIRTUALIZED — only the rows intersecting the
+    /// viewport (+ a little over-scan) become inlines — so a rebuild is O(viewport), not O(transcript),
+    /// while the plain-text transcript (and the scrollbar) still span the whole buffer.
+    /// </summary>
+    [Fact]
+    public Task LargeTranscript_RendersOnlyTheViewport_NotEveryRow()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);
+            var window = new Window { Content = control, Width = 800, Height = 300, Name = "VirtualizeWindow" };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            // A transcript far larger than the viewport (~18 rows at 300px tall).
+            const int lines = 400;
+            for (int i = 1; i <= lines; i++)
+                fake.FireOutput($"line{i:D3}\r\n");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            var screen = control.GetVisualDescendants().OfType<SelectableTextBlock>().First(t => t.Name == "ScreenText");
+            int runs = screen.Inlines?.OfType<Run>().Count() ?? 0;
+
+            // Virtualized: only the viewport (+over-scan) is built — a few dozen rows, NOT 400. Pre-fix the
+            // full-transcript render produced ~400+ runs; that unbounded build is what storms the UI thread.
+            Assert.True(runs < 120,
+                $"Expected the coloured render to be bounded to the viewport (~a few dozen rows), but built {runs} " +
+                $"runs for a {lines}-row transcript — an unbounded render that pins the UI thread.");
+
+            // The full transcript is still available for scrollback (plain rows) and the scrollbar spans it.
+            Assert.Contains("line001", control.RenderedText);
+            Assert.Contains("line400", control.RenderedText);
+            var sv = control.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Name == "ScrollArea");
+            Assert.True(sv.Extent.Height > sv.Viewport.Height * 3,
+                $"the scroll surface should span the full transcript (extent {sv.Extent.Height}) not just the " +
+                $"viewport ({sv.Viewport.Height})");
+
+            window.Close();
+        });
+    }
+
+    /// <summary>
     /// SizeChanged on the control calls session.Resize with the calculated cols/rows.
     /// </summary>
     [Fact]

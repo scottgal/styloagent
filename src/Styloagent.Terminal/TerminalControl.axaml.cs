@@ -248,6 +248,17 @@ public sealed partial class TerminalControl : UserControl
     private bool _renderDirty;
     private bool _rebuildScheduled;
 
+    // ── Virtualized render state ─────────────────────────────────────────────
+    /// <summary>Rows rendered above and below the viewport so a small scroll doesn't flash blank.</summary>
+    private const int OverscanRows = 8;
+    /// <summary>Full transcript height in rows (drives the scroll surface extent); the plain <see cref="_rows"/> hold their text.</summary>
+    private int _rowCount;
+    /// <summary>Absolute buffer row of the cursor, captured at the last rebuild (for the block-cursor draw).</summary>
+    private int _cursorAbsRow;
+    /// <summary>The [first,last) transcript slice currently built into inlines — a scroll that doesn't move it skips the rebuild.</summary>
+    private int _renderedFirstRow;
+    private int _renderedLastRow = -1;
+
     /// <summary>
     /// Marks the rendered view dirty and ensures exactly one rebuild is queued on the UI thread. A burst of
     /// output that arrives before the queued rebuild runs collapses into that single rebuild. Safe to call
@@ -299,6 +310,11 @@ public sealed partial class TerminalControl : UserControl
     {
         double max = ScrollArea.Extent.Height - ScrollArea.Viewport.Height;
         _followTail = ScrollArea.Offset.Y >= max - _cellH;   // within one row of the bottom counts as "at bottom"
+
+        // Virtualize on scroll: render the rows that just came into view. Re-rendering the slice changes only
+        // the inlines and the text block's Canvas.Top — not the surface extent or the scroll offset — so this
+        // never re-enters OnScrollChanged, and the [first,last) guard makes an unchanged window a no-op.
+        RenderVisibleSlice();
     }
 
     private void OnSessionExited()
@@ -478,7 +494,8 @@ public sealed partial class TerminalControl : UserControl
         }
         int count = Math.Max(1, lastRow + 1);
 
-        // Plain-text rows — kept for RenderedText and test assertions.
+        // Plain-text rows — kept for RenderedText and test assertions. Cheap (strings only), so the FULL
+        // transcript stays here for scrollback search/copy even though the coloured render is virtualized.
         while (_rows.Count < count) _rows.Add(string.Empty);
         while (_rows.Count > count) _rows.RemoveAt(_rows.Count - 1);
         for (int r = 0; r < count; r++)
@@ -487,10 +504,55 @@ public sealed partial class TerminalControl : UserControl
             _rows[r] = l is null ? string.Empty : l.TranslateToString(true, 0, l.Length);
         }
 
-        // Coloured render: walk the XTerm cell grid and emit one Run per contiguous
-        // same-colour span. A single control with inline runs renders reliably (an
-        // ItemsControl-of-rows silently failed to materialize).
-        BuildColoredInlines(count, cursorAbsRow);
+        _rowCount = count;
+        _cursorAbsRow = cursorAbsRow;
+
+        // Size the scroll surface to the WHOLE transcript so the scrollbar spans it, then render only the
+        // rows in view. Building inlines for every row (Clear + a Run per colour span across up to ~1000
+        // scrollback rows) is what pinned the UI thread at 100% CPU on a layout switch — virtualizing to the
+        // viewport makes each rebuild O(visible rows).
+        Surface.Height = count * _cellH + PadY;
+        Surface.Width  = Math.Max(_terminal.Cols * _cellW + PadX, ScrollArea.Viewport.Width);
+        RenderVisibleSlice(forceRebuild: true);
+    }
+
+    /// <summary>
+    /// Renders ONLY the transcript rows intersecting the current viewport (plus a small over-scan) into
+    /// <c>ScreenText.Inlines</c>, positioning the text block within the full-height surface via Canvas.Top so
+    /// row <c>r</c> lands at its absolute <c>r · cellH</c>. Called on every rebuild and on scroll; a scroll
+    /// that doesn't move the visible slice is a no-op unless <paramref name="forceRebuild"/> is set (the
+    /// buffer content changed). This is the crux of the fix — a rebuild is O(viewport), never O(transcript).
+    /// </summary>
+    private void RenderVisibleSlice(bool forceRebuild = false)
+    {
+        int count = _rowCount;
+        if (count <= 0) return;
+
+        double vpTop = ScrollArea.Offset.Y;
+        double vpH   = ScrollArea.Viewport.Height;
+
+        int first, last;
+        if (vpH > 0)
+        {
+            first = Math.Max(0, (int)(vpTop / _cellH) - OverscanRows);
+            int visRows = (int)Math.Ceiling(vpH / _cellH) + 2 * OverscanRows;
+            last = Math.Min(count, first + visRows);
+        }
+        else
+        {
+            // Not laid out yet (before the first measure): render a BOUNDED tail window, never the whole
+            // transcript, so we can't storm even pre-layout.
+            int window = _terminal.Rows + 2 * OverscanRows;
+            first = Math.Max(0, count - window);
+            last = count;
+        }
+
+        if (!forceRebuild && first == _renderedFirstRow && last == _renderedLastRow) return;
+        _renderedFirstRow = first;
+        _renderedLastRow = last;
+
+        Canvas.SetTop(ScreenText, first * _cellH);
+        BuildColoredInlines(first, last, _cursorAbsRow);
     }
 
     /// <summary>
@@ -499,7 +561,7 @@ public sealed partial class TerminalControl : UserControl
     /// weight become one Run. Handles per-cell background, inverse video (fg/bg swapped) and bold.
     /// Falls back gracefully (default colours) if the buffer can't be read.
     /// </summary>
-    private void BuildColoredInlines(int count, int cursorAbsRow)
+    private void BuildColoredInlines(int first, int last, int cursorAbsRow)
     {
         var inlines = ScreenText.Inlines;
         if (inlines is null)
@@ -520,7 +582,7 @@ public sealed partial class TerminalControl : UserControl
 
         var runText = new StringBuilder();
 
-        for (int row = 0; row < count; row++)
+        for (int row = first; row < last; row++)
         {
             BufferLine? line = SafeLine(buffer, row);
             int cols = line?.Length ?? 0;
@@ -571,8 +633,8 @@ public sealed partial class TerminalControl : UserControl
 
             if (runOpen) FlushRun(inlines, runText, runFg, runBg, runBold);
 
-            // Newline separator between rows (not after the final row).
-            if (row < count - 1)
+            // Newline separator between rendered rows (not after the last row of the slice).
+            if (row < last - 1)
                 inlines.Add(new Run("\n"));
         }
     }

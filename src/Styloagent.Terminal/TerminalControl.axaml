@@ -5,21 +5,26 @@
              Focusable="True"
              Cursor="Ibeam">
 
-  <!-- Single monospace text block for the whole screen buffer. One control renders
-       reliably (an ItemsControl-of-rows silently failed to materialize), and it gives
-       correct monospace grid alignment plus selection. -->
+  <!-- A single monospace text block renders the VISIBLE rows (one control renders reliably; an
+       ItemsControl-of-rows silently failed to materialize). It sits on a Canvas "Surface" sized to the
+       WHOLE transcript so the scrollbar spans the full buffer, while the text block is virtualized: it
+       holds only the rows intersecting the viewport (+ over-scan) and is positioned via Canvas.Top. That
+       keeps every rebuild O(viewport) instead of O(transcript) — the fix for the layout-switch lockup. -->
   <ScrollViewer Name="ScrollArea"
                 Background="#0C0C0C"
                 Padding="6,4"
                 HorizontalScrollBarVisibility="Auto"
                 VerticalScrollBarVisibility="Auto">
-    <SelectableTextBlock Name="ScreenText"
-                         FontFamily="Menlo, Monaco, Cascadia Mono, Consolas, monospace"
-                         FontSize="13"
-                         LineHeight="16"
-                         Foreground="#EDEDED"
-                         Background="#0C0C0C"
-                         TextWrapping="NoWrap" />
+    <Canvas Name="Surface" Background="#0C0C0C">
+      <SelectableTextBlock Name="ScreenText"
+                           Canvas.Left="0" Canvas.Top="0"
+                           FontFamily="Menlo, Monaco, Cascadia Mono, Consolas, monospace"
+                           FontSize="13"
+                           LineHeight="16"
+                           Foreground="#EDEDED"
+                           Background="#0C0C0C"
+                           TextWrapping="NoWrap" />
+    </Canvas>
   </ScrollViewer>
 
 </UserControl>

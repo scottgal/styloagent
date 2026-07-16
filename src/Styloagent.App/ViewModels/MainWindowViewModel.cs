@@ -1250,6 +1250,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var add = await _git.AddWorktreeAsync(_project.Root, wtPath, wtBranch);
         if (!add.Ok) return WorktreeAdd.Failed(add.Error);
         EnsureWorktreesIgnored(_project.Root);
+        await EnsureLucidViewProvisionedAsync(_project.Root);
         return WorktreeAdd.Created(wtPath, wtBranch);
     }
 
@@ -2232,6 +2233,21 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Ensures .worktrees/ is git-ignored via .git/info/exclude (never touches the user's .gitignore).</summary>
+    /// <summary>
+    /// Materialises the cross-repo lucidview checkout under <c>.worktrees/lucidview</c> so the just-added
+    /// worktree can build the App: its csproj references <c>..\..\..\lucidview</c>, which from a worktree
+    /// resolves to <c>.worktrees/lucidview</c>. Idempotent (a HEAD stamp makes an unchanged source a no-op),
+    /// so it's safe to call on every worktree spawn. A failure is traced but does not fail the spawn — the
+    /// agent still gets its isolated tree; if it then can't build it will surface that itself.
+    /// </summary>
+    private static async Task EnsureLucidViewProvisionedAsync(string repoRoot)
+    {
+        var result = await Styloagent.Git.LucidViewProvisioner.EnsureAsync(repoRoot);
+        if (!result.Ok)
+            System.Diagnostics.Trace.WriteLine(
+                $"[Styloagent] lucidview provisioning {result.Status}: {result.Detail} — a worktree agent may fail to build");
+    }
+
     private static void EnsureWorktreesIgnored(string repoRoot)
     {
         try

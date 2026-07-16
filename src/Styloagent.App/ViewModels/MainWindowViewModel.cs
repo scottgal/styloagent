@@ -1671,8 +1671,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // — earlier than _project (AttachProject), which is null while the first pane is being selected.
         var gitDir = pane?.WorktreePath ?? _repoRoot ?? _project?.Root;
 
-        // Re-point the live watcher at whichever checkout we're showing (or stop if there's none).
-        _gitWatcher?.Watch(gitDir);
+        // Re-point the live watcher at whichever checkout we're showing (or stop if there's none), OFF the
+        // UI thread: FileSystemWatcher.StartRaisingEvents() blocks while it establishes the macOS
+        // FSEventStream, and must never run on the dispatcher (it froze the cockpit). Watch() is
+        // self-contained, lock-guarded, and marshals its own events back to the UI, so fire-and-forget is
+        // safe; the idempotency guard inside Watch() makes the common same-dir re-point a cheap no-op.
+        if (_gitWatcher is { } watcher)
+            _ = Task.Run(() => watcher.Watch(gitDir));
 
         if (gitDir is { } path && Directory.Exists(path))
         {

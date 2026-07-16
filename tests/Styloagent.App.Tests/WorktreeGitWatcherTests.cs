@@ -178,6 +178,50 @@ public class WorktreeGitWatcherTests : IDisposable
     }
 
     /// <summary>
+    /// Re-watching the SAME git dir is a no-op: it must NOT tear down and rebuild the underlying
+    /// FileSystemWatcher. The Changed handler re-invokes RefreshGitPanelFor -> Watch() on every git-dir
+    /// write, so a rebuild-per-call hammers the blocking macOS StartRaisingEvents() (FSEventStream setup)
+    /// and — on the UI thread — freezes the cockpit. This guards that freeze class.
+    /// </summary>
+    [Fact]
+    public void Watch_SameGitDirTwice_DoesNotRebuildWatcher()
+    {
+        var gitDir = Path.Combine(_tempDir, ".git");
+        Directory.CreateDirectory(gitDir);
+        File.WriteAllText(Path.Combine(gitDir, "HEAD"), "ref: refs/heads/main");
+
+        using var watcher = new WorktreeGitWatcher();
+
+        watcher.Watch(_tempDir);
+        watcher.Watch(_tempDir);
+        watcher.Watch(_tempDir);
+
+        Assert.Equal(1, watcher.WatchStartCount); // built once, then two no-op re-watches
+    }
+
+    /// <summary>
+    /// Re-pointing at a DIFFERENT git dir DOES rebuild (a genuine pane switch), and switching back rebuilds
+    /// again — the guard keys on the resolved git dir, not the call count.
+    /// </summary>
+    [Fact]
+    public void Watch_DifferentGitDir_RebuildsWatcher()
+    {
+        var a = Path.Combine(_tempDir, "a");
+        var b = Path.Combine(_tempDir, "b");
+        Directory.CreateDirectory(Path.Combine(a, ".git"));
+        Directory.CreateDirectory(Path.Combine(b, ".git"));
+
+        using var watcher = new WorktreeGitWatcher();
+
+        watcher.Watch(a);   // build 1
+        watcher.Watch(a);   // no-op (same dir)
+        watcher.Watch(b);   // build 2 (path changed)
+        watcher.Watch(a);   // build 3 (path changed back)
+
+        Assert.Equal(3, watcher.WatchStartCount);
+    }
+
+    /// <summary>
     /// Dispose releases resources without throwing.
     /// </summary>
     [Fact]

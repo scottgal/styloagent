@@ -33,6 +33,14 @@ public sealed class WorktreeGitWatcher : IDisposable
     private string? _lastBranch;
 
     /// <summary>
+    /// Number of times a new underlying <see cref="FileSystemWatcher"/> has actually been started. A
+    /// redundant re-watch of the git dir already being watched does NOT increment this — see the
+    /// idempotency guard in <see cref="Watch"/> that keeps the cockpit from rebuilding (and blocking on)
+    /// the watcher on every git-dir write. Exposed for tests.
+    /// </summary>
+    internal int WatchStartCount { get; private set; }
+
+    /// <summary>
     /// Points the watcher at the given worktree path, replacing any previous watch.
     /// Resolves <c>.git</c> — directory or file — to find the real git dir.
     /// Pass <c>null</c> to stop watching without starting a new watch.
@@ -44,17 +52,25 @@ public sealed class WorktreeGitWatcher : IDisposable
         {
             if (_disposed) return;
 
+            // Resolve up front so a redundant re-watch can short-circuit. The Changed handler re-invokes
+            // RefreshGitPanelFor -> Watch() on every git-dir write; rebuilding the FileSystemWatcher each
+            // time means a blocking StartRaisingEvents() (macOS FSEventStream setup) per write — which
+            // froze the cockpit when it ran on the UI thread under an agent's git churn. Re-pointing at the
+            // git dir we already watch is a no-op.
+            string? gitDir = worktreePath is null ? null : ResolveGitDir(worktreePath);
+
+            if (gitDir is not null && _fsWatcher is not null &&
+                string.Equals(gitDir, _gitDir, StringComparison.Ordinal))
+                return; // already watching this exact git dir — nothing to rebuild
+
             DisposeInternals();
             _gitDir = null;
             _lastBranch = null;
 
-            if (worktreePath is null) return;
+            if (gitDir is null) return;
 
             try
             {
-                string? gitDir = ResolveGitDir(worktreePath);
-                if (gitDir is null) return;
-
                 // Seed the branch so switching the watched worktree doesn't spuriously fire BranchChanged.
                 _gitDir = gitDir;
                 _lastBranch = ReadBranch(gitDir);
@@ -79,11 +95,15 @@ public sealed class WorktreeGitWatcher : IDisposable
                 fsw.Renamed += OnFsRenamed;
 
                 _fsWatcher = fsw;
+                WatchStartCount++;
             }
             catch
             {
-                // If we can't watch (e.g. path gone, no permissions), clean up and no-op.
+                // If we can't watch (e.g. path gone, no permissions), clean up and no-op. Reset the
+                // resolved state too so a later re-watch of the same path isn't short-circuited as a no-op.
                 DisposeInternals();
+                _gitDir = null;
+                _lastBranch = null;
             }
         }
     }

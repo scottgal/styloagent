@@ -16,8 +16,20 @@ public static class FleetGovernor
         if (parent is null)
             return Decision.Deny(RejectReason.UnknownParent, $"unknown parent '{parentPrefix}'");
 
-        if (state.Members.Any(m => m.Prefix == newPrefix))
+        var existing = state.Members.FirstOrDefault(m => m.Prefix == newPrefix);
+        if (existing is not null)
+        {
+            // A parked (dehydrated) agent keeps its slot for rehydration — never clobber it with a spawn.
+            if (existing.State == "dehydrated")
+                return Decision.Deny(RejectReason.DuplicatePrefix,
+                    $"'{newPrefix}' is dehydrated — rehydrate it instead of re-spawning");
+            // A crashed ("exited") agent's slot may be reclaimed: allow a re-spawn to replace it in place.
+            // This is a replacement, not an addition, so it bypasses the fleet-full / depth ceilings below.
+            if (existing.State == "exited")
+                return Decision.Allow();
+            // Any other state is a genuinely live duplicate.
             return Decision.Deny(RejectReason.DuplicatePrefix, $"'{newPrefix}' already exists");
+        }
 
         if (state.Members.Count >= state.MaxFleet)
             return Decision.Deny(RejectReason.FleetFull, $"fleet full ({state.Members.Count}/{state.MaxFleet})");

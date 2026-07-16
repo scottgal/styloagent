@@ -79,4 +79,39 @@ public class FleetGovernorTests
         Assert.False(d.Allowed);
         Assert.Equal(RejectReason.InvalidPrefix, d.Reason);
     }
+
+    // ── Re-spawn recovery: a crashed ("exited") member's slot may be reclaimed; a parked
+    //    ("dehydrated") member must be rehydrated, not clobbered. ─────────────────────────────
+    private static FleetMember M(string prefix, string? parent, int depth, string state)
+        => new(prefix, "resp", parent, depth, state);
+
+    [Fact]
+    public void Allows_respawn_over_an_exited_prefix()
+    {
+        var s = State(12, 3, false, M("overview-", null, 0), M("cockpit-", "overview-", 1, "exited"));
+        var d = FleetGovernor.Check(s, "overview-", "cockpit-");
+        Assert.True(d.Allowed);
+    }
+
+    [Fact]
+    public void Allows_respawn_over_an_exited_prefix_even_when_fleet_is_full()
+    {
+        // Reclaiming a dead slot must not trip the fleet-full ceiling — net member count is unchanged.
+        var members = new List<FleetMember> { M("overview-", null, 0) };
+        for (int i = 0; i < 10; i++) members.Add(M($"a{i}-", "overview-", 1));
+        members.Add(M("cockpit-", "overview-", 1, "exited"));   // 12 members, one of them exited
+        var s = new FleetState(members, 12, 3, false);
+        var d = FleetGovernor.Check(s, "overview-", "cockpit-");
+        Assert.True(d.Allowed);
+    }
+
+    [Fact]
+    public void Rejects_respawn_over_a_dehydrated_prefix_with_a_rehydrate_hint()
+    {
+        var s = State(12, 3, false, M("overview-", null, 0), M("cockpit-", "overview-", 1, "dehydrated"));
+        var d = FleetGovernor.Check(s, "overview-", "cockpit-");
+        Assert.False(d.Allowed);
+        Assert.Equal(RejectReason.DuplicatePrefix, d.Reason);
+        Assert.Contains("rehydrate", d.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }

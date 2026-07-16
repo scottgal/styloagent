@@ -1216,6 +1216,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var decision = FleetGovernor.Check(state, req.ParentPrefix, req.Prefix);
         if (!decision.Allowed) return SpawnOutcome.Reject(decision.Reason!.Value, decision.Message);
 
+        // Re-spawn recovery: the governor allows re-spawning over a crashed ("exited") ghost. Drop the
+        // dead pane so the fresh spawn reclaims its slot instead of duplicating the prefix. Refuse if the
+        // ghost still has children — removing it would orphan them and break the single-rooted authority tree.
+        var ghost = Panes.FirstOrDefault(p => p.Prefix == req.Prefix);
+        if (ghost is not null)
+        {
+            if (Panes.Any(p => p.ParentPrefix == req.Prefix))
+                return SpawnOutcome.Reject(RejectReason.DuplicatePrefix,
+                    $"'{req.Prefix}' has children — remove them before re-spawning it");
+            RemoveAgentPane(ghost);
+        }
+
         int parentDepth = Panes.First(p => p.Prefix == req.ParentPrefix).Depth;
 
         string? worktreePath = null, worktreeBranch = null;
@@ -1236,12 +1248,30 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             : SpawnOutcome.Ok(req.Prefix);
     }
 
+    /// <summary>
+    /// Drops a crashed agent's pane so its prefix can be reclaimed by a re-spawn: removes its dockable,
+    /// roster entry and hook mapping. The PTY is already dead (this runs only for an exited ghost), so
+    /// there is nothing to kill — it is the inverse of the additions made in <see cref="CreatePaneForProposed"/>.
+    /// </summary>
+    private void RemoveAgentPane(AgentPaneViewModel pane)
+    {
+        if (_dockFactory is not null && pane.Owner is global::Dock.Model.Core.IDock)
+            _dockFactory.RemoveDockable(pane, collapse: true);
+        Panes.Remove(pane);
+        foreach (var hookId in _panesByHookId.Where(kv => kv.Value == pane).Select(kv => kv.Key).ToList())
+            _panesByHookId.Remove(hookId);
+        if (ReferenceEquals(SelectedPane, pane)) SelectedPane = Panes.FirstOrDefault();
+        RefreshInstruments();
+    }
+
     /// <summary>Builds a fleet snapshot from the current roster (for list_fleet and SpawnChild).</summary>
     public FleetSnapshot BuildFleetSnapshot()
     {
+        // A parked agent reports "dehydrated" (not its stale hook text) so the governor can tell a
+        // rehydratable ghost apart from a crashed ("exited") one — the two are recovered differently.
         var members = Panes.Select(p => new FleetMember(
             p.Prefix, p.Responsibility, p.ParentPrefix, p.Depth,
-            p.HookStateText ?? "running")).ToList();
+            p.State == SessionState.Dehydrated ? "dehydrated" : (p.HookStateText ?? "running"))).ToList();
         return new FleetSnapshot(members, FleetPolicy.MaxFleet, FleetPolicy.MaxDepth, FleetPaused);
     }
 

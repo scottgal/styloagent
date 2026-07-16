@@ -321,6 +321,50 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Human-in-the-loop approval: sends "Yes" (option 1 + Enter) to a waiting agent's permission prompt over
+    /// its PTY, so the operator can approve from the roster without hunting for the terminal pane. This is an
+    /// explicit per-prompt human action — NOT auto-bypass; the operator chooses to approve each one.
+    /// </summary>
+    [RelayCommand]
+    private void ApprovePermission(AgentPaneViewModel? pane)
+    {
+        if (pane?.CurrentPty is not { } pty) return;
+        _ = pty.WriteAsync("1\r");
+        Timeline.Add(DateTimeOffset.Now, pane.DisplayName, "approved prompt", pane.BorderColorHex);
+    }
+
+    /// <summary>Immediately terminates a live agent (graceful PTY dispose, no checkpoint).</summary>
+    [RelayCommand]
+    private Task KillAgent(AgentPaneViewModel? pane) => KillAgentCore(pane, force: false);
+
+    /// <summary>Force-kills a stuck agent — SIGKILLs its OS process tree by PID.</summary>
+    [RelayCommand]
+    private Task ForceKillAgent(AgentPaneViewModel? pane) => KillAgentCore(pane, force: true);
+
+    private async Task KillAgentCore(AgentPaneViewModel? pane, bool force)
+    {
+        if (pane is null) return;
+        await pane.KillAsync(force);
+        AttentionQueue.Remove(pane);          // a dead agent no longer needs you
+        RefreshAttention();
+        RefreshInstruments();
+        Timeline.Add(DateTimeOffset.Now, pane.DisplayName, force ? "force-killed" : "killed", pane.BorderColorHex);
+    }
+
+    /// <summary>
+    /// Removes a dead agent's pane from the roster + dock so its prefix is free to re-spawn. Refuses while the
+    /// agent is still Live (kill it first) or if it has children (would orphan them / break the authority tree).
+    /// </summary>
+    [RelayCommand]
+    private void RemoveAgent(AgentPaneViewModel? pane)
+    {
+        if (pane is null || pane.State == SessionState.Live) return;
+        if (Panes.Any(p => p.ParentPrefix == pane.Prefix)) return;
+        RemoveAgentPane(pane);
+        Timeline.Add(DateTimeOffset.Now, pane.DisplayName, "removed", pane.BorderColorHex);
+    }
+
+    /// <summary>
     /// "Close empty docks": collapses any leftover NESTED empty document areas (split/tile regions with no
     /// documents) so the layout reflows into the freed space. The sole centre surface is preserved (you
     /// always want somewhere to open documents). Complements the automatic last-document-close collapse.
@@ -723,6 +767,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             presentation.BorderColorHex)
         {
             UserInteracted = vm._interaction.RecordInput,
+            Host = vm,
         };
         vm.Panes.Add(vm.Pane);
         vm.SelectedPane = vm.Pane;
@@ -838,6 +883,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             presentation.BorderColorHex)
         {
             UserInteracted = _interaction.RecordInput,
+            Host = this,
             ParentPrefix = owner is not null && owner.Prefix != entry.Prefix ? owner.Prefix : null,
             Depth = owner is not null && owner.Prefix != entry.Prefix ? owner.Depth + 1 : 0,
         };
@@ -898,6 +944,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var paneVm = new AgentPaneViewModel(session, entry, overview.Prefix.TrimEnd('-'), overview.ColorHex)
         {
             UserInteracted = _interaction.RecordInput,
+            Host = this,
         };
         Panes.Add(paneVm);
         _panesByHookId[hookId] = paneVm;
@@ -1491,7 +1538,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (documentDock is null || rootDock is null) return null;
 
         // Persist the launch prompt to a file so the existing LaunchPromptPath path can read it.
-        string root = _project?.Root ?? DefaultWorkingDirectory();
+        // Anchor a spawn to the SAME repo the overview agent runs in. _project can be null after a
+        // restart (no project auto-loaded), so fall back through _repoRoot / STYLOAGENT_REPO before
+        // ever dropping to DefaultWorkingDirectory() — which is the user's home (~/), NOT the repo.
+        string root = _project?.Root
+            ?? _repoRoot
+            ?? Environment.GetEnvironmentVariable("STYLOAGENT_REPO")
+            ?? DefaultWorkingDirectory();
         string launchPromptPath = string.Empty;
         if (_project is not null && !string.IsNullOrWhiteSpace(p.LaunchPrompt))
         {
@@ -1501,8 +1554,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         string resolvedWorktree = worktreeOverride ?? WorkingDirectoryResolver.Resolve(
-            string.IsNullOrWhiteSpace(p.Dir) ? null : Path.Combine(root, p.Dir),
-            DefaultWorkingDirectory());
+            string.IsNullOrWhiteSpace(p.Dir) ? root : Path.Combine(root, p.Dir),
+            root);   // fall back to the repo root, never to ~/
 
         var entry = new AgentManifestEntry(
             Prefix: p.Prefix,
@@ -1526,6 +1579,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             Depth = depth,
             Responsibility = p.Responsibility,
             UserInteracted = _interaction.RecordInput,
+            Host = this,
         };
         paneVm.WorktreePath = worktreeOverride;
         paneVm.WorktreeBranch = worktreeBranch;

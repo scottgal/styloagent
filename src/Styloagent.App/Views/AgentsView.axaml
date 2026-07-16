@@ -42,8 +42,10 @@
                 <TextBlock Text="hidden" FontSize="9" FontStyle="Italic" VerticalAlignment="Center"
                            Foreground="{DynamicResource MutedTextBrush}" IsVisible="{Binding IsHidden}" />
               </StackPanel>
-              <!-- Live hook state (§4.4): glyph + activity headline ("indexing repo"), coloured by state -->
-              <StackPanel Orientation="Horizontal" Spacing="5">
+              <!-- Live hook state (§4.4): glyph + activity headline ("indexing repo"), coloured by state.
+                   Hover shows the pending question when the agent needs you. -->
+              <StackPanel Orientation="Horizontal" Spacing="5"
+                          ToolTip.Tip="{Binding WaitingTooltip}">
                 <TextBlock Text="{Binding HookStateGlyph}" FontSize="11"
                            Foreground="{Binding HookStateColorHex}" />
                 <TextBlock Text="{Binding StatusHeadline}" FontSize="10"
@@ -59,19 +61,48 @@
                          Foreground="{DynamicResource MutedTextBrush}"
                          IsVisible="{Binding HasUsage}" />
             </StackPanel>
-            <!-- Hide / Show affordance + identity dot (amber when the agent needs you) -->
+            <!-- Quick Approve + per-agent management menu + identity dot (amber when the agent needs you) -->
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
                         VerticalAlignment="Center" Margin="0,0,8,0">
-              <Button Content="Hide" FontSize="9" Padding="4,1" VerticalAlignment="Center"
-                      IsVisible="{Binding !IsHidden}"
-                      Command="{Binding DataContext.HideAgentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+              <!-- One-click: send "Yes" to a waiting agent's permission prompt (hover = the question) -->
+              <Button Content="Approve" FontSize="9" Padding="6,1" VerticalAlignment="Center"
+                      Background="#5A4A00" Foreground="#FFE9A8"
+                      IsVisible="{Binding NeedsYou}"
+                      Command="{Binding Host.ApprovePermissionCommand}"
                       CommandParameter="{Binding}"
-                      ToolTip.Tip="Hide this agent's pane — it keeps running (not Dehydrate)" />
-              <Button Content="Show" FontSize="9" Padding="4,1" VerticalAlignment="Center"
-                      IsVisible="{Binding IsHidden}"
-                      Command="{Binding DataContext.ShowAgentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                      CommandParameter="{Binding}"
-                      ToolTip.Tip="Bring this agent's pane back on screen" />
+                      ToolTip.Tip="{Binding WaitingTooltip}" />
+              <!-- Manage: every pane/tab action in one menu (Fix: tabs weren't functional).
+                   Flyout items bind via Host (the popup is outside the visual tree, so ancestor bindings fail). -->
+              <Button Content="⋯" FontSize="13" Padding="6,0" VerticalAlignment="Center"
+                      ToolTip.Tip="Manage this agent">
+                <Button.Flyout>
+                  <MenuFlyout>
+                    <MenuItem Header="Approve prompt"
+                              IsEnabled="{Binding NeedsYou}"
+                              Command="{Binding Host.ApprovePermissionCommand}"
+                              CommandParameter="{Binding}" />
+                    <Separator />
+                    <MenuItem Header="Hide pane" IsVisible="{Binding !IsHidden}"
+                              Command="{Binding Host.HideAgentCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="Show pane" IsVisible="{Binding IsHidden}"
+                              Command="{Binding Host.ShowAgentCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="Dehydrate (checkpoint + park)" Command="{Binding DehydrateCommand}" />
+                    <MenuItem Header="Rehydrate" Command="{Binding RehydrateCommand}" />
+                    <Separator />
+                    <MenuItem Header="Kill"
+                              Command="{Binding Host.KillAgentCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="Force-kill (SIGKILL)"
+                              Command="{Binding Host.ForceKillAgentCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="Remove from roster"
+                              Command="{Binding Host.RemoveAgentCommand}"
+                              CommandParameter="{Binding}" />
+                  </MenuFlyout>
+                </Button.Flyout>
+              </Button>
               <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{Binding HookStateColorHex}" />
             </StackPanel>
           </Grid>

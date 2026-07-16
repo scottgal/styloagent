@@ -100,10 +100,21 @@ per owner and coordinated (dogfooding the very rule).
 
 Slice 2 is the MVP that would have prevented today's collision.
 
-## Key decisions (need your call)
+## Key decisions — RESOLVED (overview-, human-delegated 2026-07-16; recommended defaults adopted)
 
-1. **Ownership source:** explicit `ownership.yaml` (recommended) vs derive globs directly from the C4
-   vs `who_touched` emergent ownership?
-2. **v1 depth:** ship Slice 2 only (block + overview resolves) first, or go straight to leases (Slice 3)?
-3. **Unowned default:** shared/editable (recommended) vs owned-by-overview (stricter)?
-4. **Scope:** gate `Edit/Write` only (recommended v1) or also `Bash` mutations (`git`, `rm`) now?
+1. **Ownership source:** ✅ explicit `.styloagent/ownership.yaml` — **written** (Slice 1 done), derived
+   from `architecture.md`, maintained by overview-. Not C4-derived-at-runtime, not `who_touched`-emergent.
+2. **v1 depth:** ✅ ship **Slice 2 only** first (gate blocks cross-owner writes + emits the prod;
+   overview resolves manually). Leases (Slice 3) follow once Slice 2 is proven.
+3. **Unowned default:** ✅ **shared/editable** — unlisted paths are not gated (don't over-block).
+4. **Scope:** ✅ gate **`Edit`/`Write`/`NotebookEdit` only** for v1; `Bash` mutations deferred to Slice 4.
+
+> Any of these can be overridden by the human later; recorded here so implementation isn't blocked.
+
+## Status / next
+
+- Slice 1 (manifest + this decision set) — **done** by overview-.
+- Slice 2 (PreToolUse gate) is **session-**'s, but NOT queued yet: session- is mid-flight on the
+  worktree-build + injector fixes. overview- hands Slice 2 to session- after those land (or assigns it
+  fresh) rather than overloading it. `OwnershipMap.OwnerOf` resolver (Core, pure/TDD) can be built in
+  parallel with no collision when a slot opens.

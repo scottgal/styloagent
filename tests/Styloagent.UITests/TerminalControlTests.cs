@@ -459,4 +459,256 @@ public class TerminalControlTests
             window.Close();
         });
     }
+
+    // ── VT in-place erase / partial-redraw fidelity ──────────────────────────
+    // Regression for `terminal-renders-garbled-btop/prompt-redraws-overlap`. A prompt redraw or a btop-style
+    // partial repaint moves the cursor with CUP and overwrites SPECIFIC cells (EL/ED), it does NOT append a
+    // fresh line. The renderer must reflect the CURRENT cell grid — a stale glyph must never survive under a
+    // shorter redraw ("prompt overwritten / overlap"). These tests drive the real control through those exact
+    // sequences and assert the rendered grid equals the VT screen-buffer ground truth (no ghost cells).
+
+    private const string AltOn  = "[?1049h";   // enter alternate (full-screen TUI) buffer
+    private const string HideC  = "[?25l";     // hide cursor (btop does; keeps the ground-truth clean)
+    private static string Cup(int row, int col) => $"[{row};{col}H"; // 1-based cursor position
+    private const string ClearScreen = "[2J";  // ED(2): erase whole display
+    private const string EraseEol    = "[K";   // EL(0): erase from cursor to end of line
+
+    /// <summary>
+    /// In-place prompt redraw (readline editing): print a long prompt, then return the cursor to column 1,
+    /// erase-to-end-of-line, and print a SHORTER prompt. The tail of the old prompt must be GONE — not left
+    /// as a ghost under the new one. Asserts the rendered row equals the VT grid (which the engine erased).
+    /// </summary>
+    [Fact]
+    public Task InPlaceRedraw_ShorterPromptOverLonger_LeavesNoGhostTail()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);
+            var window = new Window { Content = control, Width = 800, Height = 400, Name = "RedrawWindow" };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            // Long prompt, then redraw a shorter one IN PLACE: CR → EL(erase to EOL) → shorter text.
+            fake.FireOutput("user@host:~/very/long/path/here$ ");
+            fake.FireOutput("\r" + EraseEol + "$ ");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            // The tail of the long prompt ("very/long/path") must not survive anywhere in the render.
+            Assert.DoesNotContain("very/long/path", control.RenderedText);
+            // The short prompt survived the in-place redraw (trailing space is trimmed in the transcript).
+            Assert.Contains("$", control.RenderedText);
+
+            // And the rendered row 0 must match the VT screen-buffer ground truth exactly (right-trimmed);
+            // the redraw wrote "$ " over the old line and EL blanked the rest → the row is just "$".
+            var grid = control.ScreenGrid();
+            Assert.Equal("$", grid[0].TrimEnd());
+
+            window.Close();
+        });
+    }
+
+    /// <summary>
+    /// btop-style full-screen redraw on the ALTERNATE buffer: paint frame 1 (many rows), then clear the
+    /// screen and paint a SHORTER frame 2 at absolute positions. No cell from frame 1 may survive under
+    /// frame 2. Asserts the rendered grid equals the VT screen buffer row-for-row (the "no ghost cells"
+    /// invariant) and that the rendered column count equals the PTY column count (no width mis-fit).
+    /// </summary>
+    [Fact]
+    public Task AltBufferPartialRedraw_BtopLike_RenderedGridMatchesScreenBuffer_NoGhosts()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);
+            var window = new Window { Content = control, Width = 800, Height = 400, Name = "BtopWindow" };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Normal);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            int cols = control.PtyCols;
+            int rows = control.PtyRows;
+            Assert.True(rows >= 6, $"need a few rows for the btop frame; got {rows}");
+
+            // Enter the alt buffer + hide the cursor (exactly what btop does), clear, paint frame 1.
+            fake.FireOutput(AltOn + HideC + ClearScreen);
+            for (int r = 1; r <= rows; r++)
+                fake.FireOutput(Cup(r, 1) + $"FRAME1-ROW{r:D2}-XXXXXXXXXXXXXXXX");
+
+            // Frame 2: clear, then paint only a FEW short rows at absolute positions (a btop redraw burst).
+            fake.FireOutput(ClearScreen);
+            fake.FireOutput(Cup(1, 1) + "cpu 12%");
+            fake.FireOutput(Cup(2, 1) + "mem 34%");
+            fake.FireOutput(Cup(3, 1) + "net ok");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            // We must be on the alt buffer (the btop path this fix targets).
+            Assert.True(control.IsAltBuffer, "expected the alternate buffer to be active for a full-screen TUI");
+
+            // NO ghost cells: not one frame-1 glyph may survive under frame 2.
+            Assert.DoesNotContain("FRAME1", control.RenderedText);
+
+            // Frame 2's content is present and correctly placed.
+            var grid = control.ScreenGrid();
+            Assert.Equal("cpu 12%", grid[0].TrimEnd());
+            Assert.Equal("mem 34%", grid[1].TrimEnd());
+            Assert.Equal("net ok",  grid[2].TrimEnd());
+            for (int r = 3; r < rows; r++)
+                Assert.Equal(string.Empty, grid[r].TrimEnd());   // cleared rows are blank, not ghosted
+
+            // The rendered plain-text rows must equal the VT screen-buffer grid exactly, row-for-row —
+            // this is the "rendered grid == expected screen buffer" assertion the task requires. On the
+            // alt buffer the transcript IS the Rows-tall screen (no scrollback), so Rows lines up 1:1.
+            Assert.Equal(rows, control.Rows.Count);
+            for (int r = 0; r < rows; r++)
+                Assert.Equal(grid[r].TrimEnd(), control.Rows[r].TrimEnd());
+
+            // GRID WIDTH: rendered cols == PTY cols exactly (no width mis-fit that wraps/overlaps).
+            // The engine grid width IS the width the PTY was resized to; assert the resize matched it.
+            Assert.NotNull(fake.LastResize);
+            Assert.Equal(cols, fake.LastResize!.Value.Cols);
+            Assert.Equal(rows, fake.LastResize!.Value.Rows);
+
+            window.Close();
+        });
+    }
+
+    /// <summary>
+    /// A short buffer (a couple of lines) must be BOTTOM-anchored: its last row rests on the bottom edge of
+    /// the viewport and the empty space pads at the TOP — not floating in the middle/top. We assert the
+    /// rendered text block is offset DOWN from the top by roughly the leftover height.
+    /// </summary>
+    [Fact]
+    public Task ShortBuffer_IsBottomAnchored_PadsAtTopNotMiddle()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);
+            var window = new Window { Content = control, Width = 800, Height = 400, Name = "AnchorWindow" };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Normal);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            // Only two lines of output — far shorter than the ~24-row viewport.
+            fake.FireOutput("line one\r\nline two");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            var sv = control.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Name == "ScrollArea");
+            var screen = control.GetVisualDescendants().OfType<SelectableTextBlock>().First(t => t.Name == "ScreenText");
+
+            // Bottom-anchored: the text block is pushed well DOWN inside the viewport (the short content pads
+            // at the top), so Canvas.Top is a large fraction of the viewport height — not ~0 (top-anchored).
+            double top = Canvas.GetTop(screen);
+            Assert.True(top > sv.Viewport.Height * 0.5,
+                $"short buffer should be bottom-anchored (top pad ≈ leftover height); Canvas.Top={top}, " +
+                $"viewport={sv.Viewport.Height}");
+
+            window.Close();
+        });
+    }
+
+    /// <summary>
+    /// Task B: the fake/non-process session reports ProcessId 0 via the interface default, and the property
+    /// never throws. (The real PID is surfaced by PortaPtySession from Porta.Pty; not exercised headlessly.)
+    /// </summary>
+    [Fact]
+    public void ProcessId_DefaultSession_IsZeroAndDoesNotThrow()
+    {
+        var fake = new FakePtySession();
+        Styloagent.Core.Sessions.IPtySession session = fake;
+        int pid = session.ProcessId;   // must not throw
+        Assert.Equal(0, pid);
+    }
+
+    /// <summary>Matches a Cursor-Position-Report reply — CSI [?] rows ; cols R — the terminal sends back to a
+    /// child that asked "where is the cursor?" (ESC[6n / ESC[?6n). Its presence in the child's input stream
+    /// means the VT engine answered a device-status query.</summary>
+    private static bool IsCursorPositionReport(string s) =>
+        System.Text.RegularExpressions.Regex.IsMatch(s, "\\x1b?\\[[?]?[\\d;]+R");
+
+    /// <summary>
+    /// Characterization: when the child emits a cursor-position query (ESC[6n) on the LIVE stream, the VT
+    /// engine answers it — writing a CSI…R report BACK to the child over the PTY. This is correct terminal
+    /// behaviour and the baseline the replay-suppression fix must preserve.
+    /// </summary>
+    [Fact]
+    public async Task LiveDeviceStatusQuery_IsAnsweredBackToChild()
+    {
+        var fake = new FakePtySession();
+        Exception? lambdaEx = null;
+
+        await _fx.DispatchAsync(async () =>
+        {
+            try
+            {
+                var control = new TerminalControl();
+                var window = new Window { Content = control, Width = 800, Height = 400 };
+                window.Show();
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+                control.Attach(fake);
+                fake.ClearWrites();
+
+                // Child asks for the cursor position on the LIVE stream (as btop/claude do at startup).
+                fake.FireOutput("[6n");
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+                window.Close();
+            }
+            catch (Exception ex) { lambdaEx = ex; }
+        });
+
+        Assert.Null(lambdaEx);
+        Assert.True(
+            fake.Writes.Any(IsCursorPositionReport),
+            $"Expected the engine to answer a LIVE ESC[6n with a CSI…R report written to the child. " +
+            $"Writes={fake.Writes.Count}: [{string.Join(", ", fake.Writes.Select(w => $"\"{w.Replace("", "\\e")}\""))}]");
+    }
+
+    /// <summary>
+    /// Regression (garbled terminal — "5R[?22;3R" leaking into the prompt): a device-status query that lives
+    /// in the REPLAY BACKLOG — the child's startup output, re-fed through the VT engine every time a pane
+    /// re-attaches to rebuild its screen — must NOT be re-answered. Replayed history is read-only; answering
+    /// it injects a stale CSI…R report into the child now sitting at an interactive prompt, which surfaces as
+    /// garbage characters in what the user is typing. Only LIVE queries get answered.
+    /// </summary>
+    [Fact]
+    public async Task ReplayedDeviceStatusQuery_IsNotAnsweredBackToChild()
+    {
+        var fake = new FakePtySession();
+        // The child's startup burst is now history in the session backlog: text + cursor-position queries.
+        fake.SeedBacklog("hello[6n[?6nworld");
+
+        Exception? lambdaEx = null;
+
+        await _fx.DispatchAsync(async () =>
+        {
+            try
+            {
+                var control = new TerminalControl();
+                var window = new Window { Content = control, Width = 800, Height = 400 };
+                window.Show();
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+                // Attach = subscribe = the backlog is replayed synchronously to rebuild VT state.
+                control.Attach(fake);
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+                window.Close();
+            }
+            catch (Exception ex) { lambdaEx = ex; }
+        });
+
+        Assert.Null(lambdaEx);
+        Assert.DoesNotContain(fake.Writes, IsCursorPositionReport);
+    }
 }

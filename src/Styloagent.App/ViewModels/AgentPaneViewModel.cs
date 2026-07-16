@@ -101,6 +101,7 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     [NotifyPropertyChangedFor(nameof(RowHighlightHex))]
     [NotifyPropertyChangedFor(nameof(NeedsYou))]
     [NotifyPropertyChangedFor(nameof(StatusHeadline))]
+    [NotifyPropertyChangedFor(nameof(WaitingTooltip))]
     private AgentHookState _hookState = AgentHookState.Unknown;
 
     /// <summary>Short human label for the current hook state, shown in the roster.</summary>
@@ -120,6 +121,7 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusHeadline))]
+    [NotifyPropertyChangedFor(nameof(WaitingTooltip))]
     private string _activityDetail = "";
 
     /// <summary>
@@ -185,11 +187,41 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     public DateTimeOffset? WaitingSince { get; set; }
 
     /// <summary>
+    /// The human-readable question this agent is blocked on — the <see cref="HookEvent.Message"/> from a
+    /// permission_prompt / agent_needs_input Notification. Surfaced as the roster row tooltip so the operator
+    /// sees WHAT is being asked without hunting for the terminal pane. Empty when the agent isn't waiting.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasWaitingQuestion))]
+    [NotifyPropertyChangedFor(nameof(WaitingTooltip))]
+    private string _waitingQuestion = "";
+
+    /// <summary>True when a pending question is available to show in the tooltip.</summary>
+    public bool HasWaitingQuestion => !string.IsNullOrEmpty(WaitingQuestion);
+
+    /// <summary>
+    /// Row tooltip: the pending question when the agent is blocked on you; a hint if it's waiting but the
+    /// question wasn't captured; otherwise the plain live status — so a hover is always accurate, never a
+    /// stale "waiting" on a working agent.
+    /// </summary>
+    public string WaitingTooltip => HasWaitingQuestion
+        ? WaitingQuestion
+        : NeedsYou ? "Waiting for you — open the terminal to answer."
+        : StatusHeadline;
+
+    /// <summary>
     /// Called by the hosting view when the user interacts with this pane's terminal.
     /// Wired by <see cref="MainWindowViewModel"/> to <c>InteractionMonitor.RecordInput</c>
     /// so auto-reveal is suppressed while the human is actively typing.
     /// </summary>
     public Action? UserInteracted { get; set; }
+
+    /// <summary>
+    /// The hosting <see cref="MainWindowViewModel"/>, so the per-agent management menu — rendered in a Flyout
+    /// popup, OUTSIDE this row's visual tree — can bind to fleet-level commands (Kill / Force-kill / Approve /
+    /// Hide / Remove) via <c>Host.…Command</c>. A visual-ancestor binding can't cross a popup boundary; this can.
+    /// </summary>
+    public MainWindowViewModel? Host { get; set; }
 
     /// <summary>True once at least one hook event has arrived — gates the "last output" line.</summary>
     public bool HasActivityMeta => LastActivityAt is not null;
@@ -212,6 +244,14 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
             ActivityDetail = HookActivity.DescribeTool(e.ToolName);
         else if (HookState is AgentHookState.Idle or AgentHookState.Exited)
             ActivityDetail = ""; // a stale "editing" on an idle agent would mislead
+
+        // Capture the question the agent is blocked on (roster tooltip); clear it once it moves on.
+        if (e.EventName == "Notification"
+            && e.NotificationType is "permission_prompt" or "agent_needs_input" or "elicitation_dialog"
+            && !string.IsNullOrWhiteSpace(e.Message))
+            WaitingQuestion = e.Message!.Trim();
+        else if (HookState != AgentHookState.WaitingForHuman)
+            WaitingQuestion = "";
     }
 
     // ── Token / context usage (read from the agent's Claude transcript) ──────────────────────
@@ -379,10 +419,14 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
                 $"You are agent '{_manifest.Prefix}'. Begin your work.", ct);
             await _session.SpawnAsync(prompt, ct);
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            Styloagent.Core.Sessions.SpawnDiag.Log($"AgentPaneViewModel.SpawnAsync CANCELLED prefix={_manifest.Prefix}");
+        }
         catch (Exception ex)
         {
             // No silent failures: a spawn failure must be observable, not swallowed.
+            Styloagent.Core.Sessions.SpawnDiag.Log($"AgentPaneViewModel.SpawnAsync THREW prefix={_manifest.Prefix}: {ex}");
             System.Diagnostics.Trace.WriteLine(
                 $"[AgentPaneViewModel] spawn failed for '{_manifest.Prefix}': {ex}");
         }
@@ -404,6 +448,24 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
             System.Diagnostics.Trace.WriteLine($"[AgentPaneViewModel] dehydrate failed for '{_manifest.Prefix}': {ex}");
         }
         State = _session.State;
+    }
+
+    /// <summary>
+    /// Kills the agent immediately (no checkpoint). <paramref name="force"/> SIGKILLs the OS process tree for a
+    /// stuck PTY. A graceful dispose SUPPRESSES the PTY's Exited signal (it can't tell kill from dehydrate), so
+    /// we force the roster badge to Exited here and clear any pending "needs you" question.
+    /// </summary>
+    public async Task KillAsync(bool force)
+    {
+        try { await _session.KillAsync(force); }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[AgentPaneViewModel] kill failed for '{_manifest.Prefix}': {ex}");
+        }
+        State = _session.State;
+        HookState = AgentHookState.Exited;
+        WaitingQuestion = "";
+        WaitingSince = null;
     }
 
     /// <summary>

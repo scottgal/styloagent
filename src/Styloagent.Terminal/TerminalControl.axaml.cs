@@ -141,6 +141,39 @@ public sealed partial class TerminalControl : UserControl
     /// </summary>
     internal int RebuildCount { get; private set; }
 
+    /// <summary>Test seam: the grid width (columns) the engine — and thus the PTY — is currently sized to.</summary>
+    internal int PtyCols => _terminal.Cols;
+
+    /// <summary>Test seam: the grid height (rows) the engine — and thus the PTY — is currently sized to.</summary>
+    internal int PtyRows => _terminal.Rows;
+
+    /// <summary>Test seam: whether the engine is on the alternate (full-screen TUI) buffer.</summary>
+    internal bool IsAltBuffer => _terminal.IsAlternateBufferActive;
+
+    /// <summary>
+    /// Test seam: the CURRENT VT live-screen as exactly <see cref="PtyRows"/> rows of exactly
+    /// <see cref="PtyCols"/> characters — a faithful, right-padded snapshot of the on-screen cell grid.
+    /// This is the ground truth an in-place erase/redraw (CUP/EL/ED) produces; asserting the rendered
+    /// output equals it is how a test proves there are NO ghost cells left under a partial redraw.
+    /// </summary>
+    internal IReadOnlyList<string> ScreenGrid()
+    {
+        TerminalBuffer buffer = _terminal.Buffer;
+        int cols = _terminal.Cols;
+        var grid = new List<string>(_terminal.Rows);
+        for (int y = 0; y < _terminal.Rows; y++)
+        {
+            BufferLine? line = SafeLine(buffer, buffer.YBase + y);
+            // TranslateToString(false, 0, cols) gives every cell (no right-trim) so a cell an erase
+            // BLANKED reads back as a space — exactly what "no ghost survived" must look like.
+            string s = line is null ? string.Empty : line.TranslateToString(false, 0, cols);
+            if (s.Length < cols) s = s.PadRight(cols);
+            else if (s.Length > cols) s = s.Substring(0, cols);
+            grid.Add(s);
+        }
+        return grid;
+    }
+
     public TerminalControl()
     {
         InitializeComponent();
@@ -191,7 +224,17 @@ public sealed partial class TerminalControl : UserControl
             throw new InvalidOperationException("A session is already attached. Detach it first.");
 
         _session = session;
-        session.Output += OnSessionOutput;
+        // Subscribing REPLAYS the session backlog synchronously (see PortaPtySession.Output.add) so this fresh
+        // VT engine rebuilds the CURRENT screen from history. That replay re-parses every device-status query
+        // the child ever emitted (ESC[6n / ESC[?6n / ESC[c), and XTerm dutifully re-answers each — but those
+        // answers describe STALE history, and writing them back injects "[1;6R"-style reports into the child
+        // that is now sitting at an interactive prompt, where they surface as garbage in what the user types.
+        // So bracket the replay: answers generated while _replaying are dropped (see OnTerminalDataReceived);
+        // only LIVE queries — output that arrives after Attach returns — are answered. Rebuilding screen state
+        // is unaffected: _terminal.Write still runs; only the write-BACK to the child is suppressed.
+        _replaying = true;
+        try { session.Output += OnSessionOutput; }
+        finally { _replaying = false; }
         session.Exited += OnSessionExited;
     }
 
@@ -248,6 +291,15 @@ public sealed partial class TerminalControl : UserControl
     private bool _renderDirty;
     private bool _rebuildScheduled;
 
+    /// <summary>
+    /// True only while <see cref="Attach"/> is replaying the session backlog into the VT engine. During that
+    /// synchronous window the engine re-answers device-status queries embedded in the replayed history; those
+    /// answers are stale and must NOT be written back to the child (see <see cref="OnTerminalDataReceived"/>).
+    /// Volatile because live output — which reads it (as false) on the background PTY thread — races the
+    /// UI-thread replay that sets/clears it.
+    /// </summary>
+    private volatile bool _replaying;
+
     // ── Virtualized render state ─────────────────────────────────────────────
     /// <summary>Rows rendered above and below the viewport so a small scroll doesn't flash blank.</summary>
     private const int OverscanRows = 8;
@@ -258,6 +310,14 @@ public sealed partial class TerminalControl : UserControl
     /// <summary>The [first,last) transcript slice currently built into inlines — a scroll that doesn't move it skips the rebuild.</summary>
     private int _renderedFirstRow;
     private int _renderedLastRow = -1;
+
+    /// <summary>
+    /// Pixels of blank padding above the first transcript row so the terminal is BOTTOM-ANCHORED: when the
+    /// content is shorter than the viewport, the last row rests on the bottom edge and the short buffer pads
+    /// at the TOP (like a real terminal), instead of floating in the middle/top of the pane. Zero once the
+    /// transcript is tall enough to fill (and overflow) the viewport.
+    /// </summary>
+    private double _topPad;
 
     /// <summary>
     /// Marks the rendered view dirty and ensures exactly one rebuild is queued on the UI thread. A burst of
@@ -326,6 +386,11 @@ public sealed partial class TerminalControl : UserControl
 
     private void OnTerminalDataReceived(object? sender, TerminalEvents.DataEventArgs e)
     {
+        // Replayed history is read-only: a device-status answer the engine generates while Attach is replaying
+        // the backlog describes a stale frame, and injecting it into the child (now at a prompt) is the
+        // "[1;6R / [?1;6R garbage" corruption. Drop it — only LIVE queries get answered. See Attach().
+        if (_replaying) return;
+
         // Fix 1: route through shared fire-and-forget helper so exceptions are never silently lost.
         FireAndForgetWrite(e.Data);
     }
@@ -480,19 +545,37 @@ public sealed partial class TerminalControl : UserControl
         RebuildCount++;
         TerminalBuffer buffer = _terminal.Buffer;
 
-        // Render the FULL transcript — scrollback + the live screen — so the ScrollViewer can scroll the
-        // whole VT buffer (wheel + scrollbar) and no earlier output is clipped away. The live screen is
-        // always Rows tall and usually mostly blank below the cursor, so trim trailing blank rows (but
-        // never above the cursor) — that way ScrollToEnd lands on the prompt, not on empty space below it.
+        // A full-screen TUI (btop, vim, less) runs on the ALTERNATE buffer: a fixed Rows-tall canvas with
+        // NO scrollback, painted by absolute cursor addressing and in-place partial redraws. It MUST be
+        // rendered as the exact Rows-tall screen grid — never trimmed, never mixed with scrollback. Trimming
+        // its (often blank) bottom rows makes the rendered height jitter every frame, so rows re-anchor each
+        // repaint and stale glyphs from the previous frame's taller render survive underneath → the "garbled
+        // btop / overlapping redraw" corruption. So: on the alt buffer, render exactly [YBase, YBase+Rows).
+        bool altBuffer = _terminal.IsAlternateBufferActive;
+
         int total = buffer.YBase + _terminal.Rows;
         int cursorAbsRow = buffer.YBase + buffer.Y;
-        int lastRow = cursorAbsRow;
-        for (int r = total - 1; r > lastRow; r--)
+        int count;
+        if (altBuffer)
         {
-            BufferLine? l = SafeLine(buffer, r);
-            if (l is not null && l.GetTrimmedLength() > 0) { lastRow = r; break; }
+            // Alt buffer: the whole screen is live and meaningful (a blank row inside btop is a real blank
+            // row, not trailing filler). Render every row of the Rows-tall grid, no trailing-blank trim.
+            count = total;
         }
-        int count = Math.Max(1, lastRow + 1);
+        else
+        {
+            // Normal buffer: render the FULL transcript — scrollback + the live screen — so the ScrollViewer
+            // can scroll the whole VT buffer and no earlier output is clipped. The live screen is usually
+            // mostly blank below the cursor, so trim trailing blank rows (but never above the cursor) — that
+            // way ScrollToEnd lands on the prompt, not on empty space below it.
+            int lastRow = cursorAbsRow;
+            for (int r = total - 1; r > lastRow; r--)
+            {
+                BufferLine? l = SafeLine(buffer, r);
+                if (l is not null && l.GetTrimmedLength() > 0) { lastRow = r; break; }
+            }
+            count = Math.Max(1, lastRow + 1);
+        }
 
         // Plain-text rows — kept for RenderedText and test assertions. Cheap (strings only), so the FULL
         // transcript stays here for scrollback search/copy even though the coloured render is virtualized.
@@ -507,11 +590,19 @@ public sealed partial class TerminalControl : UserControl
         _rowCount = count;
         _cursorAbsRow = cursorAbsRow;
 
+        // BOTTOM-ANCHOR: a terminal rests its last row on the bottom edge — output scrolls UP off the top and
+        // a short buffer pads at the TOP, never floating in the middle/top of the pane. When the transcript
+        // is shorter than the viewport, push it down by the leftover space so its last row hugs the bottom.
+        double contentH = count * _cellH;
+        double vpH = ScrollArea.Viewport.Height;
+        _topPad = vpH > 0 && contentH < vpH ? vpH - contentH : 0.0;
+
         // Size the scroll surface to the WHOLE transcript so the scrollbar spans it, then render only the
         // rows in view. Building inlines for every row (Clear + a Run per colour span across up to ~1000
         // scrollback rows) is what pinned the UI thread at 100% CPU on a layout switch — virtualizing to the
-        // viewport makes each rebuild O(visible rows).
-        Surface.Height = count * _cellH + PadY;
+        // viewport makes each rebuild O(visible rows). The surface is at least the viewport tall (so the
+        // bottom-anchor top-pad has room and the last row can sit on the bottom edge).
+        Surface.Height = Math.Max(contentH + _topPad, vpH);
         Surface.Width  = Math.Max(_terminal.Cols * _cellW + PadX, ScrollArea.Viewport.Width);
         RenderVisibleSlice(forceRebuild: true);
     }
@@ -531,10 +622,12 @@ public sealed partial class TerminalControl : UserControl
         double vpTop = ScrollArea.Offset.Y;
         double vpH   = ScrollArea.Viewport.Height;
 
+        // Rows are laid out starting at _topPad (the bottom-anchor offset), so map the scroll position back
+        // through that pad before turning it into a row index.
         int first, last;
         if (vpH > 0)
         {
-            first = Math.Max(0, (int)(vpTop / _cellH) - OverscanRows);
+            first = Math.Max(0, (int)((vpTop - _topPad) / _cellH) - OverscanRows);
             int visRows = (int)Math.Ceiling(vpH / _cellH) + 2 * OverscanRows;
             last = Math.Min(count, first + visRows);
         }
@@ -551,7 +644,9 @@ public sealed partial class TerminalControl : UserControl
         _renderedFirstRow = first;
         _renderedLastRow = last;
 
-        Canvas.SetTop(ScreenText, first * _cellH);
+        // Row `first` lands at _topPad + first·cellH so the transcript is bottom-anchored (short buffers pad
+        // at the top and the last row rests on the bottom edge).
+        Canvas.SetTop(ScreenText, _topPad + first * _cellH);
         BuildColoredInlines(first, last, _cursorAbsRow);
     }
 

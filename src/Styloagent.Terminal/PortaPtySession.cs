@@ -63,11 +63,25 @@ public sealed class PortaPtySession : IPtySession
 
     public bool IsIdle => (DateTime.UtcNow.Ticks - Volatile.Read(ref _lastOutputTicks)) > TimeSpan.FromMilliseconds(250).Ticks;
 
+    /// <summary>
+    /// The OS process id of the child, surfaced from Porta.Pty's <see cref="IPtyConnection.Pid"/> (captured at
+    /// spawn). Guaranteed not to throw: any failure (e.g. the connection reporting an error) yields 0.
+    /// </summary>
+    public int ProcessId
+    {
+        get
+        {
+            try { return _connection.Pid; }
+            catch { return 0; }
+        }
+    }
+
     internal PortaPtySession(IPtyConnection connection)
     {
         _connection = connection;
         _connection.ProcessExited += OnProcessExited;
         _readLoop = Task.Run(ReadLoopAsync);
+        Styloagent.Core.Sessions.SpawnDiag.Log("PortaPtySession CTOR (read loop started)");
     }
 
     /// <summary>
@@ -100,6 +114,7 @@ public sealed class PortaPtySession : IPtySession
 
     public async ValueTask DisposeAsync()
     {
+        Styloagent.Core.Sessions.SpawnDiag.Log("PortaPtySession.DisposeAsync CALLED (about to Kill) — CALLER STACK:", includeStack: true);
         _connection.ProcessExited -= OnProcessExited;
 
         // Kill the process FIRST so the blocking ReaderStream.ReadAsync syscall returns.
@@ -117,12 +132,34 @@ public sealed class PortaPtySession : IPtySession
         _cts.Dispose();
     }
 
-    private void OnProcessExited(object? sender, PtyExitedEventArgs e) => Exited?.Invoke();
+    // DIAGNOSTIC helpers (spawn-exit blocker): strip ANSI/control noise so claude's error text is legible
+    // in the debug log. Remove alongside SpawnDiag once the root cause is fixed.
+    private static string DiagClip(string s)
+    {
+        var sb = new StringBuilder(s.Length);
+        foreach (var ch in s)
+            sb.Append(ch is '\n' or '\t' || ch >= ' ' ? ch : ' ');
+        var clipped = sb.ToString().Replace("\n", "\\n");
+        return clipped.Length > 400 ? string.Concat(clipped.AsSpan(0, 400), "…") : clipped;
+    }
+
+    private static string DiagTailText(StringBuilder tail) => DiagClip(tail.ToString());
+
+    private void OnProcessExited(object? sender, PtyExitedEventArgs e)
+    {
+        Styloagent.Core.Sessions.SpawnDiag.Log($"PortaPtySession.OnProcessExited FIRED exitCode={e.ExitCode} (process ended — a Kill via DisposeAsync will have logged just above; otherwise it exited on its own)");
+        Exited?.Invoke();
+    }
 
     private async Task ReadLoopAsync()
     {
         var buffer = new byte[4096];
         var token = _cts.Token;
+
+        // DIAGNOSTIC (spawn-exit blocker): remember claude's own output so ReadLoop EXIT can dump what it
+        // printed right before dying — that tail carries the actual reason for an exit-1. Remove with SpawnDiag.
+        var diagTail = new StringBuilder();
+        bool diagLoggedFirst = false;
 
         while (!token.IsCancellationRequested)
         {
@@ -135,18 +172,35 @@ public sealed class PortaPtySession : IPtySession
             }
             catch (OperationCanceledException)
             {
+                Styloagent.Core.Sessions.SpawnDiag.Log("ReadLoop EXIT: OperationCanceled (Dispose cancelled the token)");
                 break;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 // Stream closed (process exited) — stop reading
+                Styloagent.Core.Sessions.SpawnDiag.Log($"ReadLoop EXIT: read threw {ex.GetType().Name}: {ex.Message}");
+                Styloagent.Core.Sessions.SpawnDiag.Log($"ReadLoop last output before exit (tail): «{DiagTailText(diagTail)}»");
                 break;
             }
 
-            if (bytesRead <= 0) break;
+            if (bytesRead <= 0)
+            {
+                Styloagent.Core.Sessions.SpawnDiag.Log($"ReadLoop EXIT: bytesRead={bytesRead} (EOF — slave closed / process gone)");
+                Styloagent.Core.Sessions.SpawnDiag.Log($"ReadLoop last output before exit (tail): «{DiagTailText(diagTail)}»");
+                break;
+            }
 
             Volatile.Write(ref _lastOutputTicks, DateTime.UtcNow.Ticks);
             var text = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+
+            // DIAGNOSTIC: capture claude's first bytes (banner/immediate error) and keep a rolling tail.
+            if (!diagLoggedFirst)
+            {
+                diagLoggedFirst = true;
+                Styloagent.Core.Sessions.SpawnDiag.Log($"ReadLoop FIRST output ({bytesRead} bytes): «{DiagClip(text)}»");
+            }
+            diagTail.Append(text);
+            if (diagTail.Length > 2000) diagTail.Remove(0, diagTail.Length - 2000);
 
             // Append to the replay backlog AND deliver live, under one lock: a subscriber that attaches
             // between these would otherwise either miss this chunk or get it twice.

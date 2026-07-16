@@ -11,9 +11,29 @@ namespace Styloagent.UITests;
 public sealed class FakePtySession : IPtySession
 {
     private readonly List<string> _writes = new();
+    private Action<string>? _output;
+    private string? _backlog;
 
-    public event Action<string>? Output;
+    /// <summary>
+    /// Mirrors <c>PortaPtySession.Output</c>: on subscribe, any seeded <see cref="SeedBacklog"/> is replayed
+    /// to the new handler synchronously FIRST (so a late-attaching view rebuilds VT state from history), then
+    /// live <see cref="FireOutput"/> follows. This is the seam that reproduces a pane RE-ATTACH.
+    /// </summary>
+    public event Action<string>? Output
+    {
+        add { if (value is not null && !string.IsNullOrEmpty(_backlog)) value(_backlog); _output += value; }
+        remove { _output -= value; }
+    }
+
     public event Action? Exited;
+
+    /// <summary>
+    /// Seeds the replay backlog that <see cref="Output"/> hands to each new subscriber — i.e. the output the
+    /// child already produced BEFORE this view attached (the real session buffers this to bridge the
+    /// spawn→attach gap and every re-attach). Use it to drive the replay path a live <see cref="FireOutput"/>
+    /// cannot reach.
+    /// </summary>
+    public void SeedBacklog(string text) => _backlog = text;
 
     /// <summary>
     /// Whether the fake PTY looks idle. Defaults true (no output flowing) like a settled session; set it
@@ -30,9 +50,9 @@ public sealed class FakePtySession : IPtySession
     public (int Cols, int Rows)? LastResize { get; private set; }
 
     /// <summary>
-    /// Raises <see cref="Output"/> with <paramref name="text"/>, simulating PTY output.
+    /// Raises <see cref="Output"/> with <paramref name="text"/>, simulating LIVE PTY output (after subscribe).
     /// </summary>
-    public void FireOutput(string text) => Output?.Invoke(text);
+    public void FireOutput(string text) => _output?.Invoke(text);
 
     /// <summary>Raises <see cref="Exited"/>.</summary>
     public void FireExited() => Exited?.Invoke();

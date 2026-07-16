@@ -65,13 +65,23 @@ public sealed class AgentSession
         // Already running — re-spawning would overwrite _pty and orphan the live process (and leak its
         // Output handler). Spawn is only valid from a non-Live state.
         if (State == SessionState.Live) return;
+        SpawnDiag.Log($"AgentSession.SpawnAsync START prefix={_manifest.Prefix} cwd={_manifest.Worktree} cols={_initialCols} rows={_initialRows} argc={_launchArgs.Count}");
+        // Log the actual argv (values truncated) so we can see WHY a child's launch differs from the
+        // surviving root's — a broken/empty flag value would make claude exit 1 on startup.
+        for (int i = 0; i < _launchArgs.Count; i++)
+        {
+            var a = _launchArgs[i] ?? "<null>";
+            SpawnDiag.Log($"  argv[{i}] ({a.Length} chars) = {(a.Length > 100 ? string.Concat(a.AsSpan(0, 100), "…") : a)}");
+        }
         _pty = await _launcher.SpawnAsync(new PtySpawnOptions(
             Command: "claude", Args: _launchArgs,
             WorkingDirectory: _manifest.Worktree, Env: null, Cols: _initialCols, Rows: _initialRows), ct);
         _pty.Output += OnOutput;
+        SpawnDiag.Log($"AgentSession.SpawnAsync launched prefix={_manifest.Prefix}; injecting prompt ({launchPrompt?.Length ?? 0} chars, settle={InjectSettleDelay.TotalMilliseconds}ms retry={InjectEnterRetryDelay.TotalMilliseconds}ms)");
         await InjectPromptAsync(_pty, launchPrompt, ct);
         CurrentPty = _pty;
         State = SessionState.Live;
+        SpawnDiag.Log($"AgentSession.SpawnAsync DONE prefix={_manifest.Prefix} State=Live");
         PtyStarted?.Invoke(_pty);
     }
 
@@ -110,6 +120,35 @@ public sealed class AgentSession
         CurrentPty = null;
         State = SessionState.Dehydrated;
         return true;
+    }
+
+    /// <summary>
+    /// Immediately terminates the agent — disposes the PTY with NO checkpoint (unlike <see cref="DehydrateAsync"/>).
+    /// When <paramref name="force"/> is set, first SIGKILLs the child's OS process tree by PID, for a PTY that
+    /// won't die on a graceful dispose (a wedged / unresponsive process). Leaves the session
+    /// <see cref="SessionState.Exited"/> so its prefix can be re-spawned. Best-effort and never throws.
+    /// </summary>
+    public async Task KillAsync(bool force = false)
+    {
+        var pty = _pty;
+        if (pty is not null)
+        {
+            if (force)
+            {
+                try
+                {
+                    int pid = pty.ProcessId;
+                    if (pid > 0)
+                        System.Diagnostics.Process.GetProcessById(pid).Kill(entireProcessTree: true);
+                }
+                catch { /* already gone / unknown pid — fall through to the graceful dispose below */ }
+            }
+            pty.Output -= OnOutput;
+            try { await pty.DisposeAsync(); } catch { /* best-effort teardown */ }
+        }
+        _pty = null;
+        CurrentPty = null;
+        State = SessionState.Exited;
     }
 
     public async Task RehydrateAsync(string restartPrompt, CancellationToken ct = default)

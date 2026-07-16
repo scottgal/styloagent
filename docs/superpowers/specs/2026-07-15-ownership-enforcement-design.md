@@ -114,7 +114,13 @@ Slice 2 is the MVP that would have prevented today's collision.
 ## Status / next
 
 - Slice 1 (manifest + this decision set) — **done** by overview-.
-- Slice 2 (PreToolUse gate) is **session-**'s, but NOT queued yet: session- is mid-flight on the
-  worktree-build + injector fixes. overview- hands Slice 2 to session- after those land (or assigns it
-  fresh) rather than overloading it. `OwnershipMap.OwnerOf` resolver (Core, pure/TDD) can be built in
-  parallel with no collision when a slot opens.
+- **`OwnershipMap.OwnerOf` resolver — DONE** (overview-, 2026-07-17): `src/Styloagent.Core/Ownership/OwnershipMap.cs`
+  — pure, never-throws, most-specific-glob-wins, loads `.styloagent/ownership.yaml` via VYaml. 11 TDD tests
+  green (`tests/Styloagent.Core.Tests/OwnershipMapTests.cs`), including the carve-out-beats-broad-owner
+  headline case, backslash/`./` normalisation, and invalid-YAML→Empty (degrade-never-destroy). On main.
+- **Slice 2 (PreToolUse gate) — NEXT; session-'s domain** (Core/Hooks + spawn wiring). A PreToolUse hook on
+  `Edit`/`Write`/`NotebookEdit` that extracts the target path, calls `OwnershipMap.OwnerOf(path)`, and BLOCKS
+  a cross-owner write with the prod message — applying §4's escape hatches (overview- bypasses; unowned ⇒
+  allow; `obj/bin`, `tests/`, `docs/`, `.styloagent/`, gitignored exempt; fail-OPEN on hook error). The
+  resolver it depends on is now ready and tested. Hand to session- once it clears the terminal-render issue,
+  or assign fresh. Slice 2 is the MVP that would have prevented this session's collisions.

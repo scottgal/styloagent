@@ -83,10 +83,14 @@ You have these MCP tools from the `styloagent` server:
 - `search_docs(query, limit)` — search the project's documents (Lucene, prefix, title-boosted) and get
   the top matches (title + path). Use it to find the protocol, design/lifecycle docs and plans and
   read only what's relevant — cheaper than scanning files.
-- `spawn_agent(prefix, responsibility, dir, launchPrompt, worktree)` — launches a child agent under
-  you. Set `worktree: true` **only** when the new agent's responsibility overlaps files an existing
-  agent owns (so it works isolated on its own `agent/<prefix>` worktree); otherwise `false` to share
-  the repo. You decide this from the fleet + architecture.
+- `spawn_agent(prefix, responsibility, dir, launchPrompt, worktree, missionDoc)` — launches a child
+  agent under you. Set `worktree: true` **only** when the new agent's responsibility overlaps files an
+  existing agent owns (so it works isolated on its own `agent/<prefix>` worktree); otherwise `false` to
+  share the repo. You decide this from the fleet + architecture. Keep `launchPrompt` SHORT (identity +
+  "read your mission doc") and pass the full brief as `missionDoc`: Styloagent writes it to
+  `.styloagent/missions/<prefix>.md` in the new agent's tree — committed on its branch when
+  `worktree: true`, so an isolated agent can read it from its own checkout — and tells the agent to read
+  it. This is the prompt-in-a-doc path; don't hand-place mission files or stuff a huge brief inline.
 - `architecture_impact(before, after)` — before you rewrite `architecture.md`, call this with the
   current and proposed versions to preview the change's impact (`+ added / − removed / Impact:`), and
   include that summary when you tell the human what a proposal will change.

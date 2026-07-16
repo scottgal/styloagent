@@ -11,8 +11,12 @@ public sealed record FleetState(IReadOnlyList<FleetMember> Members, int MaxFleet
 /// <summary>What list_fleet returns to an agent.</summary>
 public sealed record FleetSnapshot(IReadOnlyList<FleetMember> Members, int MaxFleet, int MaxDepth, bool Paused);
 
-/// <summary>A spawn_agent request, parented by prefix.</summary>
-public sealed record SpawnRequest(string ParentPrefix, string Prefix, string Responsibility, string Dir, string LaunchPrompt, bool Worktree);
+/// <summary>
+/// A spawn_agent request, parented by prefix. <paramref name="MissionDoc"/> is an optional larger mission
+/// brief: when non-empty, it's placed at <c>.styloagent/missions/&lt;prefix&gt;.md</c> in the new agent's tree
+/// (committed on its branch when isolated) so a worktree agent can read it from its own checkout.
+/// </summary>
+public sealed record SpawnRequest(string ParentPrefix, string Prefix, string Responsibility, string Dir, string LaunchPrompt, bool Worktree, string MissionDoc = "");
 
 /// <summary>Result of a spawn attempt (never an exception).</summary>
 public sealed record SpawnOutcome(bool Spawned, string? Prefix, RejectReason? Reason, string Message)

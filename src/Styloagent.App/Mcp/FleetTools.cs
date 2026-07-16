@@ -39,8 +39,8 @@ public sealed class FleetTools
         => (_http, _controller, _auth) = (http, controller, auth);
 
 #pragma warning disable CA1707 // Identifiers should not contain underscores — tool names are MCP contract and must match the wire protocol
-    [McpServerTool, Description("Launch a child agent under you. prefix is a short lowercase tag ending in '-'. Set worktree=true when this agent's work overlaps files another agent owns, so it runs isolated on its own git worktree/branch; otherwise false to share the repo.")]
-    public async Task<string> spawn_agent(string prefix, string responsibility, string dir, string launchPrompt, bool worktree)
+    [McpServerTool, Description("Launch a child agent under you. prefix is a short lowercase tag ending in '-'. Set worktree=true when this agent's work overlaps files another agent owns, so it runs isolated on its own git worktree/branch; otherwise false to share the repo. Keep launchPrompt SHORT (identity + 'read your mission doc'); pass the full brief as missionDoc — Styloagent writes it to .styloagent/missions/<prefix>.md in the new agent's tree (committed on its branch when worktree=true, so an isolated agent can read it from its own checkout) and tells the agent to read it. Leave missionDoc empty to inject launchPrompt alone.")]
+    public async Task<string> spawn_agent(string prefix, string responsibility, string dir, string launchPrompt, bool worktree, string missionDoc = "")
     {
         var ctx = _http.HttpContext;
         if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
@@ -49,7 +49,7 @@ public sealed class FleetTools
 
         var outcome = await _controller.SpawnAsync(
             new SpawnRequest(parent, prefix, responsibility,
-                string.IsNullOrWhiteSpace(dir) ? "." : dir, launchPrompt, worktree));
+                string.IsNullOrWhiteSpace(dir) ? "." : dir, launchPrompt, worktree, missionDoc ?? string.Empty));
 
         return outcome.Spawned ? outcome.Message : $"rejected: {outcome.Message}";
     }

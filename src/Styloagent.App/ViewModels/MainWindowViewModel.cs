@@ -1255,6 +1255,30 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Fix 2: places a spawn's mission doc where the new agent can read it from its own checkout, and returns
+    /// the launch prompt to inject — prefixed with a pointer to the doc. A worktree agent is cut from HEAD, so
+    /// the doc goes INTO the worktree (committed on its branch); a shared agent gets it in the main tree. An
+    /// empty <paramref name="missionDoc"/> leaves the launch prompt untouched. Best-effort: a placement failure
+    /// is traced and the plain launch prompt is used, never failing the spawn.
+    /// </summary>
+    private async Task<string> PlaceMissionDocAsync(string prefix, string missionDoc, string launchPrompt, string? worktreePath)
+    {
+        if (string.IsNullOrWhiteSpace(missionDoc)) return launchPrompt;
+        string? treeRoot = worktreePath ?? _project?.Root;
+        if (string.IsNullOrWhiteSpace(treeRoot)) return launchPrompt;
+
+        var result = await Styloagent.Git.WorktreeMissionDoc.PlaceAsync(
+            treeRoot, prefix, missionDoc, commit: worktreePath is not null);
+        if (!result.Ok)
+        {
+            System.Diagnostics.Trace.WriteLine($"[Styloagent] mission doc for {prefix} not placed: {result.Detail}");
+            return launchPrompt;
+        }
+        // Tell the agent where its mission lives, then hand it its normal launch prompt.
+        return $"Your mission doc is in your working tree at `{result.RelativePath}` — read it first.\n\n{launchPrompt}";
+    }
+
+    /// <summary>
     /// Governor-checked spawn from a parent agent. Builds fleet state, runs the governor,
     /// and on approval creates the pane with parent/depth lineage stamped in.
     /// </summary>
@@ -1286,7 +1310,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             (worktreePath, worktreeBranch) = (wt.Path, wt.Branch);
         }
 
-        var proposed = new ProposedAgent(req.Prefix, req.Responsibility, req.Dir, req.LaunchPrompt);
+        // Fix 2: hand a (worktree-isolated) agent its mission as a committed doc it can read from its own
+        // checkout, then point its launch prompt at it. No mission doc → the launch prompt is used as-is.
+        string launchPrompt = await PlaceMissionDocAsync(req.Prefix, req.MissionDoc, req.LaunchPrompt, worktreePath);
+
+        var proposed = new ProposedAgent(req.Prefix, req.Responsibility, req.Dir, launchPrompt);
         var paneVm = CreatePaneForProposed(proposed, parentPrefix: req.ParentPrefix, depth: parentDepth + 1,
             worktreeOverride: worktreePath, worktreeBranch: worktreeBranch);
         if (worktreePath is not null && _git is not null)
@@ -1550,7 +1578,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (_project is not null && !string.IsNullOrWhiteSpace(p.LaunchPrompt))
         {
             Directory.CreateDirectory(_project.LaunchPromptsDir);
-            launchPromptPath = Path.Combine(_project.LaunchPromptsDir, SanitizeFileName(p.Prefix) + ".md");
+            launchPromptPath = ResolveLaunchPromptPath(_project.LaunchPromptsDir, p.Prefix, p.LaunchPrompt);
             File.WriteAllText(launchPromptPath, p.LaunchPrompt);
         }
 
@@ -1602,6 +1630,25 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     private static string SanitizeFileName(string s)
         => new string(s.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '-').ToArray());
+
+    /// <summary>
+    /// Picks the file to persist a spawn's launch prompt to WITHOUT clobbering a pre-existing doc. Normally
+    /// <c>&lt;prefix&gt;.md</c>; but if that path already holds DIFFERENT content — e.g. an overview-authored
+    /// mission doc mistakenly dropped there, or a stale prior prompt — the prompt is written to the reserved
+    /// <c>&lt;prefix&gt;.launch.md</c> instead so the existing file survives. The manifest stores whichever path
+    /// we return, so the read side follows automatically.
+    /// </summary>
+    private static string ResolveLaunchPromptPath(string dir, string prefix, string content)
+    {
+        string primary = Path.Combine(dir, SanitizeFileName(prefix) + ".md");
+        try
+        {
+            if (File.Exists(primary) && File.ReadAllText(primary) != content)
+                return Path.Combine(dir, SanitizeFileName(prefix) + ".launch.md");
+        }
+        catch { return Path.Combine(dir, SanitizeFileName(prefix) + ".launch.md"); }
+        return primary;
+    }
 
     /// <summary>Selects a pane so its terminal document is brought to front in the centre dock.</summary>
     [RelayCommand]

@@ -191,4 +191,69 @@ public class FleetSpawnTests
         }
         finally { if (Directory.Exists(repo)) Directory.Delete(repo, recursive: true); }
     }
+
+    [Fact]
+    public async Task Spawn_with_mission_doc_writes_it_into_the_worktree_and_points_the_prompt()
+    {
+        var repo = Path.Combine(Path.GetTempPath(), "spawnmd-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(repo);
+        var git = new RecordingGitService();
+        try
+        {
+            var vm = await BuildOverviewVmAsync(repoRoot: repo, gitService: git);
+            vm.AttachProject(ProjectConfig.For(repo));
+
+            var outcome = await vm.SpawnChildAsync(new SpawnRequest(
+                vm.Panes[0].Prefix, "bus-", "owns delivery", ".", "You are bus-.",
+                Worktree: true, MissionDoc: "# Bus mission\nDeliver messages."));
+
+            Assert.True(outcome.Spawned);
+            var pane = vm.Panes.First(p => p.Prefix == "bus-");
+
+            // The mission doc is written INTO the worktree at the conventional path.
+            var missionPath = Path.Combine(pane.WorktreePath!, ".styloagent", "missions", "bus-.md");
+            Assert.True(File.Exists(missionPath), $"mission doc should be inside the worktree at {missionPath}");
+            Assert.Contains("Deliver messages.", File.ReadAllText(missionPath));
+
+            // The injected launch prompt (persisted to launch-prompts) points at the mission doc and keeps
+            // the caller's own launch text.
+            var launchFile = Path.Combine(ProjectConfig.For(repo).LaunchPromptsDir, "bus-.md");
+            Assert.True(File.Exists(launchFile));
+            var prompt = File.ReadAllText(launchFile);
+            Assert.Contains(".styloagent/missions/bus-.md", prompt);
+            Assert.Contains("You are bus-.", prompt);
+        }
+        finally { if (Directory.Exists(repo)) Directory.Delete(repo, recursive: true); }
+    }
+
+    [Fact]
+    public async Task Spawn_does_not_clobber_a_preexisting_launch_prompt_doc()
+    {
+        var repo = Path.Combine(Path.GetTempPath(), "spawnclob-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(repo);
+        try
+        {
+            var vm = await BuildOverviewVmAsync(repoRoot: repo);
+            var cfg = ProjectConfig.For(repo);
+            vm.AttachProject(cfg);
+
+            // Someone (e.g. overview-) has already placed a doc at <prefix>.md before the spawn.
+            Directory.CreateDirectory(cfg.LaunchPromptsDir);
+            var preexisting = Path.Combine(cfg.LaunchPromptsDir, "docs-.md");
+            const string authored = "# A hand-authored mission that must NOT be clobbered";
+            File.WriteAllText(preexisting, authored);
+
+            var outcome = await vm.SpawnChildAsync(new SpawnRequest(
+                vm.Panes[0].Prefix, "docs-", "owns docs", ".", "You are docs- (short launch prompt).", Worktree: false));
+
+            Assert.True(outcome.Spawned);
+            // The pre-existing doc survived untouched.
+            Assert.Equal(authored, File.ReadAllText(preexisting));
+            // The spawn's launch prompt went to the reserved name instead of clobbering.
+            var reserved = Path.Combine(cfg.LaunchPromptsDir, "docs-.launch.md");
+            Assert.True(File.Exists(reserved), "launch prompt should fall back to the reserved <prefix>.launch.md");
+            Assert.Contains("short launch prompt", File.ReadAllText(reserved));
+        }
+        finally { if (Directory.Exists(repo)) Directory.Delete(repo, recursive: true); }
+    }
 }

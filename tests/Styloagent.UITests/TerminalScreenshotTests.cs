@@ -141,12 +141,14 @@ public class TerminalScreenshotTests
     }
 
     // Visual proof for `terminal-renders-garbled-btop/prompt-redraws-overlap`: replays a REAL btop capture
-    // (assets/btop-capture.raw — 45 KB of genuine btop output: alt-buffer, absolute cursor addressing and
-    // ~2600 partial-redraw CSI sequences, the exact stress the issue names) through the actual TerminalControl
-    // and renders it to a PNG. Proves against LIVE btop bytes (not a synthetic burst) that the engine stays on
-    // the alt buffer, rendered cols == PTY cols (no grid-width mis-fit), and a rich, colourful frame paints —
-    // i.e. the redraws did NOT collapse into garbage/overlap. The pixel-exact "no ghost cells" invariant is
-    // asserted separately/synthetically by AltBufferPartialRedraw_BtopLike... in TerminalControlTests.
+    // (assets/btop-capture.raw — 57 KB of genuine btop output: alt-buffer, absolute cursor addressing and
+    // ~3090 partial-redraw CSI sequences, the exact stress the issue names) through the actual TerminalControl
+    // and renders it to a PNG. The capture was taken at 118x39 — the EXACT grid this pane fits at 940x600 — so
+    // btop fills the pane edge-to-edge and its bottom status row hugs the bottom edge (suspect 3). Proves
+    // against LIVE btop bytes (not a synthetic burst) that the engine stays on the alt buffer, rendered cols ==
+    // PTY cols (no grid-width mis-fit), the bottom row is real content on the edge (not blank/floating), and a
+    // rich, colourful frame paints — i.e. the redraws did NOT collapse into garbage/overlap. The pixel-exact
+    // "no ghost cells" invariant is asserted separately/synthetically by AltBufferPartialRedraw_BtopLike... .
     [Fact]
     public async Task RealBtopCapture_RendersRichAltBufferFrame_ColsMatchPty()
     {
@@ -158,8 +160,9 @@ public class TerminalScreenshotTests
         const string path = "/tmp/styloagent-btop-live.png";
         if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
 
-        int cols = 0, rows = 0;
+        int cols = 0, rows = 0, renderedRowCount = 0;
         bool altBuffer = false;
+        string lastRow = "";
         (int Cols, int Rows)? lastResize = null;
 
         await _fx.DispatchAsync(async () =>
@@ -167,8 +170,8 @@ public class TerminalScreenshotTests
             var fake = new FakePtySession();
             var control = new TerminalControl();
             control.Attach(fake);   // attach BEFORE Show so the initial layout refit resizes the session too
-            // Comfortably larger than the 100x30 the capture was taken at, so btop's absolute-addressed
-            // frame fits with margin (surplus rows/cols stay blank) rather than being clipped.
+            // 940x600 fits exactly the 118x39 grid the capture was taken at, so btop fills the pane edge-to-edge
+            // (no blank surplus rows/cols) and its bottom status row rests on the bottom edge.
             var window = new Window { Width = 940, Height = 600, Content = control, Name = "BtopLiveWindow" };
             window.Show();
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Normal);
@@ -183,6 +186,8 @@ public class TerminalScreenshotTests
             altBuffer = control.IsAltBuffer;
             cols = control.PtyCols;
             rows = control.PtyRows;
+            renderedRowCount = control.Rows.Count;
+            lastRow = control.Rows.Count > 0 ? control.Rows[^1] : "";
             lastResize = fake.LastResize;
 
             await ScreenshotCapture.CaptureControlAsync(window, control, path);
@@ -195,9 +200,17 @@ public class TerminalScreenshotTests
         Assert.NotNull(lastResize);
         Assert.Equal(cols, lastResize!.Value.Cols);
         Assert.Equal(rows, lastResize!.Value.Rows);
-        // The capture was taken at 100x30; the pane must be at least that big so the frame isn't clipped.
-        Assert.True(cols >= 100, $"pane should be wide enough for the 100-col btop frame; got {cols} cols");
-        Assert.True(rows >= 30, $"pane should be tall enough for the 30-row btop frame; got {rows} rows");
+        // The capture was taken at 118x39; the pane must be at least that big so the frame isn't clipped.
+        Assert.True(cols >= 118, $"pane should be wide enough for the 118-col btop frame; got {cols} cols");
+        Assert.True(rows >= 39, $"pane should be tall enough for the 39-row btop frame; got {rows} rows");
+
+        // BOTTOM-ANCHOR (suspect 3): on the alt buffer the transcript IS the Rows-tall screen, and btop paints
+        // its footer/status line on the LAST row — so the bottom rendered row must be real content resting on
+        // the bottom edge, NOT blank filler and NOT floating mid-pane. Rows lines up 1:1 with the PTY grid.
+        Assert.Equal(rows, renderedRowCount);
+        Assert.False(string.IsNullOrWhiteSpace(lastRow),
+            $"btop's bottom status row should hug the bottom edge with real content, but the last rendered row " +
+            $"was blank ('{lastRow}') — content is floating/short-padded instead of bottom-filled");
 
         Assert.True(System.IO.File.Exists(path), "btop screenshot PNG should be written");
         using var bmp = SKBitmap.Decode(path);

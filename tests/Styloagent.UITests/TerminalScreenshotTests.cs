@@ -139,4 +139,82 @@ public class TerminalScreenshotTests
         Assert.True(blueBlock > 200, $"Expected a filled blue background block from \\e[44m, found {blueBlock}.");
         Assert.True(lightBlock > 200, $"Expected a filled light block from inverse-video \\e[7m, found {lightBlock}.");
     }
+
+    // Visual proof for `terminal-renders-garbled-btop/prompt-redraws-overlap`: replays a REAL btop capture
+    // (assets/btop-capture.raw — 45 KB of genuine btop output: alt-buffer, absolute cursor addressing and
+    // ~2600 partial-redraw CSI sequences, the exact stress the issue names) through the actual TerminalControl
+    // and renders it to a PNG. Proves against LIVE btop bytes (not a synthetic burst) that the engine stays on
+    // the alt buffer, rendered cols == PTY cols (no grid-width mis-fit), and a rich, colourful frame paints —
+    // i.e. the redraws did NOT collapse into garbage/overlap. The pixel-exact "no ghost cells" invariant is
+    // asserted separately/synthetically by AltBufferPartialRedraw_BtopLike... in TerminalControlTests.
+    [Fact]
+    public async Task RealBtopCapture_RendersRichAltBufferFrame_ColsMatchPty()
+    {
+        var asset = System.IO.Path.Combine(AppContext.BaseDirectory, "assets", "btop-capture.raw");
+        Assert.True(System.IO.File.Exists(asset), $"btop capture asset missing at {asset}");
+        // Real btop output is UTF-8 (box-drawing/braille graph glyphs); decode it the way the PTY would.
+        string btop = await System.IO.File.ReadAllTextAsync(asset, System.Text.Encoding.UTF8);
+
+        const string path = "/tmp/styloagent-btop-live.png";
+        if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+
+        int cols = 0, rows = 0;
+        bool altBuffer = false;
+        (int Cols, int Rows)? lastResize = null;
+
+        await _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);   // attach BEFORE Show so the initial layout refit resizes the session too
+            // Comfortably larger than the 100x30 the capture was taken at, so btop's absolute-addressed
+            // frame fits with margin (surplus rows/cols stay blank) rather than being clipped.
+            var window = new Window { Width = 940, Height = 600, Content = control, Name = "BtopLiveWindow" };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Normal);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            // Replay the whole real btop session through the render path.
+            fake.FireOutput(btop);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            altBuffer = control.IsAltBuffer;
+            cols = control.PtyCols;
+            rows = control.PtyRows;
+            lastResize = fake.LastResize;
+
+            await ScreenshotCapture.CaptureControlAsync(window, control, path);
+            window.Close();
+        });
+
+        // btop is a full-screen TUI: it must be on the alternate buffer (the render path the fix targets).
+        Assert.True(altBuffer, "expected btop to be rendered on the alternate buffer");
+        // GRID-WIDTH FIT: rendered cols == PTY cols. The engine grid width IS what the PTY was resized to.
+        Assert.NotNull(lastResize);
+        Assert.Equal(cols, lastResize!.Value.Cols);
+        Assert.Equal(rows, lastResize!.Value.Rows);
+        // The capture was taken at 100x30; the pane must be at least that big so the frame isn't clipped.
+        Assert.True(cols >= 100, $"pane should be wide enough for the 100-col btop frame; got {cols} cols");
+        Assert.True(rows >= 30, $"pane should be tall enough for the 30-row btop frame; got {rows} rows");
+
+        Assert.True(System.IO.File.Exists(path), "btop screenshot PNG should be written");
+        using var bmp = SKBitmap.Decode(path);
+        Assert.NotNull(bmp);
+        int bright = 0, colourful = 0;
+        for (int y = 0; y < bmp!.Height; y++)
+        for (int x = 0; x < bmp.Width; x++)
+        {
+            var p = bmp.GetPixel(x, y);
+            int max = Math.Max(p.Red, Math.Max(p.Green, p.Blue));
+            int min = Math.Min(p.Red, Math.Min(p.Green, p.Blue));
+            if (max > 120) bright++;              // rendered glyphs/graphs (not an all-dark blank pane)
+            if (max - min > 45 && max > 90) colourful++;  // btop's coloured meters/graphs — proves colour paints
+        }
+        // A real btop frame fills the pane with thousands of bright glyph pixels AND distinctly coloured
+        // meter/graph pixels. A garbled/overlapping/blank render would fail one of these.
+        Assert.True(bright > 3000, $"expected a richly-rendered btop frame (many bright pixels), found {bright}");
+        Assert.True(colourful > 500, $"expected btop's coloured meters/graphs to render, found {colourful} colour pixels");
+    }
 }

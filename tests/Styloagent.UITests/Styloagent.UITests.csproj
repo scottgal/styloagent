@@ -26,6 +26,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Real btop VT capture (alt-buffer + absolute cursor addressing + partial redraws), replayed through
+         TerminalControl by TerminalScreenshotTests to prove render fidelity against genuine btop output. -->
+    <None Include="assets\btop-capture.raw" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Styloagent.App\Styloagent.App.csproj" />
     <ProjectReference Include="..\..\src\Styloagent.Terminal\Styloagent.Terminal.csproj" />
     <ProjectReference Include="..\..\src\Styloagent.Core\Styloagent.Core.csproj" />

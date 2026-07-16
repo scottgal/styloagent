@@ -617,6 +617,45 @@ public class TerminalControlTests
     }
 
     /// <summary>
+    /// Bottom-anchor must survive output that arrives BEFORE the control is laid out (viewport height still 0)
+    /// — the pane-attach/replay ordering, where a re-attach replays the backlog into a not-yet-measured
+    /// control. If <c>_topPad</c> is only computed on that pre-layout rebuild it stays 0 and the content sticks
+    /// to the top/middle after layout. Fire output first, THEN show/lay out, and assert the short buffer still
+    /// ends up bottom-anchored (this is the "finish the bottom-anchor half-fix" regression).
+    /// </summary>
+    [Fact]
+    public Task OutputBeforeLayout_StillBottomAnchoredAfterLayout()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);
+
+            // Output arrives BEFORE the control is shown/measured (viewport height is 0 here).
+            fake.FireOutput("line one\r\nline two");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            // Now lay it out — this is when a real pane becomes visible after a re-attach + replay.
+            var window = new Window { Content = control, Width = 800, Height = 400, Name = "PreLayoutAnchorWindow" };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Normal);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            var sv = control.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Name == "ScrollArea");
+            var screen = control.GetVisualDescendants().OfType<SelectableTextBlock>().First(t => t.Name == "ScreenText");
+
+            double top = Canvas.GetTop(screen);
+            Assert.True(top > sv.Viewport.Height * 0.5,
+                $"short buffer must be bottom-anchored even when output preceded layout; Canvas.Top={top}, " +
+                $"viewport={sv.Viewport.Height}");
+
+            window.Close();
+        });
+    }
+
+    /// <summary>
     /// Task B: the fake/non-process session reports ProcessId 0 via the interface default, and the property
     /// never throws. (The real PID is surfaced by PortaPtySession from Porta.Pty; not exercised headlessly.)
     /// </summary>

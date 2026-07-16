@@ -181,6 +181,45 @@ public class GitServiceIntegrationTests
         finally { TryDeleteRepo(repo); }
     }
 
+    /// <summary>
+    /// Regression for the cockpit-freeze class: git subprocesses forking on the UI thread. Every git
+    /// command routes through <c>GitService.RunAsync</c>, whose <c>Process.Start</c> (fork/exec) once ran
+    /// in the method's SYNCHRONOUS prefix — i.e. on whatever thread called it, which for the git panel is
+    /// the Avalonia dispatcher (RefreshGitPanelFor → the loaders). Under repo churn that fork storm
+    /// contended with text-shaping on the libmalloc fork-lock and froze the app. The fork must run OFF the
+    /// caller thread (hopped to the pool), so it is observed on a DIFFERENT thread than the caller.
+    /// </summary>
+    [Fact]
+    public void RunAsync_forks_off_the_caller_thread()
+    {
+        if (!GitAvailable()) return;
+        var repo = Path.Combine(Path.GetTempPath(), "gitfork-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(repo);
+        try
+        {
+            Run(repo, "init -b main"); Run(repo, "config user.email t@t.t"); Run(repo, "config user.name t");
+            File.WriteAllText(Path.Combine(repo, "a.txt"), "one\n"); Run(repo, "add -A"); Run(repo, "commit -m init");
+
+            var box = new System.Runtime.CompilerServices.StrongBox<int>(-1);
+            int callerThreadId = 0;
+            // A dedicated thread stands in for the UI/dispatcher thread: its managed id is unique and never
+            // reused by the thread pool, so a pool-thread fork is provably a different thread. The AsyncLocal
+            // probe flows into RunAsync's Task.Run and records the thread the fork actually ran on.
+            var caller = new System.Threading.Thread(() =>
+            {
+                callerThreadId = Environment.CurrentManagedThreadId;
+                Styloagent.Git.GitService.ForkThreadProbe.Value = box;
+                _ = new Styloagent.Git.GitService().GetStatusAsync(repo).GetAwaiter().GetResult();
+            }) { IsBackground = true };
+            caller.Start();
+            Assert.True(caller.Join(TimeSpan.FromSeconds(30)), "git status did not complete");
+
+            Assert.NotEqual(-1, box.Value);                // the fork ran and was observed
+            Assert.NotEqual(callerThreadId, box.Value);    // ...but NOT on the caller (UI-stand-in) thread
+        }
+        finally { TryDeleteRepo(repo); }
+    }
+
     private static void TryDeleteRepo(string repo)
     {
         try { if (Directory.Exists(repo)) Directory.Delete(repo, recursive: true); } catch { }

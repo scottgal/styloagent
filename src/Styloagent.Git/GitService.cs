@@ -11,6 +11,14 @@ namespace Styloagent.Git;
 /// </summary>
 public sealed class GitService : IGitService, IGitLog, IGitDiff, IGitWrite, IGitBranch, IGitStash
 {
+    /// <summary>
+    /// Test seam for the cockpit-freeze regression: a caller sets this to a box before invoking a git
+    /// command and <see cref="RunAsync"/> records the managed-thread id the git fork actually ran on.
+    /// It flows per logical call (<see cref="AsyncLocal{T}"/>), so parallel tests never corrupt it. The
+    /// invariant it guards: the fork must NOT run on the caller (UI/dispatcher) thread.
+    /// </summary>
+    public static readonly AsyncLocal<System.Runtime.CompilerServices.StrongBox<int>?> ForkThreadProbe = new();
+
     public async Task<GitResult<GitStatus>> GetStatusAsync(string worktreePath, CancellationToken ct = default)
     {
         var r = await RunAsync(worktreePath, ct, "status", "--porcelain=v2", "--branch").ConfigureAwait(false);
@@ -139,7 +147,16 @@ public sealed class GitService : IGitService, IGitLog, IGitDiff, IGitWrite, IGit
             };
             foreach (var a in args) psi.ArgumentList.Add(a);
 
-            using var proc = Process.Start(psi);
+            // Fork OFF the caller's thread. Process.Start = fork()/exec() runs SYNCHRONOUSLY at this
+            // point, and callers reach RunAsync on the UI thread (RefreshGitPanelFor -> the git loaders).
+            // A fork on the dispatcher contends with HarfBuzz text-shaping on the libmalloc fork-lock and
+            // froze the cockpit under repo churn. Hop to the pool so no git subprocess ever forks on the
+            // UI thread; the rest of this method already runs off-thread via ConfigureAwait(false).
+            using var proc = await Task.Run(() =>
+            {
+                if (ForkThreadProbe.Value is { } box) box.Value = Environment.CurrentManagedThreadId;
+                return Process.Start(psi);
+            }, ct).ConfigureAwait(false);
             if (proc is null) return new ProcOutcome(false, "", "failed to start git");
             string stdout = await proc.StandardOutput.ReadToEndAsync(ct).ConfigureAwait(false);
             string stderr = await proc.StandardError.ReadToEndAsync(ct).ConfigureAwait(false);

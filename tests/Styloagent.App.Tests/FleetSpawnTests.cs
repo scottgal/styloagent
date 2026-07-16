@@ -60,7 +60,7 @@ public class FleetSpawnTests
             var vm = await BuildOverviewVmAsync(repoRoot: repo, gitService: git);
             vm.AttachProject(ProjectConfig.For(repo));
 
-            var outcome = vm.SpawnChild(new SpawnRequest(vm.Panes[0].Prefix, "iso-", "overlaps foss", ".", "p", Worktree: true));
+            var outcome = await vm.SpawnChildAsync(new SpawnRequest(vm.Panes[0].Prefix, "iso-", "overlaps foss", ".", "p", Worktree: true));
 
             Assert.True(outcome.Spawned);
             Assert.Equal("agent/iso", git.AddedBranch);
@@ -85,7 +85,7 @@ public class FleetSpawnTests
                 var overviewPrefix = vm.Panes[0].Prefix;   // first live agent acts as parent
                 int before = vm.Panes.Count;
 
-                var outcome = vm.SpawnChild(new SpawnRequest(overviewPrefix, "newsub-", "owns X", ".", "You are newsub-.", false));
+                var outcome = await vm.SpawnChildAsync(new SpawnRequest(overviewPrefix, "newsub-", "owns X", ".", "You are newsub-.", false));
 
                 Assert.True(outcome.Spawned);
                 Assert.Equal(before + 1, vm.Panes.Count);
@@ -106,7 +106,7 @@ public class FleetSpawnTests
         {
             var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
             vm.PauseFleetCommand.Execute(null);
-            var outcome = vm.SpawnChild(new SpawnRequest(vm.Panes[0].Prefix, "x-", "r", ".", "p", false));
+            var outcome = await vm.SpawnChildAsync(new SpawnRequest(vm.Panes[0].Prefix, "x-", "r", ".", "p", false));
             Assert.False(outcome.Spawned);
             Assert.Equal(RejectReason.Paused, outcome.Reason);
         }
@@ -147,7 +147,7 @@ public class FleetSpawnTests
             var overview = vm.Panes.First(p => p.Prefix == "overview-");
             Assert.Equal("overview-", overview.Prefix);
 
-            vm.SpawnProposed(new Styloagent.Core.Projects.ProposedAgent("hello-", "writes hello world", ".", "You are hello-."));
+            await vm.SpawnProposedAsync(new Styloagent.Core.Projects.ProposedAgent("hello-", "writes hello world", ".", "You are hello-."));
 
             await WaitUntil(() => vm.Panes.Any(p => p.Prefix == "hello-"));
             var child = vm.Panes.First(p => p.Prefix == "hello-");
@@ -180,7 +180,7 @@ public class FleetSpawnTests
             vm.AttachProject(cfg);
             Assert.Equal("overview-", vm.Panes[0].Prefix);
 
-            var outcome = vm.SpawnProposed(
+            var outcome = await vm.SpawnProposedAsync(
                 new ProposedAgent("iso-", "overlaps foss", ".", "You are iso-.", Worktree: true));
 
             Assert.True(outcome.Spawned);

@@ -918,7 +918,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(MaxDepth));
         OnPropertyChanged(nameof(FleetHudText));
         ProposedTeam?.Dispose();
-        ProposedTeam = new ProposedTeamViewModel(project.ProposedAgentsPath, project.TeamPath, SpawnProposed);
+        ProposedTeam = new ProposedTeamViewModel(project.ProposedAgentsPath, project.TeamPath, SpawnProposedAsync);
         Issues = new IssuesViewModel(project.IssuesDir);
 
         // Start (or restart) the RouterHost whenever a project is attached so the coordinator
@@ -972,9 +972,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Runs the gated wrap-up for the agent identified by <paramref name="callerPrefix"/>. Requires an
-    /// active project and that the agent was spawned with a worktree. Runs on the UI thread.
+    /// active project and that the agent was spawned with a worktree. Invoked on the UI thread but awaits
+    /// the (slow) test/merge/cleanup off it, so the cockpit stays responsive; the continuation resumes on
+    /// the UI thread to update the UI-bound state.
     /// </summary>
-    public WrapUpOutcome WrapUp(string callerPrefix)
+    public async Task<WrapUpOutcome> WrapUpAsync(string callerPrefix)
     {
         if (_project is null) return new WrapUpOutcome(WrapUpStatus.KeptUncommitted, "no active project", null);
         if (_git is null) return new WrapUpOutcome(WrapUpStatus.KeptUncommitted, "git unavailable", null);
@@ -988,7 +990,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var svc = new WrapUpService(_git, new ProcessTestRunner());
         var req = new WrapUpRequest(callerPrefix, _project.Root, pane.WorktreePath, pane.WorktreeBranch);
 
-        var outcome = svc.WrapUpAsync(req, policy, _project.IssuesDir).GetAwaiter().GetResult();
+        // await (not .GetAwaiter().GetResult()): wrap-up runs the test suite + merge + cleanup — seconds to
+        // minutes. FleetController marshals this onto the UI thread, so blocking here froze the whole cockpit.
+        // Awaiting releases the UI thread during the git/test I/O; the continuation resumes on it to update
+        // the UI-bound collections below (Issues, pane, git panel), so those stay UI-thread-safe.
+        var outcome = await svc.WrapUpAsync(req, policy, _project.IssuesDir);
 
         Issues?.Refresh();
         if (outcome.Merged)
@@ -1143,23 +1149,27 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Turns a proposed subsystem into a live roster agent. Normal case: routes through the governed
-    /// <see cref="SpawnChild"/>, so a human-spawn gets the same governor + worktree + lineage as an
+    /// <see cref="SpawnChildAsync"/>, so a human-spawn gets the same governor + worktree + lineage as an
     /// agent's <c>spawn_agent</c>. Sole exception: with no overview owner (a bare worktree roster) this
     /// is a ROOT spawn — the parent-centric governor can't check a root without risking a second root
     /// (breaking single-rooted authority), so it creates the pane directly, still honouring the
     /// proposal's worktree decision.
     /// </summary>
-    public SpawnOutcome SpawnProposed(ProposedAgent p)
+    public async Task<SpawnOutcome> SpawnProposedAsync(ProposedAgent p)
     {
         var owner = OverviewPane();
         if (owner is not null && owner.Prefix != p.Prefix)
-            return SpawnChild(new SpawnRequest(
+            return await SpawnChildAsync(new SpawnRequest(
                 owner.Prefix, p.Prefix, p.Responsibility, p.Dir, p.LaunchPrompt, p.Worktree));
 
         // Root / no-owner exception: establish the single root directly.
         string? worktreePath = null, worktreeBranch = null;
-        if (p.Worktree && !TryAddWorktree(p.Prefix, out worktreePath, out worktreeBranch, out var wtError))
-            return SpawnOutcome.Reject(RejectReason.InvalidPrefix, $"worktree add failed: {wtError}");
+        if (p.Worktree)
+        {
+            var wt = await TryAddWorktreeAsync(p.Prefix);
+            if (!wt.Ok) return SpawnOutcome.Reject(RejectReason.InvalidPrefix, $"worktree add failed: {wt.Error}");
+            (worktreePath, worktreeBranch) = (wt.Path, wt.Branch);
+        }
         var pane = CreatePaneForProposed(p, worktreeOverride: worktreePath, worktreeBranch: worktreeBranch);
         if (worktreePath is not null && _git is not null && pane is not null)
             _ = pane.RefreshGitStatusAsync(_git);
@@ -1168,30 +1178,39 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             : SpawnOutcome.Ok(p.Prefix);
     }
 
+    /// <summary>Outcome of a worktree add: Ok (with Path/Branch, or all-null when the agent shares the repo), or a failure Error.</summary>
+    private readonly record struct WorktreeAdd(bool Ok, string? Path, string? Branch, string? Error)
+    {
+        public static WorktreeAdd Shared => new(true, null, null, null);
+        public static WorktreeAdd Failed(string? error) => new(false, null, null, error);
+        public static WorktreeAdd Created(string path, string branch) => new(true, path, branch, null);
+    }
+
     /// <summary>
     /// Creates an isolated <c>agent/&lt;prefix&gt;</c> worktree for a spawning agent when a git service and
-    /// project are present. Returns true and sets <paramref name="path"/>/<paramref name="branch"/> on
-    /// success; false with <paramref name="error"/> if the worktree add fails. A no-op that returns true
-    /// with null path/branch when there is no git service or project — the agent then shares the repo.
+    /// project are present. Returns <see cref="WorktreeAdd.Created"/> on success, <see cref="WorktreeAdd.Failed"/>
+    /// if the add fails, or <see cref="WorktreeAdd.Shared"/> (Ok, null path/branch) when there is no git service
+    /// or project — the agent then shares the repo. Awaits the add (a checkout) so the UI thread isn't blocked.
     /// </summary>
-    private bool TryAddWorktree(string prefix, out string? path, out string? branch, out string? error)
+    private async Task<WorktreeAdd> TryAddWorktreeAsync(string prefix)
     {
-        path = null; branch = null; error = null;
-        if (_git is null || _project is null) return true;   // nothing to isolate; share the repo
+        if (_git is null || _project is null) return WorktreeAdd.Shared;   // nothing to isolate; share the repo
         var existing = Panes.Where(p => p.WorktreePath is not null).Select(p => p.WorktreePath!);
         var (wtPath, wtBranch) = WorktreeNaming.For(_project.Root, prefix, existing);
-        var add = _git.AddWorktreeAsync(_project.Root, wtPath, wtBranch).GetAwaiter().GetResult();
-        if (!add.Ok) { error = add.Error; return false; }
+        // await (not .GetAwaiter().GetResult()): git worktree add does a checkout. Spawn runs on the UI
+        // thread (FleetController marshals it there; the roster Spawn button is on it too), so blocking here
+        // froze the cockpit. Awaiting releases the UI thread during the add; the continuation resumes on it.
+        var add = await _git.AddWorktreeAsync(_project.Root, wtPath, wtBranch);
+        if (!add.Ok) return WorktreeAdd.Failed(add.Error);
         EnsureWorktreesIgnored(_project.Root);
-        path = wtPath; branch = wtBranch;
-        return true;
+        return WorktreeAdd.Created(wtPath, wtBranch);
     }
 
     /// <summary>
     /// Governor-checked spawn from a parent agent. Builds fleet state, runs the governor,
     /// and on approval creates the pane with parent/depth lineage stamped in.
     /// </summary>
-    public SpawnOutcome SpawnChild(SpawnRequest req)
+    public async Task<SpawnOutcome> SpawnChildAsync(SpawnRequest req)
     {
         var state = new FleetState(BuildFleetSnapshot().Members, FleetPolicy.MaxFleet, FleetPolicy.MaxDepth, FleetPaused);
         var decision = FleetGovernor.Check(state, req.ParentPrefix, req.Prefix);
@@ -1200,8 +1219,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         int parentDepth = Panes.First(p => p.Prefix == req.ParentPrefix).Depth;
 
         string? worktreePath = null, worktreeBranch = null;
-        if (req.Worktree && !TryAddWorktree(req.Prefix, out worktreePath, out worktreeBranch, out var wtError))
-            return SpawnOutcome.Reject(RejectReason.InvalidPrefix, $"worktree add failed: {wtError}");
+        if (req.Worktree)
+        {
+            var wt = await TryAddWorktreeAsync(req.Prefix);
+            if (!wt.Ok) return SpawnOutcome.Reject(RejectReason.InvalidPrefix, $"worktree add failed: {wt.Error}");
+            (worktreePath, worktreeBranch) = (wt.Path, wt.Branch);
+        }
 
         var proposed = new ProposedAgent(req.Prefix, req.Responsibility, req.Dir, req.LaunchPrompt);
         var paneVm = CreatePaneForProposed(proposed, parentPrefix: req.ParentPrefix, depth: parentDepth + 1,

@@ -220,7 +220,7 @@ public class MainWindowViewModelTests : IDisposable
             var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
             int before = vm.Panes.Count;
 
-            vm.SpawnProposed(new ProposedAgent("newsub-", "owns the new subsystem", ".", "You are newsub-."));
+            await vm.SpawnProposedAsync(new ProposedAgent("newsub-", "owns the new subsystem", ".", "You are newsub-."));
 
             Assert.Equal(before + 1, vm.Panes.Count);
             Assert.Contains(vm.Panes, p => p.DisplayName.Contains("newsub"));

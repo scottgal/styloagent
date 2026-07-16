@@ -30,7 +30,7 @@ public sealed partial class ProposedTeamViewModel : ObservableObject, IDisposabl
 {
     private readonly string _path;
     private readonly string? _teamPath;
-    private readonly Func<ProposedAgent, SpawnOutcome> _spawn;
+    private readonly Func<ProposedAgent, Task<SpawnOutcome>> _spawn;
     private FileSystemWatcher? _watcher;
     private readonly Timer _debounce;
     private volatile bool _disposed;
@@ -42,7 +42,7 @@ public sealed partial class ProposedTeamViewModel : ObservableObject, IDisposabl
     /// The repo's committed <c>team.yaml</c> (the portable specialist team that travels with the repo),
     /// or null. Its agents are offered first, ahead of the overview's live <c>proposed-agents.yaml</c>.
     /// </param>
-    public ProposedTeamViewModel(string proposedAgentsPath, string? teamPath, Func<ProposedAgent, SpawnOutcome> spawn)
+    public ProposedTeamViewModel(string proposedAgentsPath, string? teamPath, Func<ProposedAgent, Task<SpawnOutcome>> spawn)
     {
         _path = proposedAgentsPath;
         _teamPath = teamPath;
@@ -93,9 +93,9 @@ public sealed partial class ProposedTeamViewModel : ObservableObject, IDisposabl
     }
 
     [RelayCommand]
-    private void Spawn(ProposedAgent agent)
+    private async Task Spawn(ProposedAgent agent)
     {
-        var outcome = _spawn(agent);
+        var outcome = await _spawn(agent);
         var item = Proposals.FirstOrDefault(p => ReferenceEquals(p.Agent, agent));
         if (item is null) return;
         if (outcome.Spawned) Proposals.Remove(item);
@@ -103,10 +103,10 @@ public sealed partial class ProposedTeamViewModel : ObservableObject, IDisposabl
     }
 
     [RelayCommand]
-    private void SpawnAll()
+    private async Task SpawnAll()
     {
         foreach (var item in Proposals.ToList())
-            Spawn(item.Agent);
+            await Spawn(item.Agent);
     }
 
     private void StartWatcher()

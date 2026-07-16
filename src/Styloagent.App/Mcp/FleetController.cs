@@ -13,7 +13,7 @@ public sealed class FleetController : IFleetController
     public FleetController(MainWindowViewModel vm) => _vm = vm;
 
     public Task<SpawnOutcome> SpawnAsync(SpawnRequest req)
-        => Dispatcher.UIThread.InvokeAsync(() => _vm.SpawnChild(req)).GetTask();
+        => Dispatcher.UIThread.InvokeAsync(() => _vm.SpawnChildAsync(req));
 
     public FleetSnapshot Snapshot()
         => Dispatcher.UIThread.CheckAccess()
@@ -24,7 +24,7 @@ public sealed class FleetController : IFleetController
         => Dispatcher.UIThread.InvokeAsync(() => _vm.ReportIssue(req)).GetTask();
 
     public Task<WrapUpOutcome> WrapUpAsync(string callerPrefix)
-        => Dispatcher.UIThread.InvokeAsync(() => _vm.WrapUp(callerPrefix)).GetTask();
+        => Dispatcher.UIThread.InvokeAsync(() => _vm.WrapUpAsync(callerPrefix));
 
     public Task<MessageOutcome> SendMessageAsync(MessageRequest req)
         => Dispatcher.UIThread.InvokeAsync(() => _vm.SendBusMessage(req));

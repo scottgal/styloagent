@@ -16,7 +16,7 @@ public class ProposedTeamViewModelTests
         try
         {
             ProposedAgent? spawned = null;
-            var vm = new ProposedTeamViewModel(path, null, a => { spawned = a; return SpawnOutcome.Ok(a.Prefix); });
+            var vm = new ProposedTeamViewModel(path, null, a => { spawned = a; return Task.FromResult(SpawnOutcome.Ok(a.Prefix)); });
             vm.Refresh();
 
             Assert.Single(vm.Proposals);
@@ -41,7 +41,7 @@ public class ProposedTeamViewModelTests
         try
         {
             var spawned = new List<ProposedAgent>();
-            var vm = new ProposedTeamViewModel(path, null, a => { spawned.Add(a); return SpawnOutcome.Ok(a.Prefix); });
+            var vm = new ProposedTeamViewModel(path, null, a => { spawned.Add(a); return Task.FromResult(SpawnOutcome.Ok(a.Prefix)); });
             vm.Refresh();
 
             Assert.Equal(2, vm.Proposals.Count);
@@ -70,7 +70,7 @@ public class ProposedTeamViewModelTests
             "  - prefix: ui-\n    responsibility: frontend\n    dir: .\n    launchPrompt: y\n");
         try
         {
-            var vm = new ProposedTeamViewModel(proposed, team, _ => SpawnOutcome.Ok("x-"));
+            var vm = new ProposedTeamViewModel(proposed, team, _ => Task.FromResult(SpawnOutcome.Ok("x-")));
             vm.Refresh();
 
             // Committed team first (foss-, test-), then the non-dup proposal (ui-). foss- appears once.
@@ -91,7 +91,7 @@ public class ProposedTeamViewModelTests
             "agents:\n  - prefix: foss-\n    responsibility: packages\n    dir: .\n    launchPrompt: hi\n");
         try
         {
-            var vm = new ProposedTeamViewModel(path, null, a => SpawnOutcome.Ok(a.Prefix));
+            var vm = new ProposedTeamViewModel(path, null, a => Task.FromResult(SpawnOutcome.Ok(a.Prefix)));
             vm.Refresh();
             vm.SpawnCommand.Execute(vm.Proposals[0].Agent);
             Assert.Empty(vm.Proposals);
@@ -108,7 +108,7 @@ public class ProposedTeamViewModelTests
         try
         {
             var vm = new ProposedTeamViewModel(path, null,
-                _ => SpawnOutcome.Reject(RejectReason.FleetFull, "fleet full (12/12)"));
+                _ => Task.FromResult(SpawnOutcome.Reject(RejectReason.FleetFull, "fleet full (12/12)")));
             vm.Refresh();
             vm.SpawnCommand.Execute(vm.Proposals[0].Agent);
             Assert.Single(vm.Proposals);                                   // card stays

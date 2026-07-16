@@ -28,7 +28,7 @@ public class FleetHudUpdateTests
             int countBefore = vm.FleetCount;
             var hudBefore = vm.FleetHudText;
 
-            var outcome = vm.SpawnChild(new SpawnRequest(parentPrefix, "hud-", "r", ".", "p", false));
+            var outcome = await vm.SpawnChildAsync(new SpawnRequest(parentPrefix, "hud-", "r", ".", "p", false));
 
             Assert.True(outcome.Spawned);
 

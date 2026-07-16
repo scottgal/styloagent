@@ -287,6 +287,51 @@ public class TerminalControlTests
     }
 
     /// <summary>
+    /// Regression for `terminal-pane-livelocks-ui-thread-per-chunk-rebuild` (SEVERITY HIGH — froze the
+    /// whole cockpit). A rapid burst of PTY output chunks must COALESCE into a bounded number of
+    /// full-transcript rebuilds — NOT one rebuild per chunk. The per-chunk rebuild let the render queue
+    /// outpace its own drain: a CPU-bound UI-thread livelock that pinned a core at 100% and never
+    /// self-recovered. Firing many chunks before the dispatcher drains must collapse into a single rebuild,
+    /// while still rendering every chunk's output (coalescing must not drop content).
+    /// </summary>
+    [Fact]
+    public Task OutputBurst_CoalescesRebuilds_DoesNotRebuildPerChunk()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);
+            var window = new Window { Content = control, Width = 800, Height = 400, Name = "CoalesceWindow" };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            int before = control.RebuildCount;
+
+            // Fire a rapid burst WITHOUT yielding to the dispatcher between chunks — exactly the
+            // streaming-TUI pattern (an agent's startup banner) that livelocked the UI thread.
+            const int chunks = 50;
+            for (int i = 0; i < chunks; i++)
+                fake.FireOutput($"chunk{i:D2}\r\n");
+
+            // Drain once. Per-chunk rebuilds run `chunks` full rebuilds here; coalescing runs one.
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            int rebuilds = control.RebuildCount - before;
+            Assert.True(rebuilds <= 2,
+                $"Expected the {chunks}-chunk burst to COALESCE into ≤2 rebuilds, but ran {rebuilds} " +
+                $"(≈ one rebuild per chunk = the UI-thread livelock this test guards against).");
+
+            // Coalescing must not drop output: both the earliest and latest chunk must be rendered.
+            Assert.Contains("chunk00", control.RenderedText);
+            Assert.Contains("chunk49", control.RenderedText);
+
+            window.Close();
+        });
+    }
+
+    /// <summary>
     /// SizeChanged on the control calls session.Resize with the calculated cols/rows.
     /// </summary>
     [Fact]

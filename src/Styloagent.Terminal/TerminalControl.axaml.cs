@@ -134,6 +134,13 @@ public sealed partial class TerminalControl : UserControl
     /// </summary>
     public string RenderedText => string.Join("\n", _rows);
 
+    /// <summary>
+    /// Test seam: total number of full-transcript rebuilds performed since construction. Used to assert
+    /// that a burst of PTY output chunks COALESCES into a bounded number of rebuilds rather than one
+    /// rebuild per chunk (the per-chunk rebuild is what livelocked the UI thread and froze the cockpit).
+    /// </summary>
+    internal int RebuildCount { get; private set; }
+
     public TerminalControl()
     {
         InitializeComponent();
@@ -222,18 +229,57 @@ public sealed partial class TerminalControl : UserControl
 
     private void OnSessionOutput(string text)
     {
-        // Write to XTerm engine — Terminal.Write is safe to call from any thread.
+        // Write to XTerm engine — Terminal.Write is safe to call from any thread. This is the VT-state
+        // update and MUST stay eager and in-order; only the (expensive) rebuild is deferred/coalesced.
         _terminal.Write(text);
 
-        // Marshal the buffer rebuild to the UI thread. If the operator is following the tail, scroll to
-        // the end AFTER layout has taken in the new content (a lower-priority post) so the last line — a
-        // Claude Code prompt, say — stays visible; if they've scrolled up, leave their position alone.
-        Dispatcher.UIThread.Post(() =>
+        // Coalesce the buffer rebuild. A streaming agent (its startup banner, a TUI redraw) fires Output
+        // in a rapid burst; rebuilding the full transcript once PER CHUNK let the render queue outpace its
+        // own drain — a CPU-bound UI-thread livelock that pinned a core at 100% and froze the whole cockpit
+        // (issue: terminal-pane livelocks the UI thread). Instead we schedule at most ONE rebuild in flight,
+        // so a burst collapses into a single rebuild bounded by the render clock, not the input rate.
+        ScheduleRebuild();
+    }
+
+    // ── Coalesced rebuild scheduling ─────────────────────────────────────────
+    // _renderDirty / _rebuildScheduled are touched from BOTH the background PTY thread (via
+    // OnSessionOutput) and the UI thread (the posted rebuild), so all access is under _rebuildGate.
+    private readonly object _rebuildGate = new();
+    private bool _renderDirty;
+    private bool _rebuildScheduled;
+
+    /// <summary>
+    /// Marks the rendered view dirty and ensures exactly one rebuild is queued on the UI thread. A burst of
+    /// output that arrives before the queued rebuild runs collapses into that single rebuild. Safe to call
+    /// from any thread (<see cref="IPtySession.Output"/> fires on a background PTY thread).
+    /// </summary>
+    private void ScheduleRebuild()
+    {
+        lock (_rebuildGate)
         {
-            RebuildRows();
-            if (_followTail)
-                Dispatcher.UIThread.Post(ScrollToTail, DispatcherPriority.Loaded);
-        }, DispatcherPriority.Render);
+            _renderDirty = true;
+            if (_rebuildScheduled) return;   // a rebuild is already queued — it will pick up this output too
+            _rebuildScheduled = true;
+        }
+        Dispatcher.UIThread.Post(RunCoalescedRebuild, DispatcherPriority.Render);
+    }
+
+    /// <summary>
+    /// The single queued rebuild: renders the current buffer once, then (if following the tail) scrolls to
+    /// the end AFTER layout has taken in the new content so the live prompt/last line stays visible. Output
+    /// that arrived after the last clear-of-dirty re-arms a fresh rebuild via <see cref="ScheduleRebuild"/>.
+    /// </summary>
+    private void RunCoalescedRebuild()
+    {
+        lock (_rebuildGate)
+        {
+            _rebuildScheduled = false;
+            if (!_renderDirty) return;
+            _renderDirty = false;
+        }
+        RebuildRows();
+        if (_followTail)
+            Dispatcher.UIThread.Post(ScrollToTail, DispatcherPriority.Loaded);
     }
 
     /// <summary>Pins the viewport to the bottom of the transcript (keeps the live prompt/last line in view).</summary>
@@ -415,6 +461,7 @@ public sealed partial class TerminalControl : UserControl
     /// </summary>
     private void RebuildRows()
     {
+        RebuildCount++;
         TerminalBuffer buffer = _terminal.Buffer;
 
         // Render the FULL transcript — scrollback + the live screen — so the ScrollViewer can scroll the

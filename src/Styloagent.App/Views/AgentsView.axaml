@@ -139,37 +139,60 @@
       <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
         <StackPanel>
 
-          <!-- PROPOSED subsystems: written by the overview agent; click Spawn to promote to live. -->
-          <StackPanel IsVisible="{Binding ProposedTeam.Proposals.Count, Converter={x:Static conv:CountToBoolConverter.Instance}}">
-            <Border Background="#2A1A1A" Padding="8,4">
-              <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Text="PROPOSED" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AttentionBrush}" LetterSpacing="1" />
-                <Button Grid.Column="1" Content="Spawn all" FontSize="10" Padding="6,1"
-                        Command="{Binding ProposedTeam.SpawnAllCommand}" />
-              </Grid>
-            </Border>
-            <ItemsControl ItemsSource="{Binding ProposedTeam.Proposals}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate DataType="vm:ProposedAgentItem">
-                  <Border Background="{DynamicResource RowBgBrush}" Margin="0,1,0,0">
-                    <Grid ColumnDefinitions="4,*,Auto">
-                      <Border Grid.Column="0" Background="{Binding ColorHex}" Width="4" />
-                      <StackPanel Grid.Column="1" Margin="8,5" Spacing="1">
-                        <TextBlock Text="{Binding Prefix}" FontWeight="SemiBold" FontSize="12" Foreground="{Binding ColorHex}" />
-                        <TextBlock Text="{Binding Responsibility}" FontSize="10" Foreground="#8888AA" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{Binding RejectionMessage}" FontSize="10" Foreground="#E5736B"
-                                   TextWrapping="Wrap"
-                                   IsVisible="{Binding RejectionMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                      </StackPanel>
-                      <Button Grid.Column="2" Content="Spawn" FontSize="10" Margin="0,0,6,0" VerticalAlignment="Center"
-                              Command="{Binding DataContext.ProposedTeam.SpawnCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                              CommandParameter="{Binding Agent}" />
-                    </Grid>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </StackPanel>
+          <!-- PROPOSED subsystems: written by the overview agent; click Spawn to promote to live.
+               Collapsed into an accordion by default (Fix 0) so the proposed list keeps a minimal
+               vertical footprint and doesn't dominate the roster — the operator expands it to spawn.
+               The whole Expander hides when there are no proposals. -->
+          <Expander IsExpanded="False"
+                    HorizontalAlignment="Stretch"
+                    Padding="0"
+                    Margin="0,0,0,2"
+                    IsVisible="{Binding ProposedTeam.Proposals.Count, Converter={x:Static conv:CountToBoolConverter.Instance}}">
+            <Expander.Header>
+              <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <TextBlock Text="PROPOSED" FontSize="10" FontWeight="SemiBold"
+                           Foreground="{DynamicResource AttentionBrush}" LetterSpacing="1"
+                           VerticalAlignment="Center" />
+                <!-- Count badge so the operator sees how many proposals are waiting without expanding. -->
+                <Border Background="#3A2020" CornerRadius="7" Padding="6,0" MinWidth="18" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding ProposedTeam.Proposals.Count}" FontSize="10"
+                             Foreground="{DynamicResource AttentionBrush}" HorizontalAlignment="Center" />
+                </Border>
+              </StackPanel>
+            </Expander.Header>
+
+            <StackPanel>
+              <Border Background="#2A1A1A" Padding="8,4">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Text="Promote a proposed subsystem to a live agent" FontSize="10"
+                             Foreground="#8888AA" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  <Button Grid.Column="1" Content="Spawn all" FontSize="10" Padding="6,1"
+                          Command="{Binding ProposedTeam.SpawnAllCommand}" />
+                </Grid>
+              </Border>
+              <ItemsControl ItemsSource="{Binding ProposedTeam.Proposals}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="vm:ProposedAgentItem">
+                    <Border Background="{DynamicResource RowBgBrush}" Margin="0,1,0,0">
+                      <Grid ColumnDefinitions="4,*,Auto">
+                        <Border Grid.Column="0" Background="{Binding ColorHex}" Width="4" />
+                        <StackPanel Grid.Column="1" Margin="8,5" Spacing="1">
+                          <TextBlock Text="{Binding Prefix}" FontWeight="SemiBold" FontSize="12" Foreground="{Binding ColorHex}" />
+                          <TextBlock Text="{Binding Responsibility}" FontSize="10" Foreground="#8888AA" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding RejectionMessage}" FontSize="10" Foreground="#E5736B"
+                                     TextWrapping="Wrap"
+                                     IsVisible="{Binding RejectionMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                        </StackPanel>
+                        <Button Grid.Column="2" Content="Spawn" FontSize="10" Margin="0,0,6,0" VerticalAlignment="Center"
+                                Command="{Binding DataContext.ProposedTeam.SpawnCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                CommandParameter="{Binding Agent}" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Expander>
 
           <!-- Live roster -->
           <ItemsControl ItemsSource="{Binding Panes}"

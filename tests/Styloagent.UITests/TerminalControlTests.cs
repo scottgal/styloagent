@@ -750,4 +750,155 @@ public class TerminalControlTests
         Assert.Null(lambdaEx);
         Assert.DoesNotContain(fake.Writes, IsCursorPositionReport);
     }
+
+    // ── Mouse-wheel scrollback + zoom ────────────────────────────────────────
+    // The terminal panes had no wheel scrolling (`docked-agent-terminal-panes-have-no-scrollbar`) and no
+    // zoom. Wheel-up must scroll BACK through the VT scrollback (driving the real ScrollViewer offset, not a
+    // fake), and returning to the bottom resumes tail-following. On the alternate buffer a full-screen TUI
+    // (btop) owns its own scroll, so the wheel must NOT be hijacked. Zoom re-measures the cell and refits the
+    // grid so rendered cols == PTY cols at any zoom (the invariant the render-fidelity fix depends on).
+
+    /// <summary>
+    /// Wheel-up scrolls the transcript BACK through scrollback: from the tail (auto-followed to the bottom),
+    /// a wheel-up notch must move the real ScrollViewer offset UP (toward earlier output), and scrolling back
+    /// to the bottom must return to the tail. Faithful to the VT buffer — it drives the actual offset.
+    /// </summary>
+    [Fact]
+    public Task WheelScroll_WheelUp_ScrollsBackThroughScrollback_AndReturnsToTail()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);
+            var window = new Window { Content = control, Width = 800, Height = 300, Name = "WheelWindow" };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            // A transcript far taller than the viewport, so there's real scrollback to move through.
+            for (int i = 1; i <= 80; i++)
+                fake.FireOutput($"L{i:D2}\r\n");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            var sv = control.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Name == "ScrollArea");
+            double max = sv.Extent.Height - sv.Viewport.Height;
+            Assert.True(max > 0, "need overflow for there to be scrollback to wheel through");
+            // Auto-follow left us pinned at the bottom.
+            Assert.True(sv.Offset.Y >= max - 2.0, $"expected to start at the tail; offset {sv.Offset.Y}, max {max}");
+
+            // Wheel UP (positive delta) — scroll BACK through history.
+            bool handled = control.HandleWheelScroll(3);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+            Assert.True(handled, "wheel scroll on the normal buffer with overflow must be handled");
+            Assert.True(sv.Offset.Y < max - 1.0,
+                $"wheel-up must scroll back (offset should drop below the tail); offset {sv.Offset.Y}, max {max}");
+
+            // Wheel DOWN hard — back to the tail; following resumes (a further output would auto-scroll).
+            control.HandleWheelScroll(-1000);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+            Assert.True(sv.Offset.Y >= max - 2.0,
+                $"scrolling back down must return to the tail; offset {sv.Offset.Y}, max {max}");
+
+            window.Close();
+        });
+    }
+
+    /// <summary>
+    /// On the ALTERNATE buffer a full-screen TUI (btop, vim, less) manages its own scroll, so the terminal
+    /// must NOT hijack the wheel — <see cref="TerminalControl.HandleWheelScroll"/> is a no-op returning false,
+    /// leaving the event free to route to the app. Regression against re-introducing scrollback hijacking that
+    /// would fight btop's own paging.
+    /// </summary>
+    [Fact]
+    public Task WheelScroll_OnAlternateBuffer_IsIgnored_AppOwnsScroll()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);
+            var window = new Window { Content = control, Width = 800, Height = 400, Name = "WheelAltWindow" };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Normal);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            // Enter the alt buffer (what btop does).
+            fake.FireOutput(AltOn + HideC + ClearScreen);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+            Assert.True(control.IsAltBuffer, "expected the alternate buffer to be active");
+
+            // Wheel must be a no-op — the running TUI owns scroll.
+            Assert.False(control.HandleWheelScroll(3), "wheel scroll must NOT be hijacked on the alt buffer");
+            Assert.False(control.HandleWheelScroll(-3), "wheel scroll must NOT be hijacked on the alt buffer");
+
+            window.Close();
+        });
+    }
+
+    /// <summary>
+    /// Zoom (the bindable <see cref="TerminalControl.ZoomLevel"/> a cockpit slider drives): a LARGER zoom
+    /// grows the measured monospace cell, so FEWER columns fit — and the PTY is resized to match, keeping the
+    /// render-fidelity invariant "rendered cols == PTY cols" true at any zoom. Asserts the fitted grid shrinks
+    /// on zoom-in and that the session was resized to exactly the new engine column count.
+    /// </summary>
+    [Fact]
+    public Task Zoom_LargerZoom_FitsFewerColumns_AndResizesPtyToMatch()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);
+            var window = new Window { Content = control, Width = 800, Height = 400, Name = "ZoomWindow" };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Normal);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            int colsAtDefault = control.PtyCols;
+            Assert.True(colsAtDefault > 0, "grid should be fitted at the default zoom");
+
+            // Zoom IN — bigger font, bigger cell, fewer columns fit the same pane.
+            control.ZoomLevel = 2.5;
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Normal);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            int colsZoomedIn = control.PtyCols;
+            Assert.True(colsZoomedIn < colsAtDefault,
+                $"zooming in should fit FEWER columns; default={colsAtDefault}, zoomed={colsZoomedIn}");
+
+            // Rendered cols == PTY cols: the session was resized to exactly the engine's new column count.
+            Assert.NotNull(fake.LastResize);
+            Assert.Equal(control.PtyCols, fake.LastResize!.Value.Cols);
+
+            window.Close();
+        });
+    }
+
+    /// <summary>
+    /// <see cref="TerminalControl.ZoomLevel"/> is clamped to [<see cref="TerminalControl.MinZoom"/>,
+    /// <see cref="TerminalControl.MaxZoom"/>] via property coercion — the contract a bound cockpit slider
+    /// relies on, so an out-of-range binding value can never drive the font/grid outside the sane range.
+    /// </summary>
+    [Fact]
+    public Task Zoom_Level_IsClampedToRange()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var control = new TerminalControl();
+            var window = new Window { Content = control, Width = 800, Height = 400, Name = "ZoomClampWindow" };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            control.ZoomLevel = 99.0;
+            Assert.Equal(TerminalControl.MaxZoom, control.ZoomLevel);
+
+            control.ZoomLevel = 0.01;
+            Assert.Equal(TerminalControl.MinZoom, control.ZoomLevel);
+
+            window.Close();
+        });
+    }
 }

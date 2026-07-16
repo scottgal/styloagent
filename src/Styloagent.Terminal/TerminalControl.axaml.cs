@@ -59,8 +59,9 @@ public sealed partial class TerminalControl : UserControl
         Dispatcher.UIThread.Post(RebuildRows, DispatcherPriority.Render);
     }
 
-    /// <summary>Terminal font size in points — drives the text and the PTY col/row cell metrics.</summary>
+    /// <summary>EFFECTIVE terminal font size in points (app-wide base × <see cref="ZoomLevel"/>) — drives the text and the PTY col/row cell metrics.</summary>
     private double _fontSize = 13.0;
+    private const double MinFontPt = 8.0, MaxFontPt = 32.0;
 
     // Measured monospace cell (px), from the ACTUAL typeface — not a guessed ratio. The PTY grid and the
     // rendered text must use the SAME cell, or claude's full-width TUI wraps/overlaps ("sizing off"). Seeded
@@ -73,14 +74,54 @@ public sealed partial class TerminalControl : UserControl
     private const double PadX = 12.0;
     private const double PadY = 8.0;
 
-    /// <summary>Sets the terminal font size (points), rescales the row height, and re-fits the PTY grid.</summary>
-    public void SetFontSize(double pt)
+    // ── Zoom (per-terminal font scale; a cockpit slider binds ZoomLevel) ──────
+    /// <summary>Smallest / largest / step zoom factor — the range a bound zoom slider should use.</summary>
+    public const double MinZoom = 0.5, MaxZoom = 3.0, ZoomStep = 0.1;
+
+    /// <summary>
+    /// Per-terminal font zoom factor (1.0 = the app-wide terminal font size). The EFFECTIVE font size is the
+    /// app-wide base × this, so zoom composes with the global size preference. Bindable — a cockpit zoom
+    /// slider drives it — and clamped to [<see cref="MinZoom"/>, <see cref="MaxZoom"/>]. Changing it
+    /// re-measures the cell, refits the grid and resizes the PTY, so rendered cols == PTY cols at any zoom.
+    /// </summary>
+    public static readonly StyledProperty<double> ZoomLevelProperty =
+        AvaloniaProperty.Register<TerminalControl, double>(nameof(ZoomLevel), 1.0, coerce: CoerceZoom);
+
+    public double ZoomLevel
     {
-        _fontSize = Math.Clamp(pt, 8.0, 32.0);
+        get => GetValue(ZoomLevelProperty);
+        set => SetValue(ZoomLevelProperty, value);
+    }
+
+    private static double CoerceZoom(AvaloniaObject _, double v) => Math.Clamp(v, MinZoom, MaxZoom);
+
+    /// <summary>Zoom in one step (larger text → fewer cols/rows).</summary>
+    public void ZoomIn() => ZoomLevel += ZoomStep;
+
+    /// <summary>Zoom out one step (smaller text → more cols/rows).</summary>
+    public void ZoomOut() => ZoomLevel -= ZoomStep;
+
+    /// <summary>
+    /// Applies the effective font size (app-wide base × <see cref="ZoomLevel"/>): sets the render font,
+    /// re-measures the monospace cell, refits the PTY grid to the new cell (only once the control is
+    /// measured), and rebuilds. The single place font / zoom / global-size changes converge.
+    /// </summary>
+    private void ApplyFontMetrics()
+    {
+        _fontSize = Math.Clamp(_globalFontSize * ZoomLevel, MinFontPt, MaxFontPt);
         ScreenText.FontSize = _fontSize;
         MeasureCell();
-        RefitGrid(Bounds.Size);
+        if (Bounds.Width > 0 && Bounds.Height > 0)
+            RefitGrid(Bounds.Size);
         Dispatcher.UIThread.Post(RebuildRows, DispatcherPriority.Render);
+    }
+
+    /// <summary>Zoom changes recompute the font metrics and refit the PTY grid.</summary>
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == ZoomLevelProperty)
+            ApplyFontMetrics();
     }
 
     /// <summary>
@@ -120,7 +161,7 @@ public sealed partial class TerminalControl : UserControl
         GlobalFontSizeChanged?.Invoke(_globalFontSize);
     }
 
-    private void OnGlobalFontSizeChanged(double pt) => SetFontSize(pt);
+    private void OnGlobalFontSizeChanged(double pt) => ApplyFontMetrics();
 
     /// <summary>Cache of colour → brush so we don't allocate a brush per cell per repaint.</summary>
     private readonly Dictionary<uint, IBrush> _brushCache = new();
@@ -194,10 +235,8 @@ public sealed partial class TerminalControl : UserControl
         // Initialize rows to match the terminal's initial size.
         RebuildRows();
 
-        // Adopt the current app-wide font size and track future changes.
-        _fontSize = _globalFontSize;
-        ScreenText.FontSize = _fontSize;
-        MeasureCell();
+        // Adopt the current app-wide font size (× the default zoom) and track future changes.
+        ApplyFontMetrics();
         GlobalFontSizeChanged += OnGlobalFontSizeChanged;
 
         // Start Avalonia size tracking.
@@ -212,6 +251,10 @@ public sealed partial class TerminalControl : UserControl
         // - Bubble: also catches direct RaiseEvent calls (used in headless unit tests where the
         //   headless platform's keyboard routing produces a Bubble-only pass on the source control).
         AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel | RoutingStrategies.Bubble);
+
+        // Mouse wheel: scroll our scrollback (Ctrl+wheel zooms). Tunnel so we get it before the inner
+        // ScrollViewer and drive the real offset ourselves, marking it Handled to avoid a double-scroll.
+        AddHandler(PointerWheelChangedEvent, OnWheel, RoutingStrategies.Tunnel);
     }
 
     /// <summary>
@@ -461,6 +504,41 @@ public sealed partial class TerminalControl : UserControl
         UserInteracted?.Invoke(this, EventArgs.Empty);
         Focus();
         base.OnPointerPressed(e);
+    }
+
+    /// <summary>
+    /// Mouse wheel: Ctrl+wheel zooms; otherwise scrolls our scrollback. Registered on the Tunnel route so
+    /// this fires before the inner ScrollViewer, letting us drive the real offset (and mark Handled to avoid
+    /// a double scroll). On the alternate buffer the running app owns scrolling, so we don't hijack it.
+    /// </summary>
+    private void OnWheel(object? sender, PointerWheelEventArgs e)
+    {
+        if ((e.KeyModifiers & KeyModifiers.Control) != 0)
+        {
+            if (e.Delta.Y > 0) ZoomIn();
+            else if (e.Delta.Y < 0) ZoomOut();
+            e.Handled = true;
+            return;
+        }
+        if (HandleWheelScroll(e.Delta.Y)) e.Handled = true;
+    }
+
+    /// <summary>
+    /// Scrolls the transcript by <paramref name="deltaY"/> wheel notches (wheel-up = positive = scroll BACK
+    /// through scrollback). Faithful to the VT buffer: it moves the real ScrollViewer offset over the
+    /// virtualized transcript, so returning to the bottom resumes tail-following (see OnScrollChanged).
+    /// Returns false (a no-op) on the alternate buffer — a full-screen TUI manages its own scroll — or when
+    /// there's nothing to scroll. Internal so a headless test can drive it without synthesizing pointer input.
+    /// </summary>
+    internal bool HandleWheelScroll(double deltaY)
+    {
+        if (_terminal.IsAlternateBufferActive) return false;
+        double max = Math.Max(0, ScrollArea.Extent.Height - ScrollArea.Viewport.Height);
+        if (max <= 0) return false;
+        const double rowsPerNotch = 3;
+        double newY = Math.Clamp(ScrollArea.Offset.Y - deltaY * rowsPerNotch * _cellH, 0, max);
+        ScrollArea.Offset = ScrollArea.Offset.WithY(newY);
+        return true;
     }
 
     /// <summary>

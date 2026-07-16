@@ -77,7 +77,12 @@ public sealed class PtyMessageInjector : IMessageInjector
     /// </summary>
     private static async Task SubmitAsync(IPtySession pty, string text, CancellationToken ct)
     {
-        await pty.WriteAsync(text, ct).ConfigureAwait(false);
+        // Flatten any embedded newline: a CR/LF inside the nudge would either submit it early or drop
+        // Claude Code's TUI into multi-line input, so the SEPARATE Enter below would add a line instead of
+        // sending. The nudge is one logical line — collapse stray newlines to spaces so the trailing Enter
+        // is the ONLY submit. (The message body itself is never injected; only a one-line pointer is.)
+        string line = text.Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ');
+        await pty.WriteAsync(line, ct).ConfigureAwait(false);
         if (SubmitSettleDelay > TimeSpan.Zero)
             await Task.Delay(SubmitSettleDelay, ct).ConfigureAwait(false);
         await pty.WriteAsync(Submit, ct).ConfigureAwait(false);

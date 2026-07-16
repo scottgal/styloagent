@@ -108,6 +108,19 @@ public class PtyMessageInjectorTests
     }
 
     [Fact]
+    public async Task Inject_flattens_embedded_newlines_so_the_only_submit_is_the_trailing_enter()
+    {
+        // A multi-line nudge must not submit early or drop the TUI into multi-line input: the injector
+        // collapses embedded CR/LF to spaces so the ONE separate Enter is the only submit.
+        var pty = new BreakingPty(escapesToIdle: 0);
+        var injector = new PtyMessageInjector(_ => pty);
+
+        await injector.InjectAsync("beta", "line one\nline two\r\nline three", breakFirst: false);
+
+        Assert.Equal(new[] { "line one line two line three", Cr }, pty.Writes);
+    }
+
+    [Fact]
     public async Task No_live_session_is_a_no_op()
     {
         var injector = new PtyMessageInjector(_ => null);

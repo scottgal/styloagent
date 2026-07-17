@@ -39,6 +39,13 @@ public sealed partial class IssuesViewModel : ObservableObject
 {
     private readonly string _issuesDir;
 
+    /// <summary>
+    /// Opens a file path as a rendered-markdown dock document — the shared "open as rendered markdown"
+    /// gesture wired to <c>MainWindowViewModel.OpenDocumentByPath</c>, so an issue opens exactly like a
+    /// bus thread or a doc-library markdown file. Null in tests / when no shell is hosting the panel.
+    /// </summary>
+    private readonly Action<string>? _openDocument;
+
     public ObservableCollection<IssueItem> Issues { get; } = new();
 
     /// <summary>Count of open (unresolved) issues — drives the tab badge.</summary>
@@ -47,10 +54,23 @@ public sealed partial class IssuesViewModel : ObservableObject
     /// <summary>Empty-state visibility for the view.</summary>
     public bool HasIssues => Issues.Count > 0;
 
-    public IssuesViewModel(string issuesDir)
+    public IssuesViewModel(string issuesDir, Action<string>? openDocument = null)
     {
         _issuesDir = issuesDir;
+        _openDocument = openDocument;
         Refresh();
+    }
+
+    /// <summary>
+    /// Opens the issue's own <c>.md</c> file in the rendered-markdown viewer (a new dock document) — the
+    /// common "open as rendered markdown" action every markdown-backed surface offers. The file lives at
+    /// <c>&lt;issuesDir&gt;/&lt;id&gt;.md</c> (the same convention <see cref="IssueStore"/> reads/resolves by).
+    /// </summary>
+    [RelayCommand]
+    private void OpenAsMarkdown(IssueItem? item)
+    {
+        if (item is null || string.IsNullOrEmpty(item.Id)) return;
+        _openDocument?.Invoke(Path.Combine(_issuesDir, item.Id + ".md"));
     }
 
     [RelayCommand]

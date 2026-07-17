@@ -969,7 +969,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(FleetHudText));
         ProposedTeam?.Dispose();
         ProposedTeam = new ProposedTeamViewModel(project.ProposedAgentsPath, project.TeamPath, SpawnProposedAsync);
-        Issues = new IssuesViewModel(project.IssuesDir);
+        Issues = new IssuesViewModel(project.IssuesDir, OpenDocumentByPath);
 
         // Start (or restart) the RouterHost whenever a project is attached so the coordinator
         // drives the ledger at project.RouterRoot.  Dispose the previous host first (idempotent).

@@ -58,11 +58,19 @@
                         </StackPanel>
                       </StackPanel>
                     </Button>
-                    <!-- Resolve: marks the issue closed and clears it from the active list -->
-                    <Button Grid.Column="2" Content="Resolve" FontSize="10" Padding="6,1" VerticalAlignment="Top"
-                            Command="{Binding DataContext.ResolveCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                            CommandParameter="{Binding}"
-                            ToolTip.Tip="Mark resolved and clear from the list" />
+                    <!-- Per-issue actions: open the full issue as a rendered-markdown doc, or resolve it -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Top">
+                      <!-- Open: the common "open as rendered markdown (new dock document)" gesture -->
+                      <Button Content="Open ↗" FontSize="10" Padding="6,1"
+                              Command="{Binding DataContext.OpenAsMarkdownCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                              CommandParameter="{Binding}"
+                              ToolTip.Tip="Open as rendered markdown in a new document tab" />
+                      <!-- Resolve: marks the issue closed and clears it from the active list -->
+                      <Button Content="Resolve" FontSize="10" Padding="6,1"
+                              Command="{Binding DataContext.ResolveCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                              CommandParameter="{Binding}"
+                              ToolTip.Tip="Mark resolved and clear from the list" />
+                    </StackPanel>
                   </Grid>
                   <!-- Expanded detail (full body), revealed on click -->
                   <TextBlock Text="{Binding Detail}" FontSize="11" TextWrapping="Wrap"

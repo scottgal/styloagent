@@ -36,6 +36,40 @@ public class IssuesViewModelTests
     }
 
     [Fact]
+    public void OpenAsMarkdown_invokes_the_open_callback_with_the_issue_file_path()
+    {
+        var dir = NewDir();
+        try
+        {
+            var issue = IssueStore.Write(dir, "a-", "A bug", "the detail body", "high", DateTimeOffset.UtcNow);
+            string? opened = null;
+            var vm = new IssuesViewModel(dir, path => opened = path);
+            var item = vm.Issues.Single();
+
+            vm.OpenAsMarkdownCommand.Execute(item);
+
+            // Opens the issue's own .md file through the shared open-as-rendered-markdown gesture.
+            Assert.Equal(Path.Combine(dir, issue.Id + ".md"), opened);
+            Assert.True(File.Exists(opened));   // the file the rendered-markdown viewer will read
+        }
+        finally { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void OpenAsMarkdown_isNoOp_forNullItem()
+    {
+        var dir = NewDir();
+        try
+        {
+            int calls = 0;
+            var vm = new IssuesViewModel(dir, _ => calls++);
+            vm.OpenAsMarkdownCommand.Execute(null);
+            Assert.Equal(0, calls);
+        }
+        finally { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
     public void Item_expands_to_reveal_its_detail()
     {
         var dir = NewDir();

@@ -97,6 +97,31 @@ public class DocLibraryReaderTests : IDisposable
     }
 
     [Fact]
+    public void Read_excludes_the_logs_cursors_sidecar_dir()
+    {
+        // .styloagent/logs/.cursors/ holds the writer's per-agent cursor sidecars (<prefix>.json) —
+        // machine state, not documents. The *.md filter already skips the .json cursors; this guards that
+        // even a stray .md under .cursors/ is not pulled into the index (the dir itself is excluded).
+        var baseDir = Path.Combine(Path.GetTempPath(), "doclib-cursors-" + Guid.NewGuid().ToString("N"));
+        var sa = Path.Combine(baseDir, ".styloagent");
+        var chan = Path.Combine(sa, "channel");
+        var logs = Path.Combine(sa, "logs");
+        var cursors = Path.Combine(logs, ".cursors");
+        Directory.CreateDirectory(chan);
+        Directory.CreateDirectory(cursors);
+        File.WriteAllText(Path.Combine(logs, "session-.md"), "# Agent log — session-\nreal log body");
+        File.WriteAllText(Path.Combine(cursors, "session-.json"), "{\"lastTurn\":7}");
+        File.WriteAllText(Path.Combine(cursors, "stray.md"), "# machine state, not a document");
+        try
+        {
+            var entries = DocLibraryReader.Read(repoRoot: null, channelRoot: chan);
+            Assert.Contains(entries, e => e.Source == DocSource.Log && e.RelativePath == "session-.md");
+            Assert.DoesNotContain(entries, e => e.FullPath.Contains(".cursors"));
+        }
+        finally { Directory.Delete(baseDir, recursive: true); }
+    }
+
+    [Fact]
     public void Read_accepts_an_explicit_logs_root()
     {
         var logs = Path.Combine(Path.GetTempPath(), "doclib-logsx-" + Guid.NewGuid().ToString("N"));

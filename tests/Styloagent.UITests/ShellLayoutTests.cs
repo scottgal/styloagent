@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Dock.Model.Controls;
 using Dock.Model.Core;
 using Dock.Model.Mvvm.Controls;
@@ -193,7 +194,10 @@ public class ShellLayoutTests
     // ── AgentPaneView ─────────────────────────────────────────────────────────
 
     /// <summary>
-    /// AgentPaneView contains the expected named controls.
+    /// AgentPaneView hosts its own named controls (PaneBorder + Terminal) plus the cockpit-owned
+    /// AgentPaneChromeView header. The pane's action buttons (Spawn/Dehydrate/Rehydrate/Rename) moved
+    /// into that chrome control's ⋯ menu when the header was extracted, so they're covered by
+    /// AgentPaneChromeViewTests now — here we just pin the seam: the chrome is hosted and the terminal wired.
     /// </summary>
     [Fact]
     public Task AgentPaneView_Has_Expected_Named_Controls()
@@ -209,11 +213,9 @@ public class ShellLayoutTests
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 
             Assert.NotNull(view.FindControl<Border>("PaneBorder"));
-            Assert.NotNull(view.FindControl<Button>("SpawnButton"));
-            Assert.NotNull(view.FindControl<Button>("DehydrateButton"));
-            Assert.NotNull(view.FindControl<Button>("RehydrateButton"));
-            Assert.NotNull(view.FindControl<Button>("RenameButton"));
             Assert.NotNull(view.FindControl<Styloagent.Terminal.TerminalControl>("Terminal"));
+            // The extracted cockpit-owned pane header is hosted in the pane's visual tree.
+            Assert.Contains(view.GetVisualDescendants().OfType<AgentPaneChromeView>(), _ => true);
 
             window.Close();
         });

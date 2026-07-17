@@ -751,6 +751,92 @@ public class TerminalControlTests
         Assert.DoesNotContain(fake.Writes, IsCursorPositionReport);
     }
 
+    /// <summary>
+    /// Regression (suppress-device-report-control-char-echo-while-a-human-types): the LIVE analog of the
+    /// replay leak above. While a human is composing a line in the pane, the child keeps polling cursor
+    /// position (ESC[6n on a render timer). Auto-answering those queries writes a CSI…R report into the
+    /// child's stdin BETWEEN the operator's keystrokes, where the line editor treats it as literal input —
+    /// the "so w[?17;80Re ju[?17;80Rst" corruption of the typed message. So while composing, device-query
+    /// answers must NOT be written back to the child; the child re-queries once the line is submitted.
+    /// </summary>
+    [Fact]
+    public async Task DeviceStatusQuery_WhileHumanIsComposing_IsNotAnsweredBackToChild()
+    {
+        var fake = new FakePtySession();
+        Exception? lambdaEx = null;
+
+        await _fx.DispatchAsync(async () =>
+        {
+            try
+            {
+                var control = new TerminalControl();
+                var window = new Window { Content = control, Width = 800, Height = 400 };
+                window.Show();
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+                control.Attach(fake);
+                control.Focus();
+
+                // The operator starts composing a message — a printable keystroke opens the compose window.
+                control.RaiseEvent(new TextInputEventArgs { RoutedEvent = InputElement.TextInputEvent, Text = "h" });
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+                fake.ClearWrites();
+
+                // Mid-compose, the child polls the cursor position on the LIVE stream.
+                fake.FireOutput("\u001b[6n");
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+                window.Close();
+            }
+            catch (Exception ex) { lambdaEx = ex; }
+        });
+
+        Assert.Null(lambdaEx);
+        Assert.DoesNotContain(fake.Writes, IsCursorPositionReport);
+    }
+
+    /// <summary>
+    /// The compose-suppression window is bounded: once the operator SUBMITS the line (Enter), device-query
+    /// answers must flow again — otherwise the child's cursor polling would be starved for the rest of the
+    /// session. Pins that submitting the line re-opens the answer path (only composing suppresses it).
+    /// </summary>
+    [Fact]
+    public async Task DeviceStatusQuery_AfterHumanSubmitsLine_IsAnsweredAgain()
+    {
+        var fake = new FakePtySession();
+        Exception? lambdaEx = null;
+
+        await _fx.DispatchAsync(async () =>
+        {
+            try
+            {
+                var control = new TerminalControl();
+                var window = new Window { Content = control, Width = 800, Height = 400 };
+                window.Show();
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+                control.Attach(fake);
+                control.Focus();
+
+                // Compose, then SUBMIT with Enter — which closes the compose window.
+                control.RaiseEvent(new TextInputEventArgs { RoutedEvent = InputElement.TextInputEvent, Text = "h" });
+                control.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+                fake.ClearWrites();
+
+                // The child polls the cursor position now that the operator is no longer typing.
+                fake.FireOutput("\u001b[6n");
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+                window.Close();
+            }
+            catch (Exception ex) { lambdaEx = ex; }
+        });
+
+        Assert.Null(lambdaEx);
+        Assert.Contains(fake.Writes, IsCursorPositionReport);
+    }
+
     // ── Mouse-wheel scrollback + zoom ────────────────────────────────────────
     // The terminal panes had no wheel scrolling (`docked-agent-terminal-panes-have-no-scrollbar`) and no
     // zoom. Wheel-up must scroll BACK through the VT scrollback (driving the real ScrollViewer offset, not a

@@ -279,6 +279,7 @@ public sealed partial class TerminalControl : UserControl
         try { session.Output += OnSessionOutput; }
         finally { _replaying = false; }
         session.Exited += OnSessionExited;
+        _humanComposing = false;   // a fresh session starts with no line half-typed
     }
 
     /// <summary>
@@ -342,6 +343,19 @@ public sealed partial class TerminalControl : UserControl
     /// UI-thread replay that sets/clears it.
     /// </summary>
     private volatile bool _replaying;
+
+    /// <summary>
+    /// True while the operator is composing a line in this pane — from the first keystroke of a line until
+    /// they submit it (Enter/CR) or abort it (Ctrl+C ETX / Ctrl+D EOT). While composing, the VT engine's
+    /// device-query auto-answers (cursor-position reports and friends) are NOT written back to the child:
+    /// the child polls the cursor on a render timer, and a CSI…R report injected into stdin BETWEEN the
+    /// operator's keystrokes lands in the child's line editor as literal text — the "so w[?17;80Re ju…"
+    /// corruption of the typed message. This is the LIVE analog of the replayed-answer leak <see cref="_replaying"/>
+    /// suppresses (fixed in 814a087); the child re-queries once the line is submitted. Volatile because it's
+    /// set/cleared on the UI thread (key/text input) and read on the background PTY thread (in
+    /// <see cref="OnTerminalDataReceived"/>).
+    /// </summary>
+    private volatile bool _humanComposing;
 
     // ── Virtualized render state ─────────────────────────────────────────────
     /// <summary>Rows rendered above and below the viewport so a small scroll doesn't flash blank.</summary>
@@ -434,6 +448,12 @@ public sealed partial class TerminalControl : UserControl
         // "[1;6R / [?1;6R garbage" corruption. Drop it — only LIVE queries get answered. See Attach().
         if (_replaying) return;
 
+        // While the operator is composing a line, the child's live cursor-position polls must go UNANSWERED:
+        // writing a CSI…R report into stdin between the operator's keystrokes corrupts the typed line (the
+        // "so w[?17;80Re ju…" leak — the live analog of the replay bug above). The child re-queries once the
+        // line is submitted, which clears _humanComposing. See NoteHumanInput().
+        if (_humanComposing) return;
+
         // Fix 1: route through shared fire-and-forget helper so exceptions are never silently lost.
         FireAndForgetWrite(e.Data);
     }
@@ -476,6 +496,7 @@ public sealed partial class TerminalControl : UserControl
             vtSequence = "\r";
 
         if (vtSequence is null) return;
+        NoteHumanInput(vtSequence);   // opens/closes the compose window that gates device-query answers
         FireAndForgetWrite(vtSequence);
     }
 
@@ -494,6 +515,7 @@ public sealed partial class TerminalControl : UserControl
         if (vtSequence is null) return;
 
         e.Handled = true;
+        NoteHumanInput(vtSequence);   // opens/closes the compose window that gates device-query answers
         // Fix 1: route through shared fire-and-forget helper so exceptions are never silently lost.
         FireAndForgetWrite(vtSequence);
     }
@@ -551,10 +573,25 @@ public sealed partial class TerminalControl : UserControl
         UserInteracted?.Invoke(this, EventArgs.Empty);
         if (_session is not null && !string.IsNullOrEmpty(e.Text))
         {
+            NoteHumanInput(e.Text);   // printable text opens the compose window that gates device-query answers
             FireAndForgetWrite(e.Text);
             e.Handled = true;
         }
         base.OnTextInput(e);
+    }
+
+    /// <summary>
+    /// Updates <see cref="_humanComposing"/> from a piece of input the OPERATOR just produced (a keystroke or
+    /// printable text). Ordinary input opens the compose window; a line terminator (Enter/CR/LF) or an abort
+    /// (Ctrl+C ETX / Ctrl+D EOT) closes it, so device-query answers flow again once the line leaves the editor.
+    /// Called ONLY from the human input paths — never from <see cref="OnTerminalDataReceived"/> — so a device
+    /// report can never be mistaken for typing.
+    /// </summary>
+    private void NoteHumanInput(string? vtSequence)
+    {
+        if (string.IsNullOrEmpty(vtSequence)) return;
+        _humanComposing = !(vtSequence.Contains('\r') || vtSequence.Contains('\n') ||
+                            vtSequence.Contains('\x03') || vtSequence.Contains('\x04'));
     }
 
     /// <summary>

@@ -143,9 +143,13 @@ Slice 2 is the MVP that would have prevented today's collision.
     caller-prefix). Smoke-tested end-to-end against the BUILT exe in gate-mode, 5/5: session-→cockpit- file =
     DENY+prod; session-→its own `PtyMessageInjector` carve-out = ALLOW (most-specific glob wins, live);
     overview-→cockpit- = ALLOW (bypass); session- Read = ALLOW (reads never gated); bus-→cockpit- = DENY.
-    Core 322/322. **ACTIVE for agents spawned from now on** (the hook is injected at spawn — agents already
-    live this session are not retro-gated). Remaining: live-agent confirmation (session-, after rehydrate) —
-    a freshly spawned gated agent actually blocked in its PTY — then close `enforce-ownership-boundaries`.
+    Core 322/322. **WIRED + LOGIC-VERIFIED, BUT NOT YET LIVE.** The MCP `spawn_agent` path is hosted in the
+    long-running cockpit process, which was started BEFORE `2329027`, so freshly-spawned agents don't get the
+    gate hook yet — a `gateprobe-` spawned now wrote freely to a cockpit--owned path (`cockpit-path=WROTE`),
+    confirming the running process is stale. **The gate becomes ACTIVE only after the cockpit is REBUILT +
+    RESTARTED** (operator action — the running app can't hot-swap its own spawn code). Remaining: (1) operator
+    rebuilds+restarts the cockpit; (2) live-agent confirmation — a freshly spawned gated agent actually blocked
+    in its PTY — then close `enforce-ownership-boundaries`.
     Security-hardened by two commit-reviews (re-smoked by overview- on current main, App builds clean):
     `b17cad7` closes 3 authorization bypasses — `../` path traversal into another owner + traversal via an
     exempt segment (fixed by canonicalising `..`/`.` before resolution), and `MultiEdit` not gated (added to

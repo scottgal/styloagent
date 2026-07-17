@@ -1,7 +1,7 @@
 # Ownership Enforcement Gate — Design / Scoping
 
-**Status:** draft for review (scoped by overview- while session- finishes Fix 3)
-**Issue:** `enforce-ownership-boundaries-a-cross-owner-file`
+**Status:** Slices 1-2 LIVE + enforcing (live-verified 2026-07-17); Slices 3-4 deferred
+**Issue:** `enforce-ownership-boundaries-a-cross-owner-file` — RESOLVED 2026-07-17
 
 ## Goal
 
@@ -143,13 +143,14 @@ Slice 2 is the MVP that would have prevented today's collision.
     caller-prefix). Smoke-tested end-to-end against the BUILT exe in gate-mode, 5/5: session-→cockpit- file =
     DENY+prod; session-→its own `PtyMessageInjector` carve-out = ALLOW (most-specific glob wins, live);
     overview-→cockpit- = ALLOW (bypass); session- Read = ALLOW (reads never gated); bus-→cockpit- = DENY.
-    Core 322/322. **WIRED + LOGIC-VERIFIED, BUT NOT YET LIVE.** The MCP `spawn_agent` path is hosted in the
-    long-running cockpit process, which was started BEFORE `2329027`, so freshly-spawned agents don't get the
-    gate hook yet — a `gateprobe-` spawned now wrote freely to a cockpit--owned path (`cockpit-path=WROTE`),
-    confirming the running process is stale. **The gate becomes ACTIVE only after the cockpit is REBUILT +
-    RESTARTED** (operator action — the running app can't hot-swap its own spawn code). Remaining: (1) operator
-    rebuilds+restarts the cockpit; (2) live-agent confirmation — a freshly spawned gated agent actually blocked
-    in its PTY — then close `enforce-ownership-boundaries`.
+    Core 322/322. **WIRED + LOGIC-VERIFIED — AND NOW LIVE (2026-07-17T12:04).** The operator rebuilt +
+    restarted the cockpit (binary stamped 11:09); the running app now injects the PreToolUse `--owner-gate`
+    arm on every spawn (confirmed in the live `claude` process args). A freshly-spawned `gateprobe-` (owns
+    nothing) attempted a trivial cross-owner `Edit` on `MessageDeliveryService.cs` (bus-owned) and was
+    **BLOCKED in its real PTY** — deny text: *"…is owned by bus-. Do not edit it. Coordinate: send_message
+    overview- (or bus-) …"* — file unmodified; a Write to ungated `tests/**` was ALLOWED (no over-block);
+    tree left clean. This inverts the earlier stale-process result (`cockpit-path=WROTE`) and closes
+    `enforce-ownership-boundaries`. Slices 1-2 are done and enforcing.
     Security-hardened by two commit-reviews (re-smoked by overview- on current main, App builds clean):
     `b17cad7` closes 3 authorization bypasses — `../` path traversal into another owner + traversal via an
     exempt segment (fixed by canonicalising `..`/`.` before resolution), and `MultiEdit` not gated (added to

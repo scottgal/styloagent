@@ -137,5 +137,14 @@ Slice 2 is the MVP that would have prevented today's collision.
   - **DOGFOODING:** wiring the gate needs cockpit-'s files (`Program.cs` early-exit branch + threading the
     repo root into the hook-settings call site in `MainWindowViewModel.cs`). session- correctly did NOT edit
     them (the rule working before it's enforced) and routes the exact diff through overview-, who applies it
-    (coordination-root bypass). Remaining: `OwnershipGateCli` (session-, TDD, in progress) + the ~2-line App
-    diff (overview- lands it). Slice 2 is the MVP that would have prevented this session's collisions.
+    (coordination-root bypass).
+  - **LANDED + VERIFIED** (2026-07-17): `OwnershipGateCli` (session-, `6ca3f55`) + the App wiring
+    (overview-, `2329027`: `Program.Main` gate-mode short-circuit + `HookArgs` passes gate invocation/root/
+    caller-prefix). Smoke-tested end-to-end against the BUILT exe in gate-mode, 5/5: session-→cockpit- file =
+    DENY+prod; session-→its own `PtyMessageInjector` carve-out = ALLOW (most-specific glob wins, live);
+    overview-→cockpit- = ALLOW (bypass); session- Read = ALLOW (reads never gated); bus-→cockpit- = DENY.
+    Core 322/322. **ACTIVE for agents spawned from now on** (the hook is injected at spawn — agents already
+    live this session are not retro-gated). Remaining: live-agent confirmation (session-, after rehydrate) —
+    a freshly spawned gated agent actually blocked in its PTY — then close `enforce-ownership-boundaries`.
+    Deferred: Slice 3 (leases + `request_lease`/`grant_lease`), Slice 4 (cockpit UI, `Bash`-mutation gating);
+    documented residuals from session-'s security pass (`b17cad7`): case-insensitive-FS + symlink traversal.

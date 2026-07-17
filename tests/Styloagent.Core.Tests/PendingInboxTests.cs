@@ -73,4 +73,79 @@ public class PendingInboxTests
         string decoded = JsonSerializer.Deserialize<string>(onDisk)!;  // parses as a JSON string
         Assert.Contains("line with \"quotes\"", decoded);
     }
+
+    // ---- picked-up derivation (bus viewer "being-worked-on" pill) --------------
+    // A message is picked up once it was delivered to the pending queue AND its note no longer waits there
+    // (the recipient's turn-boundary hook — or check_inbox/DrainFormatted — drained it). The note carries
+    // its own FilePath verbatim, so its absence from the live deliver files is what marks the drain.
+
+    private const string Path1 = "/ch/inbox/beta-topic.md";
+
+    [Fact]
+    public void Delivered_note_is_not_picked_up_until_it_drains()
+    {
+        var inbox = new PendingInbox(TempDir());
+        inbox.Enqueue("beta-", $"[bus] urgent \"topic\" — read it: {Path1}", pushing: true, deliveredPath: Path1);
+
+        Assert.False(inbox.PickedUp("beta-", Path1));   // still queued → waiting, not picked up
+
+        inbox.DrainFormatted("beta-");                  // the recipient (or check_inbox) drains it
+        Assert.True(inbox.PickedUp("beta-", Path1));    // now picked up
+    }
+
+    [Fact]
+    public void Info_note_pickup_flips_when_the_info_file_drains()
+    {
+        var inbox = new PendingInbox(TempDir());
+        inbox.Enqueue("beta-", $"[bus] low \"topic\" — read it: {Path1}", pushing: false, deliveredPath: Path1);
+
+        Assert.False(inbox.PickedUp("beta-", Path1));
+        inbox.DrainFormatted("beta-");
+        Assert.True(inbox.PickedUp("beta-", Path1));
+    }
+
+    [Fact]
+    public void A_path_never_delivered_is_not_picked_up()
+    {
+        var inbox = new PendingInbox(TempDir());
+        Assert.False(inbox.PickedUp("beta-", Path1));   // nothing delivered → not picked up (viewer shows WAITING)
+    }
+
+    [Fact]
+    public void MarkDelivered_without_a_queued_note_is_picked_up_immediately()
+    {
+        // The idle-inject path: the message is injected, never queued for a hook, so nothing is left pending.
+        var inbox = new PendingInbox(TempDir());
+        inbox.MarkDelivered("beta-", Path1);
+        Assert.True(inbox.PickedUp("beta-", Path1));
+    }
+
+    [Fact]
+    public void Pickup_is_isolated_per_recipient()
+    {
+        var inbox = new PendingInbox(TempDir());
+        inbox.Enqueue("beta-", $"read it: {Path1}", pushing: true, deliveredPath: Path1);
+        inbox.DrainFormatted("beta-");
+
+        Assert.True(inbox.PickedUp("beta-", Path1));
+        Assert.False(inbox.PickedUp("gamma-", Path1));  // gamma- was never delivered this path
+    }
+
+    [Fact]
+    public void A_second_delivered_note_does_not_mark_the_first_picked_up_while_it_still_waits()
+    {
+        // Two distinct messages to the same recipient: draining is all-at-once, but until the drain both
+        // remain pending, and neither is picked up.
+        const string path2 = "/ch/inbox/beta-other.md";
+        var inbox = new PendingInbox(TempDir());
+        inbox.Enqueue("beta-", $"read it: {Path1}", pushing: true, deliveredPath: Path1);
+        inbox.Enqueue("beta-", $"read it: {path2}", pushing: true, deliveredPath: path2);
+
+        Assert.False(inbox.PickedUp("beta-", Path1));
+        Assert.False(inbox.PickedUp("beta-", path2));
+
+        inbox.DrainFormatted("beta-");
+        Assert.True(inbox.PickedUp("beta-", Path1));
+        Assert.True(inbox.PickedUp("beta-", path2));
+    }
 }

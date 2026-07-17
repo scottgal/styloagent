@@ -67,7 +67,7 @@ public sealed class MessageDeliveryService
             {
                 if (mode is DeliveryMode.Poll or DeliveryMode.Convenient or DeliveryMode.Informational)
                 {
-                    _pending.Enqueue(recipientId, MessageDelivery.FormatNudge(message), pushing: false);
+                    _pending.Enqueue(recipientId, MessageDelivery.FormatNudge(message), pushing: false, deliveredPath: message.FilePath);
                     return DeliveryAction.EnqueuePending;
                 }
                 return DeliveryAction.None;
@@ -78,13 +78,15 @@ public sealed class MessageDeliveryService
             // ESC-break and the "defer-until-idle then type" path that caused the delivery bugs.
             if (recipientState != AgentHookState.Idle)
             {
-                _pending.Enqueue(recipientId, MessageDelivery.FormatNudge(message), pushing: true);
+                _pending.Enqueue(recipientId, MessageDelivery.FormatNudge(message), pushing: true, deliveredPath: message.FilePath);
                 return DeliveryAction.EnqueuePending;
             }
 
             // Already idle: no hook will fire on its own → wake it via the injection fallback (the narrow,
-            // least-fragile inject-at-a-prompt case; no ESC-break needed).
+            // least-fragile inject-at-a-prompt case; no ESC-break needed). Record it delivered so the bus
+            // viewer reads it as picked up immediately (it was never queued, so nothing is left pending).
             await InjectAsync(recipientId, message, breakFirst: false, ct).ConfigureAwait(false);
+            _pending.MarkDelivered(recipientId, message.FilePath);
             return DeliveryAction.Inject;
         }
 

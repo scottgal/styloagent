@@ -27,6 +27,16 @@ public static class DeliveryHookCommands
     public static string InfoFile(string hooksDir, string key) => Path.Combine(DeliverDir(hooksDir), $"{key}.info");
 
     /// <summary>
+    /// The in-process "delivered" ledger for a recipient: the durable set of message FilePaths handed to
+    /// this recipient's pending queue. <b>Not</b> drained by any hook — it is read only in-process by
+    /// <see cref="PendingInbox"/> to derive the per-message "picked up" fact (a message is picked up once
+    /// it was delivered AND its note is no longer in <see cref="PushFile"/>/<see cref="InfoFile"/>, i.e. the
+    /// turn-boundary hook drained it). Disposable/rebuildable like the rest of the deliver dir; losing it
+    /// just resets pickup knowledge (the durable channel still holds every message).
+    /// </summary>
+    public static string DeliveredFile(string hooksDir, string key) => Path.Combine(DeliverDir(hooksDir), $"{key}.delivered");
+
+    /// <summary>
     /// The UserPromptSubmit hook command: run the caller's <paramref name="observeCommand"/> as today, then
     /// — if the recipient's <c>.info</c> deliver file has content — atomically claim it and print it as
     /// <c>additionalContext</c> so the pending low/info messages surface in the next turn. Never forces a

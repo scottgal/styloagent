@@ -1128,9 +1128,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         return (cleaned.Length == 0 ? "repo" : cleaned) + "-";
     }
 
-    /// <summary>One live federated repo instance: its delivery stack, its own hooks channel, its bus feed.</summary>
+    /// <summary>One live federated repo instance: its delivery stack (<see cref="Styloagent.Core.Channel.RepoInstanceChannel"/>
+    /// — has .Channel/.Coordinator/.Pending/.Delivery), its own hooks channel, and its bus feed.</summary>
     private sealed record RepoInstanceState(
-        Styloagent.Core.Channel.RepoInstanceChannel Delivery, HookChannel? Hooks, BusViewModel Bus);
+        Styloagent.Core.Channel.RepoInstanceChannel Instance, HookChannel? Hooks, BusViewModel Bus);
 
     /// <summary>Surface the gesture's outcome on the activity timeline (rejects + errors; silent on cancel).</summary>
     private void LogRepoInstanceResult(OpenRepoInstanceResult result)
@@ -1278,23 +1279,54 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         try
         {
-            // Auto-rehydrate a parked direct recipient (not broadcasts) before the message lands.
-            var recipient = ChannelMessageWriter.NormalizeRecipient(req.To);
-            if (recipient != "all-")
+            // Resolve the (possibly cross-repo) target channel. req.Repo blank/own-repo → the primary channel
+            // (single-repo byte-identical); a federated instance's name/root → that instance's channel; an
+            // unknown repo → fail loudly rather than silently drop. The sender's repo rides as From-Repo so a
+            // reply routes home (stamped only cross-repo, so single-repo output is unchanged).
+            var senderRoot = _repoRoot ?? _channelRoot;
+            var sender = new Styloagent.Core.Channel.RepoChannel(
+                senderRoot, Path.GetFileName(senderRoot.TrimEnd('/', '\\')), _channelRoot, Array.Empty<string>());
+            var openRepos = new[] { sender }
+                .Concat(_repoInstances.Select(i => i.Instance.Channel))
+                .ToList();
+            var target = Styloagent.Core.Channel.RepoMessageRouting.Resolve(sender, req.Repo, openRepos);
+            if (target is null) return MessageOutcome.Fail($"unknown repo '{req.Repo}'");
+
+            bool crossRepo = !string.Equals(target.ChannelRoot, _channelRoot, StringComparison.OrdinalIgnoreCase);
+
+            // Auto-rehydrate a parked direct recipient (intra-repo only — cross-repo delivery is the target
+            // instance's coordinator's job, and rehydrating here could wake a same-named PRIMARY pane).
+            if (!crossRepo)
             {
-                var pane = Panes.FirstOrDefault(p => p.Prefix == recipient);
-                if (pane is { State: SessionState.Dehydrated })
-                    await pane.RehydrateAsync();
+                var recipient = ChannelMessageWriter.NormalizeRecipient(req.To);
+                if (recipient != "all-")
+                {
+                    var pane = Panes.FirstOrDefault(p => p.Prefix == recipient);
+                    if (pane is { State: SessionState.Dehydrated })
+                        await pane.RehydrateAsync();
+                }
             }
 
             var path = ChannelMessageWriter.Write(
-                _channelRoot, req.From, req.To, req.Subject, req.Body ?? string.Empty,
-                req.Priority ?? "normal", DateTimeOffset.Now);
-            // Deliver now rather than waiting on the debounced fs watcher.
-            _ = _deliveryCoordinator?.PumpAsync();
+                target.ChannelRoot, req.From, req.To, req.Subject, req.Body ?? string.Empty,
+                req.Priority ?? "normal", DateTimeOffset.Now, fromRepo: crossRepo ? target.FromRepo : null);
+
+            // Deliver now (not on the debounced watcher): pump the TARGET repo's coordinator cross-repo, the
+            // primary's intra-repo.
+            if (crossRepo)
+            {
+                var inst = _repoInstances.FirstOrDefault(i => string.Equals(
+                    i.Instance.Channel.ChannelRoot, target.ChannelRoot, StringComparison.OrdinalIgnoreCase));
+                _ = inst?.Instance.Coordinator.PumpAsync();
+            }
+            else
+            {
+                _ = _deliveryCoordinator?.PumpAsync();
+            }
 
             var senderColor = Panes.FirstOrDefault(p => p.Prefix == req.From)?.BorderColorHex ?? "#8888AA";
-            Timeline.Add(DateTimeOffset.Now, req.From, $"→ {req.To} · {req.Subject}", senderColor);
+            var repoTag = crossRepo ? $" @{req.Repo}" : "";
+            Timeline.Add(DateTimeOffset.Now, req.From, $"→ {req.To} · {req.Subject}{repoTag}", senderColor);
 
             return MessageOutcome.Ok(path);
         }

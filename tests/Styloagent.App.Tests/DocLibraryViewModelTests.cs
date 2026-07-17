@@ -31,10 +31,13 @@ public class DocLibraryViewModelTests : IDisposable
             Directory.Delete(_channelRoot, recursive: true);
     }
 
+    // The library now enumerates OFF the UI thread (BUG 2 fix), so population is async — await RefreshAsync
+    // to settle it deterministically before asserting (the enumeration no longer completes in the ctor).
     [Fact]
-    public void Groups_ArePopulated_BySource()
+    public async Task Groups_ArePopulated_BySource()
     {
         var vm = new DocLibraryViewModel(_repoRoot, _channelRoot, _ => { });
+        await vm.RefreshAsync();
 
         Assert.Equal(2, vm.Groups.Count);
         Assert.Contains(vm.Groups, g => g.Header == "repo");
@@ -42,25 +45,27 @@ public class DocLibraryViewModelTests : IDisposable
     }
 
     [Fact]
-    public void Groups_RepoIsFirst()
+    public async Task Groups_RepoIsFirst()
     {
         var vm = new DocLibraryViewModel(_repoRoot, _channelRoot, _ => { });
+        await vm.RefreshAsync();
 
         Assert.Equal("repo", vm.Groups[0].Header);
         Assert.Equal("channel", vm.Groups[1].Header);
     }
 
     [Fact]
-    public void OpenDoc_InvokesCallback_WithCorrectViewModel()
+    public async Task OpenDoc_InvokesCallback_WithCorrectViewModel()
     {
         MarkdownDocumentViewModel? received = null;
         var vm = new DocLibraryViewModel(_repoRoot, _channelRoot, docVm => received = docVm);
+        await vm.RefreshAsync();
 
         var repoGroup = vm.Groups[0];
         Assert.True(repoGroup.Entries.Count > 0);
 
         var entry = repoGroup.Entries[0];
-        vm.OpenDocCommand.Execute(entry);
+        await vm.OpenDocAsync(entry);   // open reads the file OFF the UI thread, then marshals back
 
         Assert.NotNull(received);
         Assert.Equal(entry.Title, received.Title);
@@ -102,14 +107,15 @@ public class DocLibraryViewModelTests : IDisposable
     }
 
     [Fact]
-    public void Refresh_RebuildsGroups()
+    public async Task Refresh_RebuildsGroups()
     {
         var vm = new DocLibraryViewModel(_repoRoot, _channelRoot, _ => { });
+        await vm.RefreshAsync();
         var initialCount = vm.Groups[0].Entries.Count;
 
         File.WriteAllText(Path.Combine(_repoRoot, "extra.md"), "# Extra");
 
-        vm.RefreshCommand.Execute(null);
+        await vm.RefreshAsync();
 
         var afterCount = vm.Groups[0].Entries.Count;
         Assert.Equal(initialCount + 1, afterCount);

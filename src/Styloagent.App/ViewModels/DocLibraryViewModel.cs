@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Threading;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -40,6 +41,19 @@ public sealed partial class DocLibraryViewModel : ObservableObject
     private readonly string? _repoRoot;
     private readonly string? _channelRoot;
     private readonly Action<MarkdownDocumentViewModel> _openDocument;
+    // Injectable seams so the (blocking) enumeration and file-read can be observed by tests; production
+    // uses the real recursive reader and the file-reading MarkdownDocumentViewModel ctor. Both are only
+    // ever invoked from inside a Task.Run so neither can block the UI thread.
+    private readonly Func<IReadOnlyList<DocEntry>> _read;
+    private readonly Func<DocEntry, MarkdownDocumentViewModel> _buildDoc;
+    // The UI SynchronizationContext captured at construction (the ctor runs on the UI thread in
+    // production and in the headless tests). Observable-collection / dock mutations are marshalled back
+    // onto it so they never run off the UI thread; null in a plain unit-test context (→ run inline).
+    private readonly SynchronizationContext? _uiContext;
+
+    /// <summary>True while the (off-thread) enumeration is in flight — drives a lightweight loading state.</summary>
+    [ObservableProperty]
+    private bool _isLoading;
 
     public ObservableCollection<DocGroupViewModel> Groups { get; } = new();
 
@@ -66,43 +80,84 @@ public sealed partial class DocLibraryViewModel : ObservableObject
     public DocLibraryViewModel(
         string? repoRoot,
         string? channelRoot,
-        Action<MarkdownDocumentViewModel> openDocument)
+        Action<MarkdownDocumentViewModel> openDocument,
+        Func<IReadOnlyList<DocEntry>>? read = null,
+        Func<DocEntry, MarkdownDocumentViewModel>? buildDoc = null)
     {
         _repoRoot = repoRoot;
         _channelRoot = channelRoot;
         _openDocument = openDocument;
-        Refresh();
+        _read = read ?? (() => DocLibraryReader.Read(_repoRoot, _channelRoot));
+        _buildDoc = buildDoc ?? (entry => new MarkdownDocumentViewModel(entry.Title, entry.FullPath));
+        _uiContext = SynchronizationContext.Current;
+        _ = RefreshAsync();
     }
 
+    /// <summary>
+    /// Reload the library. The enumeration is a recursive directory walk — it runs OFF the UI thread
+    /// (<see cref="Task.Run(Func{TResult})"/>) so a large tree never freezes the render thread; only the
+    /// observable-collection mutations marshal back onto the UI thread. Safe to call from the UI thread.
+    /// </summary>
     [RelayCommand]
-    public void Refresh()
+    public async Task RefreshAsync()
     {
-        var all = DocLibraryReader.Read(_repoRoot, _channelRoot);
+        IsLoading = true;
 
-        Groups.Clear();
-        Roots.Clear();
+        IReadOnlyList<DocEntry> all;
+        try { all = await Task.Run(_read); }
+        catch { all = Array.Empty<DocEntry>(); }
 
-        // Repo group first, then channel.
-        var repoEntries = all.Where(e => e.Source == DocSource.Repo).ToList();
-        var channelEntries = all.Where(e => e.Source == DocSource.Channel).ToList();
-
-        if (repoEntries.Count > 0)
+        void Populate()
         {
-            var group = new DocGroupViewModel { Header = "repo" };
-            foreach (var entry in repoEntries)
-                group.Entries.Add(entry);
-            Groups.Add(group);
-            Roots.Add(BuildTree("repo", repoEntries));
+            Groups.Clear();
+            Roots.Clear();
+
+            // Repo group first, then channel.
+            var repoEntries = all.Where(e => e.Source == DocSource.Repo).ToList();
+            var channelEntries = all.Where(e => e.Source == DocSource.Channel).ToList();
+
+            if (repoEntries.Count > 0)
+            {
+                var group = new DocGroupViewModel { Header = "repo" };
+                foreach (var entry in repoEntries)
+                    group.Entries.Add(entry);
+                Groups.Add(group);
+                Roots.Add(BuildTree("repo", repoEntries));
+            }
+
+            if (channelEntries.Count > 0)
+            {
+                var group = new DocGroupViewModel { Header = "channel" };
+                foreach (var entry in channelEntries)
+                    group.Entries.Add(entry);
+                Groups.Add(group);
+                Roots.Add(BuildTree("channel", channelEntries));
+            }
+            IsLoading = false;
         }
 
-        if (channelEntries.Count > 0)
+        await RunOnUiAsync(Populate);
+    }
+
+    /// <summary>Run <paramref name="action"/> on the UI context captured at construction and await its
+    /// completion, so collection/dock mutations stay on the UI thread. Runs inline when already on that
+    /// context, or when none was captured (a plain unit-test thread).</summary>
+    private Task RunOnUiAsync(Action action)
+    {
+        var ctx = _uiContext;
+        if (ctx is null || ReferenceEquals(ctx, SynchronizationContext.Current))
         {
-            var group = new DocGroupViewModel { Header = "channel" };
-            foreach (var entry in channelEntries)
-                group.Entries.Add(entry);
-            Groups.Add(group);
-            Roots.Add(BuildTree("channel", channelEntries));
+            action();
+            return Task.CompletedTask;
         }
+
+        var tcs = new TaskCompletionSource();
+        ctx.Post(_ =>
+        {
+            try { action(); tcs.SetResult(); }
+            catch (Exception ex) { tcs.SetException(ex); }
+        }, null);
+        return tcs.Task;
     }
 
     /// <summary>Builds a folder/file tree from each entry's <see cref="DocEntry.RelativePath"/>.</summary>
@@ -150,10 +205,19 @@ public sealed partial class DocLibraryViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Open a document. Building the view-model reads the file (the <see cref="MarkdownDocumentViewModel"/>
+    /// ctor) — that read runs OFF the UI thread, and only the built VM is marshalled back to open it, so
+    /// selecting a doc in a busy tree never blocks the render thread. Generates <c>OpenDocCommand</c>
+    /// (the <c>Async</c> suffix is stripped), so the existing XAML binding is unchanged.
+    /// </summary>
     [RelayCommand]
-    public void OpenDoc(DocEntry entry)
+    public async Task OpenDocAsync(DocEntry entry)
     {
-        var vm = new MarkdownDocumentViewModel(entry.Title, entry.FullPath);
-        _openDocument(vm);
+        MarkdownDocumentViewModel doc;
+        try { doc = await Task.Run(() => _buildDoc(entry)); }
+        catch { return; }
+
+        await RunOnUiAsync(() => _openDocument(doc));
     }
 }

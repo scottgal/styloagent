@@ -29,7 +29,8 @@ public class CockpitRepoInstanceOpenerTests : IDisposable
     public async Task OpenAsync_SurfacesTheReposOwnChannel_KeyedByRepoRoot()
     {
         RepoChannel? surfaced = null;
-        var opener = new CockpitRepoInstanceOpener(new RepoChannelResolver(), ch => surfaced = ch);
+        var opener = new CockpitRepoInstanceOpener(new RepoChannelResolver(),
+            ch => { surfaced = ch; return Task.CompletedTask; });
 
         await opener.OpenAsync(_repo);
 

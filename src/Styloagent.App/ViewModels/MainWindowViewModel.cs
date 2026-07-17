@@ -452,6 +452,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private HookChannel? _hookChannel;
     private readonly Dictionary<string, AgentPaneViewModel> _panesByHookId = new();
 
+    // ── Federated repo instances (Bug A): each opened repo runs fully independently — own channel, own
+    // hooks/delivery, own agent set. Panes are tagged by their instance's repoRoot so an instance's
+    // coordinator only nudges its own agents (never the primary's), the fork-B invariant. ───────────────
+    private readonly List<RepoInstanceState> _repoInstances = new();
+    private readonly Dictionary<AgentPaneViewModel, string> _paneRepoRoot = new();
+
     // ── Diagram cockpit ───────────────────────────────────────────────────────
 
     private readonly List<DiagramDocumentViewModel> _openDiagrams = new();
@@ -957,6 +963,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <see cref="InitializeAsync"/>; this adds every additional repo. Idempotent per prefix.
     /// </summary>
     public void AddRepoOverview(Styloagent.Core.Workspace.RepoOverview overview)
+        => AddRepoOverview(overview, _hookChannel, _channelRoot, _repoRoot, _project?.ProtocolPath, overview.RepoRoot);
+
+    /// <summary>
+    /// As <see cref="AddRepoOverview(Styloagent.Core.Workspace.RepoOverview)"/> but routes the launched
+    /// overview agent's hooks to a SPECIFIC <paramref name="hooks"/> channel + channel/repo roots (a
+    /// federated repo instance's OWN hooks + delivery), and tags its pane with
+    /// <paramref name="instanceRepoRoot"/> so that instance's coordinator only nudges its own agents. The
+    /// primary overload passes the primary channel, unchanged.
+    /// </summary>
+    public void AddRepoOverview(
+        Styloagent.Core.Workspace.RepoOverview overview,
+        HookChannel? hooks, string? channelRoot, string? repoRoot, string? protocolPath, string instanceRepoRoot)
     {
         if (_dockFactory is null || _launcher is null || _watcher is null)
             return;
@@ -983,7 +1001,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         string hookId = ReserveHookId(entry.Prefix);
         var session = new AgentSession(entry, _launcher, _watcher,
-            HookArgs(hookId, entry)
+            HookArgs(hookId, entry, hooks, channelRoot, repoRoot, protocolPath)
               .Concat(systemPromptArgs)
               .Concat(McpArgsFor(entry.Prefix))
               .ToArray());
@@ -995,6 +1013,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         };
         Panes.Add(paneVm);
         _panesByHookId[hookId] = paneVm;
+        _paneRepoRoot[paneVm] = instanceRepoRoot;   // tag for the per-instance liveAgents filter
         _dockFactory.AddDockable(documentDock, paneVm);
 
         // Launch claude in the repo's root immediately (the primary pane stays selected).
@@ -1009,11 +1028,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private RepoInstanceCoordinator? _repoCoordinator;
 
     /// <summary>
-    /// Open a chosen repo — one that has its OWN <c>.styloagent/</c> — as a federated second instance mid
-    /// session. Flow (pick folder → resolve canonical git root via <c>ResolveRepoRootAsync</c> → confirm it's
-    /// a Styloagent instance → hand off to the federation opener, de-duping) lives in
-    /// <see cref="RepoInstanceCoordinator"/>. The federation itself is a <see cref="StubRepoInstanceOpener"/>
-    /// today and swaps 1:1 for bus-'s per-repo instance seam when it lands.
+    /// Open a chosen repo — one that has its OWN <c>.styloagent/</c> — as a fully independent federated
+    /// instance mid session. Flow (pick folder → resolve canonical git root via <c>ResolveRepoRootAsync</c> →
+    /// confirm it's a Styloagent instance → hand off to the federation opener, de-duping) lives in
+    /// <see cref="RepoInstanceCoordinator"/>; <see cref="OpenFederatedInstanceAsync"/> does the launch.
     /// </summary>
     [RelayCommand]
     private async Task OpenRepoInstance()
@@ -1024,37 +1042,86 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _repoCoordinator ??= new RepoInstanceCoordinator(
             RepoFolderPicker,
             (path, ct) => _git.ResolveRepoRootAsync(path, ct),
-            new CockpitRepoInstanceOpener(new Styloagent.Core.Channel.RepoChannelResolver(), SurfaceRepoBus));
+            new CockpitRepoInstanceOpener(new Styloagent.Core.Channel.RepoChannelResolver(), OpenFederatedInstanceAsync));
 
         LogRepoInstanceResult(await _repoCoordinator.OpenAsync());
     }
 
     /// <summary>
-    /// Surface a federated repo instance's own bus feed as a document tab (interim slice: SEE the instance).
-    /// A fresh <see cref="BusViewModel"/> watches the repo's OWN channel; driving it (per-repo delivery
-    /// coordinator via <c>RepoInstanceFactory</c> + cross-repo messaging) is the next slice, same repoRoot key.
+    /// Launch a repo as a fully independent federated instance (Bug A): its OWN hooks channel, its OWN
+    /// delivery coordinator over its own channel (liveAgents filtered to it), its own bus pane, and its
+    /// overview agent — none of it crossing into the primary fleet. Cross-repo <c>send_message(repo:)</c>
+    /// between instances is the follow-on co-land with bus-; this makes the instance itself live.
     /// </summary>
-    private void SurfaceRepoBus(Styloagent.Core.Channel.RepoChannel channel)
+    private async Task OpenFederatedInstanceAsync(Styloagent.Core.Channel.RepoChannel channel)
     {
         if (_dockFactory?.DocumentDock is not { } dock)
             return;
 
-        var bus = new BusViewModel(channel.ChannelRoot, channel.Prefixes)
+        // 1) Own HookChannel (own hooks dir) so this instance's agents get real delivery + PickedUp + badges.
+        HookChannel? hooks = null;
+        try
+        {
+            var hooksDir = Path.Combine(Path.GetTempPath(), "styloagent-hooks", Guid.NewGuid().ToString("N"));
+            hooks = new HookChannel(hooksDir);
+            hooks.EventReceived += OnHookEvent;
+            hooks.Start();
+        }
+        catch { hooks = null; }
+
+        // 2) Own delivery stack via bus-'s blessed factory: PendingInbox under this instance's hooks dir,
+        //    liveAgents filtered to THIS repo so its coordinator never nudges the primary fleet.
+        var hooksDirectory = hooks?.HooksDirectory
+            ?? Path.Combine(Path.GetTempPath(), "styloagent-hooks", Guid.NewGuid().ToString("N"));
+        var inst = await new Styloagent.Core.Channel.RepoInstanceFactory().CreateAsync(
+            channel.RepoRoot, hooksDirectory, PriorityPolicy.Default,
+            new PtyMessageInjector(ResolvePty), () => SnapshotLiveAgentsForRepo(channel.RepoRoot));
+        await inst.Coordinator.SeedAsync();
+
+        // 3) Its own bus feed as a document tab; each reload pumps ITS coordinator (not the primary's).
+        var bus = new BusViewModel(inst.Channel.ChannelRoot, inst.Channel.Prefixes)
         {
             OpenDocument = OpenBusMessageDocument,
             ThreadOpener = OpenBusThreadDocument,
         };
-        var doc = new RepoBusDocumentViewModel(channel.RepoRoot, channel.Name, bus);
-        _dockFactory.AddDockable(dock, doc);
-        Timeline.Add(DateTimeOffset.Now, "workspace", $"opened {channel.Name} · bus", "#8899BB");
+        bus.Reloaded += () => _ = inst.Coordinator.PumpAsync();
+        _dockFactory.AddDockable(dock, new RepoBusDocumentViewModel(channel.RepoRoot, channel.Name, bus));
+
+        // 4) Launch its overview agent, hooks routed to THIS instance + pane tagged with its repoRoot.
+        var prefix = RepoInstancePrefix(channel.Name);
+        var overview = new Styloagent.Core.Workspace.RepoOverview(
+            Prefix: prefix,
+            RepoRoot: channel.RepoRoot,
+            SystemPromptPath: Path.Combine(channel.RepoRoot, ".styloagent", "system-prompt.md"),
+            RepoIndex: _repoInstances.Count + 1,
+            ColorHex: PresentationStore.DefaultColorFor(prefix),
+            IsPrimary: false);
+        AddRepoOverview(overview, hooks, inst.Channel.ChannelRoot, channel.RepoRoot,
+            Path.Combine(inst.Channel.ChannelRoot, "PROTOCOL.md"), channel.RepoRoot);
+
+        _repoInstances.Add(new RepoInstanceState(inst, hooks, bus));
+        Timeline.Add(DateTimeOffset.Now, "workspace", $"launched {channel.Name} instance ({prefix})", "#8899BB");
     }
+
+    /// <summary>Repo display name → a clean, unique-ish channel prefix (lower-case alphanumerics, trailing '-').
+    /// Mirrors <c>WorkspaceConfig.PrefixFor</c> (internal to Core), so an instance's overview keys consistently.</summary>
+    private static string RepoInstancePrefix(string name)
+    {
+        var cleaned = new string(name.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray())
+            .Trim('-');
+        return (cleaned.Length == 0 ? "repo" : cleaned) + "-";
+    }
+
+    /// <summary>One live federated repo instance: its delivery stack, its own hooks channel, its bus feed.</summary>
+    private sealed record RepoInstanceState(
+        Styloagent.Core.Channel.RepoInstanceChannel Delivery, HookChannel? Hooks, BusViewModel Bus);
 
     /// <summary>Surface the gesture's outcome on the activity timeline (rejects + errors; silent on cancel).</summary>
     private void LogRepoInstanceResult(OpenRepoInstanceResult result)
     {
         string? note = result.Status switch
         {
-            OpenRepoInstanceStatus.Opened        => null,   // the stub opener already logged the "opening…" line
+            OpenRepoInstanceStatus.Opened        => null,   // OpenFederatedInstanceAsync logs "launched …" itself
             OpenRepoInstanceStatus.Cancelled     => null,   // operator dismissed the picker — no noise
             OpenRepoInstanceStatus.AlreadyOpen   => $"{RepoName(result.RepoRoot)} is already open",
             OpenRepoInstanceStatus.NotARepo      => result.Message ?? "not a git repository",
@@ -1921,21 +1988,31 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// (Scoped/Bypass) so an agent can actually act without a human approving every tool use.
     /// </summary>
     private IReadOnlyList<string> HookArgs(string hookId, AgentManifestEntry entry)
+        => HookArgs(hookId, entry, _hookChannel, _channelRoot, _repoRoot, _project?.ProtocolPath);
+
+    /// <summary>
+    /// As <see cref="HookArgs(string, AgentManifestEntry)"/> but against a SPECIFIC hook channel + channel/repo
+    /// roots — so a federated repo instance's agents route their hooks to that instance's OWN hooks dir (its
+    /// own delivery + PickedUp + badges) and hydrate from its own channel + PROTOCOL, never the primary's.
+    /// </summary>
+    private IReadOnlyList<string> HookArgs(
+        string hookId, AgentManifestEntry entry, HookChannel? hooks, string? channelRoot, string? repoRoot,
+        string? protocolPath)
     {
-        if (_hookChannel is null) return Styloagent.Core.Hooks.HookSettings.PermissionArgs(PermissionMode);
+        if (hooks is null) return Styloagent.Core.Hooks.HookSettings.PermissionArgs(PermissionMode);
         var hydration = Styloagent.Core.Hooks.HydrationText.For(
             entry.Prefix,
             string.IsNullOrWhiteSpace(entry.SavedContextPath) ? null : entry.SavedContextPath,
-            _project?.ProtocolPath,
-            _channelRoot);
-        var file = _hookChannel.WriteHydrationFile(hookId, hydration);
+            protocolPath,
+            channelRoot);
+        var file = hooks.WriteHydrationFile(hookId, hydration);
         // Ownership PreToolUse gate: pass the gate-mode invocation + the repo root + the OWNERSHIP PREFIX as
         // caller (entry.Prefix, NOT hookId — ReserveHookId may suffix hookId to e.g. "session--1"). The gate
         // enforces main-sharing agents against ownership.yaml; worktree agents edit outside _repoRoot ⇒
         // unowned ⇒ allow (safe no-op in v1). Wired here by overview- (coordination-root bypass) per the
         // ownership-enforcement design; the gate logic itself is session-'s Core/Hooks work.
-        return _hookChannel.SettingsArgsFor(hookId, file, PermissionMode,
-                Styloagent.Core.Hooks.HookSettings.DefaultGateInvocation(), _repoRoot, entry.Prefix)
+        return hooks.SettingsArgsFor(hookId, file, PermissionMode,
+                Styloagent.Core.Hooks.HookSettings.DefaultGateInvocation(), repoRoot, entry.Prefix)
             .Concat(Styloagent.Core.Hooks.HookSettings.PermissionArgs(PermissionMode))
             .ToList();
     }
@@ -2106,6 +2183,25 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         for (int attempt = 0; attempt < 3; attempt++)
         {
             try { return Panes.Select(p => new AgentPresence(p.Prefix, p.HookState)).ToList(); }
+            catch (InvalidOperationException) { /* collection changed mid-enumeration; retry */ }
+        }
+        return Array.Empty<AgentPresence>();
+    }
+
+    /// <summary>Live agents belonging to ONE federated repo instance (tagged by its repoRoot) — so that
+    /// instance's delivery coordinator only nudges its own agents, never the primary fleet's.</summary>
+    private IReadOnlyList<AgentPresence> SnapshotLiveAgentsForRepo(string repoRoot)
+    {
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                return Panes
+                    .Where(p => _paneRepoRoot.TryGetValue(p, out var r)
+                                && string.Equals(r, repoRoot, StringComparison.OrdinalIgnoreCase))
+                    .Select(p => new AgentPresence(p.Prefix, p.HookState))
+                    .ToList();
+            }
             catch (InvalidOperationException) { /* collection changed mid-enumeration; retry */ }
         }
         return Array.Empty<AgentPresence>();
@@ -2507,6 +2603,23 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         ProposedTeam?.Dispose();
         _busViewModel?.Dispose();
         _searchIndex.Dispose();
+
+        // Tear down every federated repo instance: its bus feed + its own hooks channel (and temp dir).
+        foreach (var inst in _repoInstances)
+        {
+            inst.Bus.Dispose();
+            if (inst.Hooks is { } h)
+            {
+                h.EventReceived -= OnHookEvent;
+                string dir = h.HooksDirectory;
+                _ = h.DisposeAsync().AsTask().ContinueWith(_ =>
+                {
+                    try { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); }
+                    catch { /* temp dir cleanup is best-effort */ }
+                });
+            }
+        }
+        _repoInstances.Clear();
 
         if (_mcpServer is not null)
         {

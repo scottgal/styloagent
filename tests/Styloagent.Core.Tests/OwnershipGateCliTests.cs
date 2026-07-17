@@ -137,15 +137,33 @@ public class OwnershipGateCliTests
 
         string pre = hooks.GetProperty("PreToolUse")[0].GetProperty("hooks")[0].GetProperty("command").GetString()!;
         Assert.Contains(OwnershipGateCli.GateModeFlag, pre);          // invokes gate-mode
-        Assert.Contains("--caller \"session-\"", pre);               // as the OWNERSHIP PREFIX, not the hook id
+        Assert.Contains("--caller 'session-'", pre);                 // as the OWNERSHIP PREFIX (shell-quoted), not the hook id
+        Assert.Contains("--root '/work/repo'", pre);
         Assert.Contains("session--1__", pre);                        // …while the drop file still uses the hook id
-        Assert.Contains("--root \"/work/repo\"", pre);               // against this repo
         Assert.Contains("/app/Styloagent.App.dll", pre);            // via the app
         Assert.Contains("$(uuidgen)", pre);                          // STILL drops the event (observation)
 
         // A non-write event stays purely observational (no gate invocation).
         string post = hooks.GetProperty("PostToolUse")[0].GetProperty("hooks")[0].GetProperty("command").GetString()!;
         Assert.DoesNotContain(OwnershipGateCli.GateModeFlag, post);
+    }
+
+    [Fact]
+    public void Gate_command_shell_quotes_caller_and_root_against_injection()
+    {
+        // A malicious spawn prefix or an odd repo path (spaces, quotes, ';') must NOT break out of the hook
+        // shell command — the enforcement gate must not itself be a command-injection sink.
+        string json = HookSettings.BuildSettingsJson(
+            "id", "/tmp/hooks", hydrationFile: null, permissionMode: FleetPermissionMode.Scoped,
+            gateInvocation: "'/dotnet'", repoRoot: "/repo; rm -rf ~", caller: "x'; touch /tmp/pwned; '");
+
+        using var doc = JsonDocument.Parse(json);
+        string pre = doc.RootElement.GetProperty("hooks").GetProperty("PreToolUse")[0]
+            .GetProperty("hooks")[0].GetProperty("command").GetString()!;
+
+        Assert.Contains("--root '/repo; rm -rf ~'", pre);            // single-quoted ⇒ ';' is inert
+        Assert.DoesNotContain("--root \"/repo; rm -rf ~\"", pre);   // NOT the vulnerable double-quoted form
+        Assert.Contains("'\\''", pre);                               // the caller's embedded ' is POSIX-escaped
     }
 
     [Fact]

@@ -164,10 +164,20 @@ public static class HookSettings
         string safeId, string hooksDir, string gateInvocation, string caller, string repoRoot)
     {
         string drop = $"{hooksDir}/{safeId}{Separator}$(uuidgen).json";
+        // POSIX single-quote caller + repoRoot so a spawn-supplied prefix or an odd repo path (spaces,
+        // quotes, ';', '$', backticks) can't break out of the shell command — no injection via the gate.
+        // gateInvocation arrives already single-quoted per token (see DefaultGateInvocation).
         return $"d=$(cat); printf '%s' \"$d\" > \"{drop}\"; " +
                $"printf '%s' \"$d\" | {gateInvocation} {OwnershipGateCli.GateModeFlag} " +
-               $"--caller \"{caller}\" --root \"{repoRoot}\"";
+               $"--caller {ShQuote(caller)} --root {ShQuote(repoRoot)}";
     }
+
+    /// <summary>
+    /// POSIX single-quotes a value for safe interpolation into an <c>sh -c</c> command: wraps in single
+    /// quotes and escapes any embedded single quote as <c>'\''</c>. Single quotes suppress ALL shell
+    /// interpretation, so the value can never inject or terminate the command.
+    /// </summary>
+    private static string ShQuote(string? s) => "'" + (s ?? string.Empty).Replace("'", "'\\''") + "'";
 
     /// <summary>
     /// Best-effort command that re-invokes THIS app in headless gate-mode. <see cref="Environment.ProcessPath"/>
@@ -178,9 +188,10 @@ public static class HookSettings
     {
         string host = Environment.ProcessPath ?? "dotnet";
         bool isMuxer = string.Equals(Path.GetFileNameWithoutExtension(host), "dotnet", StringComparison.OrdinalIgnoreCase);
-        if (!isMuxer) return $"\"{host}\"";
+        // Single-quote each token so an install path with spaces/quotes is both correct AND injection-safe.
+        if (!isMuxer) return ShQuote(host);
         string appDll = Path.Combine(AppContext.BaseDirectory, "Styloagent.App.dll");
-        return $"\"{host}\" \"{appDll}\"";
+        return $"{ShQuote(host)} {ShQuote(appDll)}";
     }
 
     /// <summary>The CLI args (<c>--settings &lt;json&gt;</c>) to append to a <c>claude</c> launch.</summary>

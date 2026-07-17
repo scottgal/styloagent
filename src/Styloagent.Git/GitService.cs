@@ -25,6 +25,15 @@ public sealed class GitService : IGitService, IGitLog, IGitDiff, IGitWrite, IGit
         return r.Ok ? GitResult<GitStatus>.Success(GitStatusParser.Parse(r.Stdout)) : GitResult<GitStatus>.Fail(r.Stderr);
     }
 
+    public async Task<string?> ResolveRepoRootAsync(string path, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path)) return null;
+        var r = await RunAsync(path, ct, "rev-parse", "--show-toplevel").ConfigureAwait(false);
+        if (!r.Ok) return null;
+        var root = r.Stdout.Trim();
+        return root.Length == 0 ? null : root;
+    }
+
     public async Task<GitResult> AddWorktreeAsync(string repoRoot, string worktreePath, string newBranch, CancellationToken ct = default)
         => ToResult(await RunAsync(repoRoot, ct, "worktree", "add", worktreePath, "-b", newBranch).ConfigureAwait(false));
 

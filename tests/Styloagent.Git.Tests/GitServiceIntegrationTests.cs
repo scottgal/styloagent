@@ -220,6 +220,60 @@ public class GitServiceIntegrationTests
         finally { TryDeleteRepo(repo); }
     }
 
+    // ── ResolveRepoRootAsync — the "operator picked a folder → which repo is this?" read that backs
+    //    the open-instance gesture for a NON-primary repo (a second federated instance). ──────────────
+
+    [Fact]
+    public async Task ResolveRepoRoot_normalizes_a_subdir_to_the_repo_root()
+    {
+        if (!GitAvailable()) return;
+        var repo = Path.Combine(Path.GetTempPath(), "gitroot-" + Guid.NewGuid().ToString("N"));
+        var sub = Path.Combine(repo, "src", "nested");
+        Directory.CreateDirectory(sub);
+        try
+        {
+            Run(repo, "init -b main"); Run(repo, "config user.email t@t.t"); Run(repo, "config user.name t");
+
+            var git = new Styloagent.Git.GitService();
+            var fromRoot = await git.ResolveRepoRootAsync(repo);
+            var fromSub = await git.ResolveRepoRootAsync(sub);
+
+            Assert.NotNull(fromRoot);
+            Assert.NotNull(fromSub);
+            // A subdir resolves to the SAME canonical root as the top — the property the (repo,prefix)
+            // instance key relies on, so two panes opened from different folders of one repo coincide.
+            Assert.Equal(fromRoot, fromSub);
+            // ...and that root IS this repo. Compare the leaf segment: it is symlink-invariant, unlike the
+            // absolute path (macOS resolves the temp dir's /var → /private/var under --show-toplevel).
+            Assert.Equal(Path.GetFileName(repo), Path.GetFileName(fromRoot!.TrimEnd(Path.DirectorySeparatorChar)));
+            Assert.True(Directory.Exists(fromRoot));
+        }
+        finally { TryDeleteRepo(repo); }
+    }
+
+    [Fact]
+    public async Task ResolveRepoRoot_of_a_non_repo_directory_is_null()
+    {
+        if (!GitAvailable()) return;
+        var dir = Path.Combine(Path.GetTempPath(), "notrepo-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var git = new Styloagent.Git.GitService();
+            Assert.Null(await git.ResolveRepoRootAsync(dir));   // not a repo → null, never throws
+        }
+        finally { TryDeleteRepo(dir); }
+    }
+
+    [Fact]
+    public async Task ResolveRepoRoot_of_a_missing_path_is_null()
+    {
+        // Guard path: no directory, so it must short-circuit to null without forking git.
+        var git = new Styloagent.Git.GitService();
+        var missing = Path.Combine(Path.GetTempPath(), "does-not-exist-" + Guid.NewGuid().ToString("N"));
+        Assert.Null(await git.ResolveRepoRootAsync(missing));
+    }
+
     private static void TryDeleteRepo(string repo)
     {
         try { if (Directory.Exists(repo)) Directory.Delete(repo, recursive: true); } catch { }

@@ -8,6 +8,18 @@ namespace Styloagent.Core.Git;
 public interface IGitService
 {
     Task<GitResult<GitStatus>> GetStatusAsync(string worktreePath, CancellationToken ct = default);
+
+    /// <summary>
+    /// Resolves <paramref name="path"/> to the canonical root of the git repository that contains it
+    /// (<c>git rev-parse --show-toplevel</c>), or <c>null</c> if the path is not inside a git repo /
+    /// git is unavailable — never throws. Any location inside a repo (including a subdirectory)
+    /// normalizes to the same root, so callers keying on repo identity — e.g. opening a NON-primary
+    /// repo as a second federated instance — stay stable regardless of which folder was picked.
+    /// The default returns <c>null</c> (unresolvable) so fakes need no change; the process-backed
+    /// <c>Styloagent.Git.GitService</c> overrides it with the real read.
+    /// </summary>
+    Task<string?> ResolveRepoRootAsync(string path, CancellationToken ct = default)
+        => Task.FromResult<string?>(null);
     Task<GitResult> AddWorktreeAsync(string repoRoot, string worktreePath, string newBranch, CancellationToken ct = default);
     Task<GitResult> RemoveWorktreeAsync(string repoRoot, string worktreePath, CancellationToken ct = default);
     Task<GitResult> MergeNoFfAsync(string repoRoot, string sourceBranch, string intoBranch, CancellationToken ct = default);

@@ -289,6 +289,28 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
             WaitingQuestion = "";
     }
 
+    // ── Pane-chrome terminal zoom relay (0b) ─────────────────────────────────────────────────
+
+    /// <summary>Zoom bounds — mirror session-'s TerminalControl coercion range (3d34c3e).</summary>
+    private const double MinZoomValue = 0.5;
+    private const double MaxZoomValue = 3.0;
+
+    /// <summary>
+    /// Terminal font zoom for this pane. The decoupling relay between the zoom Slider in the pane chrome
+    /// (AgentPaneChromeView) and session-'s <c>TerminalControl.ZoomLevel</c> StyledProperty: both bind here
+    /// two-way, so moving the slider zooms the terminal and Ctrl+MouseWheel moves the slider back. 1.0 = the
+    /// app-wide base font; coerced to [0.5, 3.0] (the TerminalControl re-coerces too, so an out-of-range
+    /// binding can never drive it wild).
+    /// </summary>
+    [ObservableProperty]
+    private double _zoomLevel = 1.0;
+
+    partial void OnZoomLevelChanged(double value)
+    {
+        var clamped = Math.Clamp(value, MinZoomValue, MaxZoomValue);
+        if (clamped != value) ZoomLevel = clamped;   // converges: the clamped set is in range, so no re-clamp
+    }
+
     // ── Token / context usage (read from the agent's Claude transcript) ──────────────────────
     private string? _sessionId;
     private string? _cwd;

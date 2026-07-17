@@ -264,4 +264,22 @@ public class AgentPaneViewModelTests
         Assert.False(flipped);
         Assert.Equal(AgentHookState.Working, vm.HookState);
     }
+
+    // ── Pane-chrome zoom relay (0b) ────────────────────────────────────────────
+
+    [Fact]
+    public void ZoomLevel_DefaultsToOne_AndClampsToBounds()
+    {
+        var vm = MakeVm();
+        Assert.Equal(1.0, vm.ZoomLevel);
+
+        vm.ZoomLevel = 5.0;                  // above max (3.0)
+        Assert.Equal(3.0, vm.ZoomLevel);
+
+        vm.ZoomLevel = 0.1;                  // below min (0.5)
+        Assert.Equal(0.5, vm.ZoomLevel);
+
+        vm.ZoomLevel = 1.5;                  // in range
+        Assert.Equal(1.5, vm.ZoomLevel);
+    }
 }

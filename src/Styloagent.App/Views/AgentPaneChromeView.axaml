@@ -1,0 +1,79 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
+             xmlns:terminal="clr-namespace:Styloagent.Terminal;assembly=Styloagent.Terminal"
+             x:Class="Styloagent.App.Views.AgentPaneChromeView"
+             x:DataType="vm:AgentPaneViewModel">
+
+  <!-- Consolidated pane header (0b): the agent name, a single ⋯ actions menu that replaces the row of
+       per-terminal buttons (Spawn/Dehydrate/Rehydrate/Rename + fleet actions) the operator asked to
+       de-clutter, a terminal-zoom slider bound to the VM ZoomLevel relay, and the theme picker. This
+       control is cockpit-owned, so item-1's "Log (this agent)" entry lands in the menu below with no
+       cross-owner edit. session- hosts it in AgentPaneView.axaml and binds TerminalControl.ZoomLevel
+       two-way to the same VM.ZoomLevel relay. -->
+  <Border Background="{DynamicResource PanelHeaderBgBrush}" Padding="4">
+    <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+
+      <!-- Agent identity (its terminal accent colour) -->
+      <TextBlock Grid.Column="0" Name="AgentDisplayName"
+                 Text="{Binding DisplayName}"
+                 VerticalAlignment="Center" Margin="4,0,8,0"
+                 FontWeight="SemiBold" Foreground="{Binding BorderColorHex}" />
+
+      <!-- Single ⋯ actions menu: every per-pane action tucked into one dropdown. VM commands bind
+           directly (the flyout inherits this control's AgentPaneViewModel DataContext); fleet-level
+           commands go via Host (they live on MainWindowViewModel) — same split as the roster ⋯ menu. -->
+      <Button Grid.Column="1" Content="⋯ Actions" FontSize="12" Padding="8,2" VerticalAlignment="Center"
+              ToolTip.Tip="Agent actions">
+        <Button.Flyout>
+          <MenuFlyout>
+            <MenuItem Header="Spawn" Command="{Binding SpawnCommand}" />
+            <MenuItem Header="Dehydrate (checkpoint + park)" Command="{Binding DehydrateCommand}" />
+            <MenuItem Header="Rehydrate" Command="{Binding RehydrateCommand}" />
+            <MenuItem Header="Rename" Command="{Binding RenameCommand}" CommandParameter="New Name" />
+            <Separator />
+            <MenuItem Header="Approve prompt" IsEnabled="{Binding NeedsYou}"
+                      Command="{Binding Host.ApprovePermissionCommand}" CommandParameter="{Binding}" />
+            <MenuItem Header="Hide pane" IsVisible="{Binding !IsHidden}"
+                      Command="{Binding Host.HideAgentCommand}" CommandParameter="{Binding}" />
+            <MenuItem Header="Show pane" IsVisible="{Binding IsHidden}"
+                      Command="{Binding Host.ShowAgentCommand}" CommandParameter="{Binding}" />
+            <Separator />
+            <MenuItem Header="Kill" Command="{Binding Host.KillAgentCommand}" CommandParameter="{Binding}" />
+            <MenuItem Header="Force-kill (SIGKILL)" Command="{Binding Host.ForceKillAgentCommand}"
+                      CommandParameter="{Binding}" />
+            <MenuItem Header="Remove from roster" Command="{Binding Host.RemoveAgentCommand}"
+                      CommandParameter="{Binding}" />
+          </MenuFlyout>
+        </Button.Flyout>
+      </Button>
+
+      <!-- Terminal zoom: the slider drives the VM ZoomLevel relay; session- binds TerminalControl.ZoomLevel
+           two-way to the same property, so the slider zooms the terminal and Ctrl+MouseWheel moves it back. -->
+      <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="8,0">
+        <TextBlock Text="zoom" FontSize="10" VerticalAlignment="Center"
+                   Foreground="{DynamicResource MutedTextBrush}" />
+        <Slider Name="ZoomSlider" Width="110" VerticalAlignment="Center"
+                Minimum="0.5" Maximum="3.0" SmallChange="0.1" LargeChange="0.5" TickFrequency="0.1"
+                Value="{Binding ZoomLevel, Mode=TwoWay}"
+                ToolTip.Tip="Terminal zoom" />
+        <TextBlock Text="{Binding ZoomLevel, StringFormat={}{0:P0}}" FontSize="10" MinWidth="34"
+                   VerticalAlignment="Center" Foreground="{DynamicResource MutedTextBrush}" />
+      </StackPanel>
+
+      <!-- Terminal theme -->
+      <ComboBox Grid.Column="4" Name="ThemePicker"
+                ItemsSource="{Binding TerminalThemes}"
+                SelectedItem="{Binding SelectedTerminalTheme}"
+                VerticalAlignment="Center" MinWidth="92" FontSize="11"
+                ToolTip.Tip="Terminal theme">
+        <ComboBox.ItemTemplate>
+          <DataTemplate x:DataType="terminal:TerminalTheme">
+            <TextBlock Text="{Binding Name}" />
+          </DataTemplate>
+        </ComboBox.ItemTemplate>
+      </ComboBox>
+
+    </Grid>
+  </Border>
+</UserControl>

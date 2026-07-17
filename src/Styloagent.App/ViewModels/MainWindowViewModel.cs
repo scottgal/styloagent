@@ -420,6 +420,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // set for the banner, and the shell reconciles per-pane markers off it (HookState stays hook-driven).
     private OperatorQuestionHub? _operatorQuestionHub;
 
+    // open_document (bus-'s DocumentOpenHub): an agent asks the cockpit to surface a doc; we open it on the
+    // doc surface via the shared OpenDocumentByPath, marshalled to the UI thread — mirrors the question hub.
+    private Styloagent.Core.Attention.DocumentOpenHub? _documentOpenHub;
+
     private IFactory? _factory;
     private StyloagentDockFactory? _dockFactory;
     private BusViewModel? _busViewModel;
@@ -515,9 +519,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 OperatorQuestions.PendingChanged += ReconcileOperatorQuestionPanes;
             }
 
+            // open_document: an agent's request opens the (already scope-checked + existing) file on the doc
+            // surface. Marshalled to the UI thread; the asker + reason land on the timeline so the operator
+            // sees WHO surfaced it and WHY.
+            _documentOpenHub ??= new Styloagent.Core.Attention.DocumentOpenHub();
+            _documentOpenHub.Opened += (_, req) =>
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => HandleDocumentOpen(req));
+
             // Feed the live hooksDir so check_inbox drains the SAME PendingInbox store the delivery hooks fill.
             _mcpServer = await StyloagentMcpServer.StartAsync(new FleetController(this), new RouterController(this),
-                _hookChannel?.HooksDirectory, _operatorQuestionHub).ConfigureAwait(false);
+                _hookChannel?.HooksDirectory, _operatorQuestionHub, _documentOpenHub).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -2124,6 +2135,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// the single open path shared by the top-bar document search and the drag-onto-the-doc-surface drop, so
     /// they behave identically. No-ops for a blank path or before the dock is initialised.
     /// </summary>
+    /// <summary>Handle an agent's <c>open_document</c> request: note who surfaced it (and why) on the
+    /// timeline, then open the file on the doc surface. The Core verb already canonicalized the path,
+    /// scope-checked it against an open repo, and confirmed it exists — so we just open it.</summary>
+    private void HandleDocumentOpen(Styloagent.Core.Attention.DocumentOpenRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Path)) return;
+        var who = string.IsNullOrWhiteSpace(req.AskingPrefix) ? "agent" : req.AskingPrefix.TrimEnd('-');
+        var why = string.IsNullOrWhiteSpace(req.Reason) ? "" : $": {req.Reason}";
+        Timeline.Add(DateTimeOffset.Now, who, $"opened {Path.GetFileName(req.Path)}{why}", "#8899BB");
+        OpenDocumentByPath(req.Path);
+    }
+
     public void OpenDocumentByPath(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return;

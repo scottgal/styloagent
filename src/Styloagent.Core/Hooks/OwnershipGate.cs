@@ -26,10 +26,13 @@ public sealed class OwnershipGate
     /// <summary>The coordination-root prefix that bypasses the gate (maintains the map).</summary>
     private const string Overview = "overview-";
 
-    /// <summary>The write tools the gate governs — ownership gates WRITES only; reads are never gated.</summary>
+    /// <summary>
+    /// The write tools the gate governs — ownership gates WRITES only; reads are never gated. Must list EVERY
+    /// file-mutating tool: a missing one (e.g. MultiEdit) is a full authorization bypass.
+    /// </summary>
     private static readonly HashSet<string> WriteTools = new(StringComparer.Ordinal)
     {
-        "Edit", "Write", "NotebookEdit",
+        "Edit", "Write", "MultiEdit", "NotebookEdit",
     };
 
     private readonly OwnershipMap _map;
@@ -91,12 +94,39 @@ public sealed class OwnershipGate
         return false;
     }
 
-    /// <summary>Strips the repo root from an absolute tool path, yielding a forward-slash repo-relative path.</summary>
+    /// <summary>
+    /// Strips the repo root from an absolute tool path and CANONICALISES it (resolves <c>.</c>/<c>..</c>
+    /// segments, clamped at the root), yielding a forward-slash repo-relative path. Canonicalising before
+    /// ownership/exemption resolution is a SECURITY requirement: without it a traversal like
+    /// <c>src/Styloagent.Terminal/../Styloagent.App/Foo.cs</c> or <c>tests/../src/Styloagent.App/Foo.cs</c>
+    /// would match a benign glob / exempt segment while actually writing another owner's file — a bypass.
+    /// </summary>
     private string ToRepoRelative(string? path)
     {
         string s = (path ?? string.Empty).Replace('\\', '/').Trim();
         if (_repoRoot.Length > 0 && s.StartsWith(_repoRoot + "/", StringComparison.Ordinal))
             s = s.Substring(_repoRoot.Length + 1);
-        return s.TrimStart('/');
+        return Canonicalize(s.TrimStart('/'));
+    }
+
+    /// <summary>
+    /// Collapses <c>.</c> and <c>..</c> segments purely (no filesystem access), clamping <c>..</c> at the root
+    /// so a traversal can never resolve to a path the raw string didn't spell out — the gate then always
+    /// evaluates the REAL target path.
+    /// </summary>
+    private static string Canonicalize(string rel)
+    {
+        if (rel.IndexOf('.') < 0) return rel;   // no '.'/'..' possible → nothing to collapse (fast path)
+        var stack = new List<string>();
+        foreach (string seg in rel.Split('/'))
+        {
+            if (seg.Length == 0 || seg == ".") continue;
+            if (seg == "..")
+            {
+                if (stack.Count > 0) stack.RemoveAt(stack.Count - 1);   // clamp at root (never escape upward)
+            }
+            else stack.Add(seg);
+        }
+        return string.Join('/', stack);
     }
 }

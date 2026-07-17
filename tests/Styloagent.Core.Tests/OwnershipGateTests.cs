@@ -120,6 +120,44 @@ public class OwnershipGateTests
         Assert.True(d.IsAllowed);
     }
 
+    // ── Security: path-traversal must not evade ownership (canonicalise before resolving) ──
+    [Fact]
+    public void Traversal_into_another_owner_is_gated_not_bypassed()
+    {
+        // A ../ that RESOLVES into cockpit-'s tree must be blocked even though the raw string starts under
+        // session-'s Terminal glob — otherwise an agent writes a cross-owner file through a benign-looking path.
+        var d = Gate().Decide("session-", "Edit", $"{Root}/src/Styloagent.Terminal/../Styloagent.App/Foo.cs");
+        Assert.False(d.IsAllowed);
+        Assert.Contains("owned by cockpit-", d.Reason);
+    }
+
+    [Theory]
+    [InlineData("tests/../src/Styloagent.App/Foo.cs")]       // exempt-prefix traversal
+    [InlineData("src/Styloagent.App/obj/../Foo.cs")]          // exempt-segment traversal
+    [InlineData("docs/../src/Styloagent.App/Foo.cs")]
+    public void Traversal_through_an_exempt_segment_does_not_bypass_the_gate(string rel)
+    {
+        var d = Gate().Decide("session-", "Edit", $"{Root}/{rel}");
+        Assert.False(d.IsAllowed, $"'{rel}' resolves into cockpit-'s tree and must be gated, not exempted");
+    }
+
+    [Fact]
+    public void MultiEdit_is_a_write_tool_and_is_gated()
+    {
+        // MultiEdit writes files just like Edit/Write — omitting it from the gated set is a full bypass.
+        var d = Gate().Decide("session-", "MultiEdit", $"{Root}/src/Styloagent.App/Foo.cs");
+        Assert.False(d.IsAllowed, "MultiEdit must be gated like Edit/Write");
+    }
+
+    [Fact]
+    public void Traversal_resolving_into_the_callers_own_tree_is_still_allowed()
+    {
+        // Canonicalisation must not OVER-block: a ../ that resolves back into session-'s own Terminal tree
+        // is a legitimate write, not a cross-owner one.
+        var d = Gate().Decide("session-", "Edit", $"{Root}/src/Styloagent.App/../Styloagent.Terminal/X.cs");
+        Assert.True(d.IsAllowed, $"resolves to session-'s own tree; reason: {d.Reason}");
+    }
+
     [Fact]
     public void A_broken_gate_fails_open_and_never_throws()
     {

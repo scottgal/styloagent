@@ -12,6 +12,12 @@ public sealed class ChannelProjection
     private static readonly Regex FromPattern =
         new(@"^\*\*From:\*\*\s*(.+)$", RegexOptions.Multiline | RegexOptions.Compiled);
 
+    // Bug A (repo-qualified messaging): the optional **From-Repo:** header naming the sending repo, so a
+    // cross-repo reply routes home. Absent for single-repo traffic. Distinct from **From:** (the `From:`
+    // pattern requires ':' right after "From", so it never matches the "From-Repo:" line).
+    private static readonly Regex FromRepoPattern =
+        new(@"^\*\*From-Repo:\*\*\s*(.+)$", RegexOptions.Multiline | RegexOptions.Compiled);
+
     private static readonly Regex TimestampPattern =
         new(@"^\*\*Timestamp:\*\*\s*(.+)$", RegexOptions.Multiline | RegexOptions.Compiled);
 
@@ -177,6 +183,9 @@ public sealed class ChannelProjection
         if (fromMatch.Success)
             from = fromMatch.Groups[1].Value.Trim();
 
+        var fromRepoMatch = FromRepoPattern.Match(body);
+        string? fromRepo = fromRepoMatch.Success ? fromRepoMatch.Groups[1].Value.Trim() : null;
+
         var tsMatch = TimestampPattern.Match(body);
         if (tsMatch.Success &&
             DateTimeOffset.TryParse(
@@ -193,7 +202,7 @@ public sealed class ChannelProjection
             ? ParsePriority(priorityMatch.Groups[1].Value)
             : MessagePriority.Normal;
 
-        return new BusMessage(slug, routingPrefix, kind, state, filePath, timestamp, from, body, priority);
+        return new BusMessage(slug, routingPrefix, kind, state, filePath, timestamp, from, body, priority, fromRepo);
     }
 
     /// <summary>

@@ -21,7 +21,7 @@ public static class ChannelMessageWriter
     /// </summary>
     public static string Write(
         string channelRoot, string from, string to, string subject, string body,
-        string priority, DateTimeOffset timestamp)
+        string priority, DateTimeOffset timestamp, string? fromRepo = null)
     {
         var inbox = Path.Combine(channelRoot, "inbox");
         Directory.CreateDirectory(inbox);
@@ -35,15 +35,26 @@ public static class ChannelMessageWriter
             id = $"{routingPrefix}{baseSlug}-{++n}";
 
         var path = Path.Combine(inbox, id + ".md");
-        File.WriteAllText(path, Format(from, subject, body, priority, timestamp));
+        File.WriteAllText(path, Format(from, subject, body, priority, timestamp, fromRepo));
         return path;
     }
 
-    internal static string Format(string from, string subject, string body, string priority, DateTimeOffset timestamp) =>
-        $"**From:** {(string.IsNullOrWhiteSpace(from) ? "unknown" : from.Trim())}\n" +
-        $"**Timestamp:** {timestamp.ToString("o", CultureInfo.InvariantCulture)}\n" +
-        $"**Priority:** {NormalizePriority(priority)}\n\n" +
-        $"# {subject.Trim()}\n\n{body.Trim()}\n";
+    // Bug A: <paramref name="fromRepo"/> stamps an optional **From-Repo:** header so a cross-repo reply can
+    // route home; blank/null omits the header entirely (single-repo back-compat — the trace is byte-identical
+    // to the pre-Bug-A format).
+    internal static string Format(
+        string from, string subject, string body, string priority, DateTimeOffset timestamp, string? fromRepo = null)
+    {
+        var fromRepoLine = string.IsNullOrWhiteSpace(fromRepo)
+            ? ""
+            : $"**From-Repo:** {fromRepo.Trim()}\n";
+        return
+            $"**From:** {(string.IsNullOrWhiteSpace(from) ? "unknown" : from.Trim())}\n" +
+            fromRepoLine +
+            $"**Timestamp:** {timestamp.ToString("o", CultureInfo.InvariantCulture)}\n" +
+            $"**Priority:** {NormalizePriority(priority)}\n\n" +
+            $"# {subject.Trim()}\n\n{body.Trim()}\n";
+    }
 
     /// <summary>Ensures a recipient reads as a routing prefix: lowercased, trimmed, trailing '-'.</summary>
     public static string NormalizeRecipient(string to)

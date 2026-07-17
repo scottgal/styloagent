@@ -142,6 +142,36 @@ public class BusViewModelTests : IDisposable
         Assert.Null(loadEx);
     }
 
+    // ── 2-state status pills + fade (signal-bus-viewer-fadecollapse-completed-message) ──────────
+
+    [Theory]
+    [InlineData("New", false, "WAITING")]
+    [InlineData("Replied", true, "DONE")]
+    [InlineData("Archived", true, "DONE")]
+    public void BusMessageItem_MapsState_ToPillAndFade(string state, bool done, string pill)
+    {
+        var m = new BusMessageItem { State = state };
+        Assert.Equal(done, m.IsDone);
+        Assert.Equal(pill, m.StatusPillText);
+        Assert.Equal(done ? 0.5 : 1.0, m.RowOpacity);      // DONE fades out
+        Assert.StartsWith("#", m.StatusPillBgHex);
+        Assert.StartsWith("#", m.StatusPillFgHex);
+    }
+
+    [Theory]
+    [InlineData(BusThreadSection.Attention, "WAITING", true, 1.0)]
+    [InlineData(BusThreadSection.Archive, "DONE", true, 0.5)]   // handled → faded, auto-collapsed into Archive
+    [InlineData(BusThreadSection.Recent, "", false, 1.0)]        // in-flight, no pill
+    public void BusThreadItem_MapsSection_ToPillAndFade(
+        BusThreadSection section, string pill, bool hasPill, double opacity)
+    {
+        var t = new BusThreadItem { Section = section };
+        Assert.Equal(pill, t.StatusPillText);
+        Assert.Equal(hasPill, t.HasStatusPill);
+        Assert.Equal(section == BusThreadSection.Archive, t.IsDone);
+        Assert.Equal(opacity, t.RowOpacity);
+    }
+
     [Fact]
     public async Task LoadAsync_BucketsThreads_IntoAttentionRecentArchive()
     {

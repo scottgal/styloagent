@@ -46,6 +46,23 @@ public sealed class BusMessageItem
     public string SourcePath => string.IsNullOrEmpty(FilePath) ? "" : (Path.GetDirectoryName(FilePath) ?? "");
 
     public string RelativeTime => BusTime.Format(Timestamp);
+
+    // ── 2-state status pill (WAITING / DONE) — pure from State ────────────────────────────────
+
+    /// <summary>Handled: this message has a reply or has been archived (<c>Replied</c>/<c>Archived</c>).</summary>
+    public bool IsDone => State is "Replied" or "Archived";
+
+    /// <summary>The status pill label: DONE once handled, WAITING while it's an open (New) message.</summary>
+    public string StatusPillText => IsDone ? "DONE" : "WAITING";
+
+    /// <summary>Pill background — muted green when done, amber while waiting.</summary>
+    public string StatusPillBgHex => IsDone ? "#243024" : "#3A2E00";
+
+    /// <summary>Pill foreground — muted green when done, amber while waiting.</summary>
+    public string StatusPillFgHex => IsDone ? "#7FB07F" : "#E5A05A";
+
+    /// <summary>Done messages fade out so the eye lands on what still needs attention.</summary>
+    public double RowOpacity => IsDone ? 0.5 : 1.0;
 }
 
 /// <summary>One thread row in the attention-first bus.</summary>
@@ -64,6 +81,29 @@ public sealed partial class BusThreadItem : ObservableObject
 
     [RelayCommand]
     private void ToggleExpand() => IsExpanded = !IsExpanded;
+
+    // ── 2-state status pill (WAITING / DONE) — pure from Section ──────────────────────────────
+
+    /// <summary>Handled: the thread has left the active groups for <see cref="BusThreadSection.Archive"/>.</summary>
+    public bool IsDone => Section == BusThreadSection.Archive;
+
+    /// <summary>Waiting on a human: an unreplied inbound that sits in <see cref="BusThreadSection.Attention"/>.</summary>
+    public bool IsWaiting => Section == BusThreadSection.Attention;
+
+    /// <summary>Pill label: DONE (handled) or WAITING (needs a reply); empty for in-flight Recent threads.</summary>
+    public string StatusPillText => IsDone ? "DONE" : IsWaiting ? "WAITING" : "";
+
+    /// <summary>Whether to show a status pill at all (Recent threads carry none).</summary>
+    public bool HasStatusPill => StatusPillText.Length > 0;
+
+    /// <summary>Pill background — muted green when done, amber while waiting.</summary>
+    public string StatusPillBgHex => IsDone ? "#243024" : "#3A2E00";
+
+    /// <summary>Pill foreground — muted green when done, amber while waiting.</summary>
+    public string StatusPillFgHex => IsDone ? "#7FB07F" : "#E5A05A";
+
+    /// <summary>Done threads fade out so the active list stays glanceable.</summary>
+    public double RowOpacity => IsDone ? 0.5 : 1.0;
 }
 
 /// <summary>

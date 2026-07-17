@@ -8,9 +8,15 @@
   <UserControl.Resources>
     <!-- One message row, shown when a thread is expanded. Double-click opens its full markdown. -->
     <DataTemplate x:Key="MsgTemplate" DataType="vm:BusMessageItem">
-      <Border Margin="18,1,0,0" Background="#0F0F1E" Cursor="Hand"
+      <!-- Opacity fades a DONE (replied/archived) message so the eye lands on what still needs a reply. -->
+      <Border Margin="18,1,0,0" Background="#0F0F1E" Cursor="Hand" Opacity="{Binding RowOpacity}"
               DoubleTapped="OnMessageDoubleTapped" ToolTip.Tip="Double-click to open the full message">
         <StackPanel Orientation="Horizontal" Spacing="6" Margin="6,3">
+          <!-- WAITING / DONE status pill -->
+          <Border Background="{Binding StatusPillBgHex}" CornerRadius="3" Padding="4,0" VerticalAlignment="Center">
+            <TextBlock Text="{Binding StatusPillText}" FontSize="8" FontWeight="SemiBold"
+                       Foreground="{Binding StatusPillFgHex}" />
+          </Border>
           <TextBlock Text="{Binding RoutingPrefix}" FontSize="10" FontWeight="Bold"
                      Foreground="{Binding ColorHex}" />
           <TextBlock Text="{Binding DisplayLine}" FontSize="10" Foreground="#AAAACC"
@@ -22,13 +28,14 @@
 
     <!-- One thread row: glyph + colour stripe + subject + participants + time; click expands, ⤢ carousels. -->
     <DataTemplate x:Key="ThreadTemplate" DataType="vm:BusThreadItem">
-      <Border Margin="0,1,0,0" Background="{DynamicResource RowBgBrush}">
+      <!-- Opacity fades a DONE (handled → Archive) thread so the active list stays glanceable. -->
+      <Border Margin="0,1,0,0" Background="{DynamicResource RowBgBrush}" Opacity="{Binding RowOpacity}">
         <StackPanel>
           <Grid ColumnDefinitions="*,Auto">
             <Button Grid.Column="0" Background="Transparent" BorderThickness="0" Padding="0"
                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                     Command="{Binding ToggleExpandCommand}">
-              <Grid ColumnDefinitions="4,Auto,*,Auto">
+              <Grid ColumnDefinitions="4,Auto,*,Auto,Auto">
                 <Border Grid.Column="0" Background="{Binding ColorHex}" Width="4" />
                 <TextBlock Grid.Column="1" Text="{Binding Glyph}" FontSize="12"
                            Margin="6,0,4,0" VerticalAlignment="Center"
@@ -39,7 +46,13 @@
                   <TextBlock Text="{Binding ParticipantsDisplay}" FontSize="9"
                              Foreground="{Binding ColorHex}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
-                <TextBlock Grid.Column="3" Text="{Binding RelativeTime}" FontSize="9"
+                <!-- WAITING / DONE status pill (none for in-flight Recent threads) -->
+                <Border Grid.Column="3" Background="{Binding StatusPillBgHex}" CornerRadius="3" Padding="4,1"
+                        VerticalAlignment="Center" Margin="0,0,6,0" IsVisible="{Binding HasStatusPill}">
+                  <TextBlock Text="{Binding StatusPillText}" FontSize="8" FontWeight="SemiBold"
+                             Foreground="{Binding StatusPillFgHex}" />
+                </Border>
+                <TextBlock Grid.Column="4" Text="{Binding RelativeTime}" FontSize="9"
                            Foreground="#555566" VerticalAlignment="Center" Margin="0,0,8,0" />
               </Grid>
             </Button>
@@ -82,14 +95,19 @@
           </Border>
           <ItemsControl ItemsSource="{Binding RecentThreads}" ItemTemplate="{StaticResource ThreadTemplate}" />
 
-          <Border Background="#15152A" Padding="8,4" Margin="0,6,0,0">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="ARCHIVE" FontSize="10" FontWeight="SemiBold"
-                         Foreground="#55556E" LetterSpacing="1" />
-              <TextBlock Text="{Binding ArchivedThreads.Count}" FontSize="10" Foreground="#55556E" />
-            </StackPanel>
-          </Border>
-          <ItemsControl ItemsSource="{Binding ArchivedThreads}" ItemTemplate="{StaticResource ThreadTemplate}" />
+          <!-- Handled threads auto-collapse into this Archive drawer (collapsed by default) so the
+               active NEEDS ATTENTION + RECENT lists stay short. The header + count stay glanceable;
+               expand to review resolved threads. -->
+          <Expander IsExpanded="False" Margin="0,6,0,0" Padding="0" HorizontalAlignment="Stretch">
+            <Expander.Header>
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="ARCHIVE" FontSize="10" FontWeight="SemiBold"
+                           Foreground="#55556E" LetterSpacing="1" />
+                <TextBlock Text="{Binding ArchivedThreads.Count}" FontSize="10" Foreground="#55556E" />
+              </StackPanel>
+            </Expander.Header>
+            <ItemsControl ItemsSource="{Binding ArchivedThreads}" ItemTemplate="{StaticResource ThreadTemplate}" />
+          </Expander>
 
         </StackPanel>
       </ScrollViewer>

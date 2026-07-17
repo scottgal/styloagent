@@ -62,4 +62,52 @@ public class BusAttentionViewTests
             }
         });
     }
+
+    // The 2-state upgrade (signal-bus-viewer-fadecollapse-completed-message): an active (unreplied)
+    // thread shows a WAITING pill, and the handled threads auto-collapse into the Archive drawer
+    // (Expander collapsed by default) so the active list stays short.
+    [Fact]
+    public Task BusView_shows_a_waiting_pill_and_auto_collapses_the_archive()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var root = Path.Combine(Path.GetTempPath(), "buspill-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(root, "inbox"));
+            Directory.CreateDirectory(Path.Combine(root, "outbox"));
+            Directory.CreateDirectory(Path.Combine(root, "archive", "inbox"));
+            try
+            {
+                File.WriteAllText(Path.Combine(root, "inbox", "alpha-open-question.md"),
+                    "**From:** ops\n**Timestamp:** 2024-01-10T10:00:00Z\n\nQ?");          // unreplied → Attention/WAITING
+                File.WriteAllText(Path.Combine(root, "inbox", "beta-done-task.md"),
+                    "**From:** ops\n**Timestamp:** 2024-01-10T11:00:00Z\n\nTask.");
+                File.WriteAllText(Path.Combine(root, "outbox", "beta-done-task.reply.md"),
+                    "**From:** beta-\n**Timestamp:** 2024-01-10T11:05:00Z\n\nDone.");       // replied → Archive/DONE
+
+                var vm = new BusViewModel(root, Prefixes, new ChannelProjection());
+                await vm.LoadAsync();
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+                var view = new BusView { DataContext = vm };
+                var window = new Window { Width = 320, Height = 480, Content = view };
+                window.Show();
+                await HeadlessRender.SettleAsync(window);
+
+                // The active thread carries a WAITING pill.
+                var texts = window.GetVisualDescendants().OfType<TextBlock>()
+                    .Select(t => t.Text ?? string.Empty).ToList();
+                Assert.Contains(texts, s => s == "WAITING");
+
+                // The Archive drawer is collapsed by default (handled threads tucked away).
+                var expander = window.GetVisualDescendants().OfType<Expander>().Single();
+                Assert.False(expander.IsExpanded);
+
+                window.Close();
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            }
+        });
+    }
 }

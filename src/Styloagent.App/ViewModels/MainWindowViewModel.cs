@@ -1070,16 +1070,21 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         catch { hooks = null; }
 
         // 2) Own delivery stack via bus-'s blessed factory: PendingInbox under this instance's hooks dir,
-        //    liveAgents filtered to THIS repo so its coordinator never nudges the primary fleet.
+        //    liveAgents filtered to THIS repo so its coordinator never nudges the primary fleet, and a
+        //    repo-SCOPED injector so a nudge can't type into a same-named primary agent (the (repoRoot,
+        //    prefix) gotcha — the filter picks the right agent, this delivers to the right PTY).
         var hooksDirectory = hooks?.HooksDirectory
             ?? Path.Combine(Path.GetTempPath(), "styloagent-hooks", Guid.NewGuid().ToString("N"));
         var inst = await new Styloagent.Core.Channel.RepoInstanceFactory().CreateAsync(
             channel.RepoRoot, hooksDirectory, PriorityPolicy.Default,
-            new PtyMessageInjector(ResolvePty), () => SnapshotLiveAgentsForRepo(channel.RepoRoot));
+            new PtyMessageInjector(id => ResolvePtyForRepo(channel.RepoRoot, id)),
+            () => SnapshotLiveAgentsForRepo(channel.RepoRoot));
         await inst.Coordinator.SeedAsync();
 
-        // 3) Its own bus feed as a document tab; each reload pumps ITS coordinator (not the primary's).
-        var bus = new BusViewModel(inst.Channel.ChannelRoot, inst.Channel.Prefixes)
+        // 3) Its own bus feed as a document tab, keyed to ITS OWN pickup store (its WORKING pill reads the
+        //    instance's PendingInbox, not the primary's); each reload pumps ITS coordinator.
+        var pickup = new Styloagent.Core.Attention.PickupProjection(inst.Pending);
+        var bus = new BusViewModel(inst.Channel.ChannelRoot, inst.Channel.Prefixes, isPickedUp: pickup.IsPickedUp)
         {
             OpenDocument = OpenBusMessageDocument,
             ThreadOpener = OpenBusThreadDocument,
@@ -2174,6 +2179,21 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         try { return Panes.FirstOrDefault(p => p.Prefix == agentId)?.CurrentPty; }
         catch (InvalidOperationException) { return null; }  // panes changed mid-lookup
+    }
+
+    /// <summary>Resolves an agent id to its live PTY WITHIN one federated repo instance. Under the
+    /// <c>(repoRoot, prefix)</c> model the same prefix can exist in two repos, so an instance's injector must
+    /// scope to its own panes — otherwise a nudge could type into the primary's same-named agent.</summary>
+    private IPtySession? ResolvePtyForRepo(string repoRoot, string agentId)
+    {
+        try
+        {
+            return Panes.FirstOrDefault(p => p.Prefix == agentId
+                    && _paneRepoRoot.TryGetValue(p, out var r)
+                    && string.Equals(r, repoRoot, StringComparison.OrdinalIgnoreCase))
+                ?.CurrentPty;
+        }
+        catch (InvalidOperationException) { return null; }
     }
 
     /// <summary>Snapshots the live agents (prefix + hook state) for delivery routing. Best-effort:

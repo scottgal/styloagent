@@ -152,16 +152,47 @@ public sealed partial class TerminalControl : UserControl
     // A single global size (a user preference), so every live terminal tracks it without threading
     // per-pane state through the three pane-creation sites. New terminals pick it up in their ctor.
     private static double _globalFontSize = 13.0;
-    private static event Action<double>? GlobalFontSizeChanged;
+
+    // Live terminals that follow the app-wide font size, held WEAKLY. The old design was a static event with
+    // strong instance handlers, unsubscribed only in OnDetachedFromVisualTree — which never fires for a
+    // control orphaned by a layout rebuild. That pinned every orphaned TerminalControl (and its ~1000-row
+    // scrollback + Skia/composition resources) for the app's lifetime: the classic .NET static-event leak.
+    // Weak references let an orphaned control be collected even if no detach ever fires; SetGlobalFontSize and
+    // the register path prune dead entries as they go, so the list can't grow without bound.
+    private static readonly object _fontTrackersGate = new();
+    private static readonly List<WeakReference<TerminalControl>> _fontTrackers = new();
+
+    private static void TrackGlobalFontSize(TerminalControl control)
+    {
+        lock (_fontTrackersGate)
+        {
+            _fontTrackers.RemoveAll(w => !w.TryGetTarget(out _));
+            _fontTrackers.Add(new WeakReference<TerminalControl>(control));
+        }
+    }
+
+    private static void UntrackGlobalFontSize(TerminalControl control)
+    {
+        lock (_fontTrackersGate)
+            _fontTrackers.RemoveAll(w => !w.TryGetTarget(out var t) || ReferenceEquals(t, control));
+    }
 
     /// <summary>Sets the app-wide terminal font size; every live terminal updates immediately.</summary>
     public static void SetGlobalFontSize(double pt)
     {
         _globalFontSize = Math.Clamp(pt, 8.0, 32.0);
-        GlobalFontSizeChanged?.Invoke(_globalFontSize);
-    }
 
-    private void OnGlobalFontSizeChanged(double pt) => ApplyFontMetrics();
+        // Snapshot the live controls under the lock (pruning collected ones), then invoke outside it so a
+        // handler can't re-enter the tracker lock.
+        List<TerminalControl> live = new();
+        lock (_fontTrackersGate)
+        {
+            _fontTrackers.RemoveAll(w => !w.TryGetTarget(out _));
+            foreach (var w in _fontTrackers)
+                if (w.TryGetTarget(out var c)) live.Add(c);
+        }
+        foreach (var c in live) c.ApplyFontMetrics();
+    }
 
     /// <summary>Cache of colour → brush so we don't allocate a brush per cell per repaint.</summary>
     private readonly Dictionary<uint, IBrush> _brushCache = new();
@@ -235,9 +266,11 @@ public sealed partial class TerminalControl : UserControl
         // Initialize rows to match the terminal's initial size.
         RebuildRows();
 
-        // Adopt the current app-wide font size (× the default zoom) and track future changes.
+        // Adopt the current app-wide font size (× the default zoom) and track future changes. Tracking is
+        // WEAK (see TrackGlobalFontSize) so this control can still be collected if it's orphaned without a
+        // detach ever firing — never a static-event leak.
         ApplyFontMetrics();
-        GlobalFontSizeChanged += OnGlobalFontSizeChanged;
+        TrackGlobalFontSize(this);
 
         // Start Avalonia size tracking.
         SizeChanged += OnSizeChanged;
@@ -308,7 +341,7 @@ public sealed partial class TerminalControl : UserControl
         // Fix 4: auto-teardown — unsubscribe session events when the control leaves the tree
         // to prevent handler leaks when the control is removed without an explicit Detach() call.
         Detach();
-        GlobalFontSizeChanged -= OnGlobalFontSizeChanged;
+        UntrackGlobalFontSize(this);   // best-effort prompt cleanup; the weak ref already makes us collectable
         base.OnDetachedFromVisualTree(e);
     }
 

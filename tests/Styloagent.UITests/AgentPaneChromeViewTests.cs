@@ -68,4 +68,41 @@ public class AgentPaneChromeViewTests
             window.Close();
         });
     }
+
+    // Integrated proof of session-'s host seam (5271a32): the REAL AgentPaneView hosts the chrome, and the
+    // VM ZoomLevel relay is two-way-wired to the hosted TerminalControl.ZoomLevel — so the slider zooms the
+    // terminal and Ctrl+MouseWheel (which drives TerminalControl.ZoomLevel) moves the slider back. My other
+    // test covers the chrome in isolation; this proves the end-to-end wiring through session-'s AgentPaneView.
+    [Fact]
+    public Task AgentPaneView_hosts_the_chrome_and_the_zoom_relay_is_two_way_to_the_terminal()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var pane = MakePane();
+            var view = new AgentPaneView { DataContext = pane };
+            var window = new Window { Width = 640, Height = 400, Content = view };
+            window.Show();
+            await HeadlessRender.SettleAsync(window);
+
+            // The cockpit chrome is materialized in the real pane header.
+            var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? string.Empty).ToList();
+            Assert.Contains(texts, s => s.Contains("foss"));
+            Assert.Contains(window.GetVisualDescendants().OfType<Button>(),
+                b => (b.Content as string)?.Contains("Actions") == true);
+            Assert.Contains(window.GetVisualDescendants().OfType<Slider>(), _ => true);
+
+            var terminal = window.GetVisualDescendants().OfType<Styloagent.Terminal.TerminalControl>().Single();
+            Assert.Equal(1.0, terminal.ZoomLevel);   // seam binding initialises the terminal from the VM (1.0)
+
+            pane.ZoomLevel = 2.0;                     // slider path: VM → TerminalControl
+            await HeadlessRender.SettleAsync(window);
+            Assert.Equal(2.0, terminal.ZoomLevel);
+
+            terminal.ZoomLevel = 1.4;                 // Ctrl+wheel path: TerminalControl → VM (→ slider)
+            await HeadlessRender.SettleAsync(window);
+            Assert.Equal(1.4, pane.ZoomLevel);
+
+            window.Close();
+        });
+    }
 }

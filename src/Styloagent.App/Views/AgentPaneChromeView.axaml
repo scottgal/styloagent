@@ -13,19 +13,15 @@
        agent)" entry lands in the menu below with no cross-owner edit. session- hosts it in
        AgentPaneView.axaml and binds TerminalControl.ZoomLevel two-way to the same VM.ZoomLevel relay. -->
   <Border Background="{DynamicResource PanelHeaderBgBrush}" Padding="4,1">
-    <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+    <!-- Rationalised header: a little ⋯ icon opens the actions menu, the agent name takes the freed
+         width, and the compact zoom sits on the right. The name also captions the dock tab. -->
+    <Grid ColumnDefinitions="Auto,*,Auto">
 
-      <!-- Agent identity (its terminal accent colour) -->
-      <TextBlock Grid.Column="0" Name="AgentDisplayName"
-                 Text="{Binding DisplayName}"
-                 VerticalAlignment="Center" Margin="4,0,8,0"
-                 FontWeight="SemiBold" Foreground="{Binding BorderColorHex}" />
-
-      <!-- Single ⋯ actions menu: every per-pane action tucked into one dropdown. VM commands bind
-           directly (the flyout inherits this control's AgentPaneViewModel DataContext); fleet-level
+      <!-- Little ⋯ icon-only menu button: every per-pane action tucked into one dropdown. VM commands
+           bind directly (the flyout inherits this control's AgentPaneViewModel DataContext); fleet-level
            commands go via Host (they live on MainWindowViewModel) — same split as the roster ⋯ menu. -->
-      <Button Grid.Column="1" Content="⋯ Actions" FontSize="11" Padding="6,1" MinHeight="0"
-              VerticalAlignment="Center" ToolTip.Tip="Agent actions">
+      <Button Grid.Column="0" Content="⋯" FontSize="14" FontWeight="Bold" Padding="6,0" MinHeight="0"
+              MinWidth="0" VerticalAlignment="Center" ToolTip.Tip="Agent actions">
         <Button.Flyout>
           <MenuFlyout>
             <MenuItem Header="Spawn" Command="{Binding SpawnCommand}" />
@@ -75,10 +71,18 @@
         </Button.Flyout>
       </Button>
 
+      <!-- Agent identity (its terminal accent colour), stretched into the space the collapsed menu freed.
+           Also captions the dock tab, so it can trim if the pane is narrow. -->
+      <TextBlock Grid.Column="1" Name="AgentDisplayName"
+                 Text="{Binding DisplayName}"
+                 VerticalAlignment="Center" Margin="8,0"
+                 FontWeight="SemiBold" Foreground="{Binding BorderColorHex}"
+                 TextTrimming="CharacterEllipsis" />
+
       <!-- Terminal zoom: the slider drives the VM ZoomLevel relay; session- binds TerminalControl.ZoomLevel
            two-way to the same property, so the slider zooms the terminal and Ctrl+MouseWheel moves it back.
            Compact (short slider) so the header stays short. -->
-      <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="8,0">
+      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="8,0">
         <TextBlock Text="zoom" FontSize="10" VerticalAlignment="Center"
                    Foreground="{DynamicResource MutedTextBrush}" />
         <Slider Name="ZoomSlider" Width="110" Height="18" MinHeight="0" VerticalAlignment="Center"

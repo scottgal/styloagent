@@ -61,11 +61,12 @@ public class AgentPaneChromeViewTests
             var texts = window.GetVisualDescendants().OfType<TextBlock>()
                 .Select(t => t.Text ?? string.Empty)
                 .ToList();
-            Assert.Contains(texts, s => s.Contains("foss"));       // agent identity
+            Assert.Contains(texts, s => s.Contains("foss"));       // agent identity (also captions the tab)
             Assert.Contains(texts, s => s.Contains("150"));         // zoom readout (1.5 → 150%)
 
+            // The actions menu collapsed to a little ⋯ icon button (was "⋯ Actions") to free space.
             var buttons = window.GetVisualDescendants().OfType<Button>().ToList();
-            Assert.Contains(buttons, b => (b.Content as string)?.Contains("Actions") == true);
+            Assert.Contains(buttons, b => (b.Content as string) == "⋯");
 
             Assert.Contains(window.GetVisualDescendants().OfType<Slider>(), _ => true);      // zoom slider
             // The theme picker moved into the ⋯ menu; its ComboBox is in the (unopened) flyout, not the header.
@@ -98,7 +99,7 @@ public class AgentPaneChromeViewTests
             var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? string.Empty).ToList();
             Assert.Contains(texts, s => s.Contains("foss"));
             Assert.Contains(window.GetVisualDescendants().OfType<Button>(),
-                b => (b.Content as string)?.Contains("Actions") == true);
+                b => (b.Content as string) == "⋯");
             Assert.Contains(window.GetVisualDescendants().OfType<Slider>(), _ => true);
 
             var terminal = window.GetVisualDescendants().OfType<Styloagent.Terminal.TerminalControl>().Single();

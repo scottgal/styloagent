@@ -177,6 +177,17 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
     // (filePath, routingPrefix); wired from Core.Attention.PickupProjection. Null-safe default = never.
     private readonly Func<string, string, bool> _isPickedUp;
 
+    // The pickup signal (delivered ledger + pending push/info files) lives under the temp hooks
+    // `deliver/` dir, NOT under _channelRoot — so the channel FileSystemWatcher never sees a drain and
+    // the WORKING pill would freeze at WAITING. We poll this dir on a low-frequency timer (mirroring
+    // HookChannel's deliberate poll-over-FSW choice for the temp hooks dir) and reproject only when its
+    // fingerprint changes. Null when delivery isn't MCP-wired (nothing to track → WAITING/DONE only).
+    private readonly string? _pickupWatchDir;
+    private Timer? _pickupPollTimer;
+    private readonly object _pickupLock = new();
+    private string _pickupFingerprint = "";
+    private const int PickupPollMs = 750;
+
     private FileSystemWatcher? _watcher;
     // Single long-lived timer; changed on each FSW event to coalesce rapid bursts.
     private readonly Timer _debounceTimer;
@@ -211,13 +222,15 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
         IReadOnlyList<string> knownPrefixes,
         ChannelProjection? projection = null,
         IBusViewState? viewState = null,
-        Func<string, string, bool>? isPickedUp = null)
+        Func<string, string, bool>? isPickedUp = null,
+        string? pickupWatchDir = null)
     {
         _channelRoot = channelRoot;
         _knownPrefixes = knownPrefixes;
         _projection = projection ?? new ChannelProjection();
         _viewState = viewState ?? new InMemoryBusViewState();
         _isPickedUp = isPickedUp ?? ((_, _) => false);
+        _pickupWatchDir = pickupWatchDir;
 
         // One timer instance, started as "disabled" (Timeout.Infinite).
         _debounceTimer = new Timer(_ => _ = LoadAsync(), null, Timeout.Infinite, Timeout.Infinite);
@@ -225,6 +238,14 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
         // A view-state change (mark-seen / archive, here or — with the real store — elsewhere) refreshes
         // the feed through the same debounced reload path the FSW uses, so pills stay live.
         _viewState.Changed += ScheduleReload;
+
+        // Seed the pickup fingerprint so the first poll tick doesn't spuriously reload, then start the
+        // low-frequency poll that turns a drain (WAITING→WORKING) into a live reprojection.
+        if (_pickupWatchDir is not null)
+        {
+            _pickupFingerprint = ComputePickupFingerprint();
+            _pickupPollTimer = new Timer(_ => PollPickupOnce(), null, PickupPollMs, PickupPollMs);
+        }
 
         _ = LoadAsync();
         StartWatcher();
@@ -510,6 +531,45 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
 
     private void OnFileChanged(object sender, FileSystemEventArgs e) => ScheduleReload();
 
+    /// <summary>
+    /// Poll the pickup store (the temp hooks <c>deliver/</c> dir) once: if its fingerprint changed since the
+    /// last check, schedule a reload so the WAITING→WORKING pill goes live. Returns true when a change was
+    /// detected (and a reload scheduled). Also driven by an internal low-frequency timer; public so tests
+    /// can drive the pickup-change path deterministically without the poll interval (cf. HookChannel.ScanOnce).
+    /// </summary>
+    public bool PollPickupOnce()
+    {
+        if (_disposed || _pickupWatchDir is null) return false;
+        lock (_pickupLock)
+        {
+            string current = ComputePickupFingerprint();
+            if (current == _pickupFingerprint) return false;
+            _pickupFingerprint = current;
+        }
+        ScheduleReload();
+        return true;
+    }
+
+    /// <summary>A cheap change-signature of the pickup dir: each file's path, length and last-write tick.
+    /// A drain (push/info file claimed away) or a delivery (delivered-ledger write) shifts it. Missing dir
+    /// or any I/O error → empty string (degrade: no pickup change observed).</summary>
+    private string ComputePickupFingerprint()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(_pickupWatchDir) || !Directory.Exists(_pickupWatchDir))
+                return "";
+            var sb = new System.Text.StringBuilder();
+            foreach (string f in Directory.GetFiles(_pickupWatchDir).OrderBy(x => x, StringComparer.Ordinal))
+            {
+                var fi = new FileInfo(f);
+                sb.Append(f).Append('|').Append(fi.Length).Append('|').Append(fi.LastWriteTimeUtc.Ticks).Append(';');
+            }
+            return sb.ToString();
+        }
+        catch { return ""; }
+    }
+
     /// <summary>Debounced reload: reschedule the single timer; it fires once after the quiet window.
     /// Shared by the FSW and by view-state (mark-seen / archive) changes.</summary>
     private void ScheduleReload()
@@ -536,6 +596,7 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
         }
 
         _debounceTimer.Dispose();
+        _pickupPollTimer?.Dispose();
         _watcher?.Dispose();
         _reloadGate.Dispose();
     }

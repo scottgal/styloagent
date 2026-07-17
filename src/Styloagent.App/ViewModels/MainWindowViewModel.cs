@@ -793,6 +793,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             ? null
             : new Styloagent.Core.Channel.PendingInbox(vm._hookChannel.HooksDirectory);
         var pickup = new Styloagent.Core.Attention.PickupProjection(pending);
+        // The pickup ledger + pending notes live under the temp hooks `deliver/` dir (not the channel),
+        // so the bus viewer polls it to bring the WORKING pill live when a recipient drains a note.
+        string? pickupWatchDir = vm._hookChannel is null
+            ? null
+            : Styloagent.Core.Channel.DeliveryHookCommands.DeliverDir(vm._hookChannel.HooksDirectory);
 
         // Durable operator read-state (seen/archived) lives beside the channel under .styloagent/, so the
         // operator's Archive + seen survive a cockpit restart. Operator-LOCAL — never in the shared channel.
@@ -800,7 +805,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var busViewState = new JsonBusViewState(Path.Combine(viewStateDir, "bus-view-state.json"));
 
         vm._busViewModel = new BusViewModel(
-            channelRoot, channelPrefixes, viewState: busViewState, isPickedUp: pickup.IsPickedUp)
+            channelRoot, channelPrefixes, viewState: busViewState,
+            isPickedUp: pickup.IsPickedUp, pickupWatchDir: pickupWatchDir)
         {
             OpenDocument = vm.OpenBusMessageDocument,   // double-click a message → its full markdown
             ThreadOpener = vm.OpenBusThreadDocument,     // popout a thread → carousel through it

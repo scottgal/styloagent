@@ -4,6 +4,7 @@ using Avalonia.VisualTree;
 using Mostlylucid.Avalonia.UITesting.Players;
 using Styloagent.App.ViewModels;
 using Styloagent.App.Views;
+using Styloagent.Core.Attention;
 using Styloagent.Core.Channel;
 using Xunit;
 
@@ -197,6 +198,71 @@ public class BusAttentionViewTests
             }
         });
     }
+
+    // BUG 1 (LIVE pickup): the WORKING pill must go live when a recipient DRAINS a delivered note. The
+    // pickup signal lives under the temp hooks `deliver/` dir — NOT the channel — so the channel watcher
+    // never sees the drain and the pill would freeze at WAITING. The viewer now polls the pickup dir;
+    // PollPickupOnce drives that path deterministically (the 750ms timer is the live/restart-verified twin).
+    [Fact]
+    public Task BusView_pickup_poll_brings_the_working_pill_live_after_a_drain()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var root = Path.Combine(Path.GetTempPath(), "buspickup-" + Guid.NewGuid().ToString("N"));
+            var hooksDir = Path.Combine(Path.GetTempPath(), "buspickup-hooks-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(root, "inbox"));
+            Directory.CreateDirectory(Path.Combine(root, "outbox"));
+            Directory.CreateDirectory(hooksDir);
+            try
+            {
+                var msgPath = Path.Combine(root, "inbox", "alpha-open-question.md");
+                File.WriteAllText(msgPath, "**From:** ops\n**Timestamp:** 2024-01-10T10:00:00Z\n\nQ?");
+
+                // Real pickup store: deliver the note to alpha- and leave it PENDING (a push note still
+                // references its path) → PickedUp == false → WAITING.
+                var pending = new PendingInbox(hooksDir);
+                pending.Enqueue("alpha-", "[bus] normal message — read it: " + msgPath,
+                    pushing: true, deliveredPath: msgPath);
+                var pickup = new PickupProjection(pending);
+                var deliverDir = DeliveryHookCommands.DeliverDir(hooksDir);
+
+                var vm = new BusViewModel(root, Prefixes, new ChannelProjection(),
+                    isPickedUp: pickup.IsPickedUp, pickupWatchDir: deliverDir);
+                await vm.LoadAsync();
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+                // Delivered but still pending → WAITING (not yet picked up).
+                Assert.False(pending.PickedUp("alpha-", msgPath));
+                Assert.Equal("WAITING", ThreadPill(vm, "open-question"));
+
+                // Recipient drains the note (turn-boundary hook / check_inbox) → now PICKED UP.
+                pending.DrainFormatted("alpha-");
+                Assert.True(pending.PickedUp("alpha-", msgPath));
+
+                // The poll detects the deliver-dir change and schedules a reload — the link the channel
+                // watcher can never make. Drive it deterministically, then apply the reprojection.
+                Assert.True(vm.PollPickupOnce());
+                await vm.LoadAsync();
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+                Assert.Equal("WORKING", ThreadPill(vm, "open-question"));   // pill went LIVE
+
+                // No further change → the poll stays quiet (no churn).
+                Assert.False(vm.PollPickupOnce());
+
+                vm.Dispose();
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+                if (Directory.Exists(hooksDir)) Directory.Delete(hooksDir, recursive: true);
+            }
+        });
+    }
+
+    private static string ThreadPill(BusViewModel vm, string keyFragment) =>
+        vm.AttentionThreads.Concat(vm.RecentThreads).Concat(vm.ArchivedThreads)
+          .First(t => t.Key.Contains(keyFragment)).StatusPillText;
 
     // Archive (✕): dismissing a thread marks it DONE and drops it out of NEEDS ATTENTION into the Archive drawer.
     [Fact]

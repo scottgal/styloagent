@@ -837,6 +837,88 @@ public class TerminalControlTests
         Assert.Contains(fake.Writes, IsCursorPositionReport);
     }
 
+    /// <summary>Matches the PRIVATE-mode cursor report — CSI ? rows ; cols R — the exact "[?7;80R / [?15;80R /
+    /// [?17;80R" shape captured leaking into the operator's live input (answer to the child's ESC[?6n).</summary>
+    private static bool IsPrivateCursorReport(string s) =>
+        System.Text.RegularExpressions.Regex.IsMatch(s, "\\x1b?\\[[?][\\d;]+R");
+
+    /// <summary>
+    /// Non-hollow guard for the suppression test below: the child's PRIVATE-mode cursor query (ESC[?6n — the
+    /// one whose answer is the operator's captured "[?7;80R") IS answered when nobody is composing. If the
+    /// engine didn't answer this form at all, the suppression assertion would pass vacuously.
+    /// </summary>
+    [Fact]
+    public async Task PrivateModeCursorQuery_IsAnsweredBackToChild_WhenNotComposing()
+    {
+        var fake = new FakePtySession();
+        Exception? lambdaEx = null;
+
+        await _fx.DispatchAsync(async () =>
+        {
+            try
+            {
+                var control = new TerminalControl();
+                var window = new Window { Content = control, Width = 800, Height = 400 };
+                window.Show();
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+                control.Attach(fake);
+                fake.ClearWrites();
+
+                fake.FireOutput("\u001b[?6n");   // DECXCPR — answered with CSI ? rows ; cols R
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+                window.Close();
+            }
+            catch (Exception ex) { lambdaEx = ex; }
+        });
+
+        Assert.Null(lambdaEx);
+        Assert.Contains(fake.Writes, IsPrivateCursorReport);
+    }
+
+    /// <summary>
+    /// Hardening against the operator's LIVE-captured sequences ("[?7;80R", "[?15;80R", "[?17;80R"): while the
+    /// operator is composing, the child's PRIVATE-mode cursor poll (ESC[?6n) must go UNANSWERED so its
+    /// "CSI ? n ; 80 R" report can't interleave into the typed line (the residue the operator saw as "R"/"RR").
+    /// </summary>
+    [Fact]
+    public async Task PrivateModeCursorQuery_WhileHumanIsComposing_IsNotAnsweredBackToChild()
+    {
+        var fake = new FakePtySession();
+        Exception? lambdaEx = null;
+
+        await _fx.DispatchAsync(async () =>
+        {
+            try
+            {
+                var control = new TerminalControl();
+                var window = new Window { Content = control, Width = 800, Height = 400 };
+                window.Show();
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+                control.Attach(fake);
+                control.Focus();
+
+                // Operator is mid-word ("sta…") — the exact live scenario ("staRRtus").
+                control.RaiseEvent(new TextInputEventArgs { RoutedEvent = InputElement.TextInputEvent, Text = "s" });
+                control.RaiseEvent(new TextInputEventArgs { RoutedEvent = InputElement.TextInputEvent, Text = "t" });
+                control.RaiseEvent(new TextInputEventArgs { RoutedEvent = InputElement.TextInputEvent, Text = "a" });
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+                fake.ClearWrites();
+
+                fake.FireOutput("\u001b[?6n");
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+                window.Close();
+            }
+            catch (Exception ex) { lambdaEx = ex; }
+        });
+
+        Assert.Null(lambdaEx);
+        Assert.DoesNotContain(fake.Writes, IsPrivateCursorReport);
+    }
+
     // ── Mouse-wheel scrollback + zoom ────────────────────────────────────────
     // The terminal panes had no wheel scrolling (`docked-agent-terminal-panes-have-no-scrollbar`) and no
     // zoom. Wheel-up must scroll BACK through the VT scrollback (driving the real ScrollViewer offset, not a

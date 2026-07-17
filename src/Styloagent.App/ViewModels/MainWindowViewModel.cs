@@ -1001,6 +1001,56 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _ = paneVm.SpawnAsync();
     }
 
+    // ── Live open-repo / second-instance gesture (Bug A) ─────────────────────────────────────────
+
+    /// <summary>Folder picker for the open-repo gesture; wired by the window (a StorageFolderPicker over it).</summary>
+    public IFolderPicker? RepoFolderPicker { get; set; }
+
+    private RepoInstanceCoordinator? _repoCoordinator;
+
+    /// <summary>
+    /// Open a chosen repo — one that has its OWN <c>.styloagent/</c> — as a federated second instance mid
+    /// session. Flow (pick folder → resolve canonical git root via <c>ResolveRepoRootAsync</c> → confirm it's
+    /// a Styloagent instance → hand off to the federation opener, de-duping) lives in
+    /// <see cref="RepoInstanceCoordinator"/>. The federation itself is a <see cref="StubRepoInstanceOpener"/>
+    /// today and swaps 1:1 for bus-'s per-repo instance seam when it lands.
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenRepoInstance()
+    {
+        if (RepoFolderPicker is null || _git is null)
+            return;
+
+        _repoCoordinator ??= new RepoInstanceCoordinator(
+            RepoFolderPicker,
+            (path, ct) => _git.ResolveRepoRootAsync(path, ct),
+            new StubRepoInstanceOpener(root =>
+                Timeline.Add(DateTimeOffset.Now, "workspace",
+                    $"opening {RepoName(root)} — federation seam pending", "#8899BB")));
+
+        LogRepoInstanceResult(await _repoCoordinator.OpenAsync());
+    }
+
+    /// <summary>Surface the gesture's outcome on the activity timeline (rejects + errors; silent on cancel).</summary>
+    private void LogRepoInstanceResult(OpenRepoInstanceResult result)
+    {
+        string? note = result.Status switch
+        {
+            OpenRepoInstanceStatus.Opened        => null,   // the stub opener already logged the "opening…" line
+            OpenRepoInstanceStatus.Cancelled     => null,   // operator dismissed the picker — no noise
+            OpenRepoInstanceStatus.AlreadyOpen   => $"{RepoName(result.RepoRoot)} is already open",
+            OpenRepoInstanceStatus.NotARepo      => result.Message ?? "not a git repository",
+            OpenRepoInstanceStatus.NotStyloagent => result.Message ?? "not a Styloagent instance",
+            OpenRepoInstanceStatus.Failed        => $"couldn't open {RepoName(result.RepoRoot)}: {result.Message}",
+            _ => null,
+        };
+        if (note is not null)
+            Timeline.Add(DateTimeOffset.Now, "workspace", note, "#8899BB");
+    }
+
+    private static string RepoName(string? root)
+        => string.IsNullOrEmpty(root) ? "repo" : Path.GetFileName(root!.TrimEnd('/', '\\'));
+
     /// <summary>Wires the ProposedTeam VM against a project's proposed-agents.yaml. Idempotent.</summary>
     public void AttachProject(ProjectConfig project)
     {

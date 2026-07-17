@@ -42,6 +42,13 @@
               <TextBlock Text="New console" VerticalAlignment="Center" />
             </StackPanel>
           </Button>
+          <Button Command="{Binding OpenRepoInstanceCommand}" Padding="10,4" FontSize="13"
+                  ToolTip.Tip="Open another repo (with its own .styloagent/) as a federated instance">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ic:SymbolIcon Symbol="FolderAdd" FontSize="16" />
+              <TextBlock Text="Open repo" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
         </StackPanel>
 
         <!-- Document search (Lucene autosuggest) — type to suggest, click a result to open it -->

@@ -2,6 +2,7 @@ using System.IO;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Platform.Storage;
+using Styloagent.App.Services;
 using Styloagent.App.ViewModels;
 
 namespace Styloagent.App.Views;
@@ -22,6 +23,12 @@ public partial class MainWindow : Window
         InitializeComponent();
         DocumentSurface.AddHandler(DragDrop.DragOverEvent, OnSurfaceDragOver);
         DocumentSurface.AddHandler(DragDrop.DropEvent, OnSurfaceDrop);
+        // Give the shell VM a real folder picker over this window for the open-repo gesture.
+        DataContextChanged += (_, _) =>
+        {
+            if (DataContext is MainWindowViewModel vm)
+                vm.RepoFolderPicker = new StorageFolderPicker(this);
+        };
     }
 
     private static bool HasOpenableData(IDataObject data)

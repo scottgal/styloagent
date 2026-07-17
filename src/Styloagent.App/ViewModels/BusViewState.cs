@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Styloagent.App.ViewModels;
 
 /// <summary>
@@ -84,5 +86,120 @@ public sealed class InMemoryBusViewState : IBusViewState
                 return;
         }
         Changed?.Invoke();
+    }
+}
+
+/// <summary>
+/// Durable, file-backed <see cref="IBusViewState"/> — the store the shipped viewer uses. Operator
+/// seen/archived read-state is persisted to a small JSON (default <c>.styloagent/bus-view-state.json</c>)
+/// so the operator's Archive (and seen-watermarks) survive a cockpit restart. It is operator-LOCAL: no
+/// Core verb, no channel-file moves — <see cref="ChannelProjection"/> stays independent, this store wins
+/// for the operator's view. Fail-open: any read/write I/O error degrades to empty/in-memory rather than
+/// throwing, so a corrupt or unwritable file never breaks the bus viewer.
+/// </summary>
+public sealed class JsonBusViewState : IBusViewState
+{
+    private readonly string _path;
+    private readonly Dictionary<string, DateTimeOffset> _seenUpTo = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _archived = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _lock = new();
+
+    private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
+
+    public event Action? Changed;
+
+    public JsonBusViewState(string path)
+    {
+        _path = path;
+        Load();
+    }
+
+    public bool IsSeen(string threadKey, DateTimeOffset? lastActivity)
+    {
+        lock (_lock)
+        {
+            if (!_seenUpTo.TryGetValue(threadKey, out var watermark))
+                return false;
+            return lastActivity is not { } activity || watermark >= activity;
+        }
+    }
+
+    public bool IsArchived(string threadKey)
+    {
+        lock (_lock) return _archived.Contains(threadKey);
+    }
+
+    public void MarkSeen(string threadKey, DateTimeOffset? asOf)
+    {
+        var stamp = asOf ?? DateTimeOffset.MaxValue;
+        lock (_lock)
+        {
+            if (_seenUpTo.TryGetValue(threadKey, out var existing) && existing >= stamp)
+                return;
+            _seenUpTo[threadKey] = stamp;
+            Save();
+        }
+        Changed?.Invoke();
+    }
+
+    public void Archive(string threadKey)
+    {
+        lock (_lock)
+        {
+            if (!_archived.Add(threadKey))
+                return;
+            Save();
+        }
+        Changed?.Invoke();
+    }
+
+    // On-disk shape: a plain DTO (case-insensitive maps are rebuilt on load, since the comparer isn't serialized).
+    private sealed class Dto
+    {
+        public Dictionary<string, DateTimeOffset> SeenUpTo { get; set; } = new();
+        public List<string> Archived { get; set; } = new();
+    }
+
+    private void Load()
+    {
+        try
+        {
+            if (!File.Exists(_path))
+                return;
+            var dto = JsonSerializer.Deserialize<Dto>(File.ReadAllText(_path), JsonOpts);
+            if (dto is null)
+                return;
+            foreach (var (k, v) in dto.SeenUpTo)
+                _seenUpTo[k] = v;
+            foreach (var k in dto.Archived)
+                _archived.Add(k);
+        }
+        catch
+        {
+            // Corrupt/unreadable file → start empty. The operator loses nothing but stale view-state.
+        }
+    }
+
+    // Caller holds _lock. Writes atomically (temp + move) so a crash mid-write can't corrupt the store.
+    private void Save()
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(_path);
+            if (!string.IsNullOrEmpty(dir))
+                Directory.CreateDirectory(dir);
+            var dto = new Dto
+            {
+                SeenUpTo = new Dictionary<string, DateTimeOffset>(_seenUpTo),
+                Archived = _archived.ToList(),
+            };
+            var tmp = _path + ".tmp";
+            File.WriteAllText(tmp, JsonSerializer.Serialize(dto, JsonOpts));
+            File.Move(tmp, _path, overwrite: true);
+        }
+        catch
+        {
+            // Unwritable location → keep the in-memory state; the view still works this session.
+        }
     }
 }

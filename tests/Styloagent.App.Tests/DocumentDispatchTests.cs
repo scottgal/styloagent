@@ -1,4 +1,5 @@
 using Styloagent.App.ViewModels;
+using Styloagent.Core.Sessions;
 using Xunit;
 
 namespace Styloagent.App.Tests;
@@ -29,5 +30,17 @@ public class DocumentDispatchTests
         var path = MainWindowViewModel.AgentLogPathFor("/repo", "session-");
         Assert.Equal(Path.Combine("/repo", ".styloagent", "logs", "session-.md"), path);
         Assert.Equal(DocViewerKind.Markdown, MainWindowViewModel.ViewerKindForPath(path));
+    }
+
+    [Fact]
+    public void AgentLog_WriterAndReader_ResolveTheSameFile()
+    {
+        // session-'s AgentLogWriter and the cockpit reader (OpenAgentLog → AgentLogPathFor) MUST resolve
+        // the same file, or "Log (this agent)" would open an empty/missing doc while the writer appends
+        // elsewhere. Guards the two path conventions from drifting apart.
+        const string root = "/repo";
+        var writerPath = new AgentLogWriter(AgentLogWriter.LogsDirFor(root)).LogPathFor("session-");
+        var readerPath = MainWindowViewModel.AgentLogPathFor(root, "session-");
+        Assert.Equal(readerPath, writerPath);
     }
 }

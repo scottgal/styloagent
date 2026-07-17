@@ -404,6 +404,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private string? _repoRoot;
     private RouterHost? _routerHost;
 
+    // Per-agent markdown log writer (session-'s AgentLogWriter, item-3 slice 1). Driven off the same
+    // hook Stop stream as the badges; wired in AttachProject because the project root — which locates
+    // the sidecar logs dir the reader ("Log (this agent)") also uses — is only known once a project is
+    // attached (the hooksDir is under system temp, so the writer can't self-locate). Held in a field so
+    // it outlives the wiring and is visible to readers of this type.
+    private AgentLogWriter? _agentLogWriter;
+
     private IFactory? _factory;
     private StyloagentDockFactory? _dockFactory;
     private BusViewModel? _busViewModel;
@@ -961,6 +968,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void AttachProject(ProjectConfig project)
     {
         _project = project;
+
+        // Drive the per-agent log writer off the same hook Stop stream that feeds the badges. Wired here
+        // (not at HookChannel creation) because project.Root — which locates the sidecar logs dir the
+        // "Log (this agent)" reader opens (AgentLogPathFor) — is only known now. Same root on both sides so
+        // writer and reader agree on the file. Guarded so a re-attach never double-subscribes; the writer
+        // is best-effort and can't throw into the hook path.
+        if (_hookChannel is not null && _agentLogWriter is null)
+        {
+            _agentLogWriter = new AgentLogWriter(AgentLogWriter.LogsDirFor(project.Root));
+            _hookChannel.EventReceived += _agentLogWriter.OnHookEvent;
+        }
+
         FleetPolicy = FleetPolicyReader.Read(project.FleetPolicyPath);
         if (_deliveryService is not null)
             _deliveryService.Policy = PriorityPolicyReader.Read(project.PriorityPolicyPath);

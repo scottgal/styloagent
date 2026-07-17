@@ -41,6 +41,15 @@
                 <!-- Hidden marker: the agent is off-screen but still running (Fix F) -->
                 <TextBlock Text="hidden" FontSize="9" FontStyle="Italic" VerticalAlignment="Center"
                            Foreground="{DynamicResource MutedTextBrush}" IsVisible="{Binding IsHidden}" />
+                <!-- "asked you" marker: this agent raised an ask_operator question (answer it in the top
+                     bar). Cyan ❓, distinct from the amber ⚠ needs-you badge; separate from HookState. -->
+                <Border Background="#123038" CornerRadius="3" Padding="4,0" VerticalAlignment="Center"
+                        IsVisible="{Binding HasOperatorQuestion}" ToolTip.Tip="{Binding OperatorQuestionTooltip}">
+                  <StackPanel Orientation="Horizontal" Spacing="3">
+                    <TextBlock Text="❓" FontSize="9" Foreground="#4DB8C4" VerticalAlignment="Center" />
+                    <TextBlock Text="asked you" FontSize="9" Foreground="#8FD8E2" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Border>
               </StackPanel>
               <!-- Live hook state (§4.4): glyph + activity headline ("indexing repo"), coloured by state.
                    Hover shows the pending question when the agent needs you. -->

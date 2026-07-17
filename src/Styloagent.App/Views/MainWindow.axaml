@@ -177,6 +177,12 @@
       </Grid>
     </Border>
 
+    <!-- Operator-question banner (ask_operator): fleet-wide questions an agent has raised to the human,
+         answered in one click. Self-hides when nothing is pending. Separate from any pane's HookState so
+         the delivery service's view of the recipient stays honest (see OperatorQuestionsViewModel). -->
+    <views:OperatorQuestionBannerView DockPanel.Dock="Top"
+                                      DataContext="{Binding OperatorQuestions}" />
+
     <!-- Fleet instruments strip (mission-control status bar) -->
     <Border DockPanel.Dock="Bottom" Background="{DynamicResource PanelHeaderBgBrush}" Padding="12,3">
       <StackPanel Orientation="Horizontal" Spacing="18">

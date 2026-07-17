@@ -1,0 +1,42 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
+             x:Class="Styloagent.App.Views.OperatorQuestionBannerView"
+             x:DataType="vm:OperatorQuestionsViewModel">
+
+  <!-- Fleet-wide operator-question banner (ask_operator): each pending question with its one-click answer
+       options. Self-hides when nothing is pending. DataContext is the OperatorQuestionsViewModel. -->
+  <Border Background="#123038" BorderBrush="#2E6B76" BorderThickness="0,0,0,1" Padding="10,5"
+          IsVisible="{Binding HasQuestions}">
+    <ItemsControl ItemsSource="{Binding Questions}">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:OperatorQuestionItem">
+          <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6"
+                        VerticalAlignment="Center" Margin="0,0,10,0">
+              <TextBlock Text="❓" FontSize="13" Foreground="#4DB8C4" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding AskingPrefix}" FontWeight="Bold" FontSize="11"
+                         Foreground="#8FD8E2" VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBlock Grid.Column="1" Text="{Binding Question}" FontSize="12" Foreground="#DDEEF2"
+                       VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,10,0" />
+            <!-- one-click answer options: each button calls the item's AnswerCommand with its own label -->
+            <ItemsControl Grid.Column="2" ItemsSource="{Binding Options}" VerticalAlignment="Center">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="4" /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <Button Content="{Binding}" FontSize="11" Padding="12,2"
+                          Background="#1D4A54" Foreground="#DDEEF2"
+                          Command="{Binding DataContext.AnswerCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                          CommandParameter="{Binding}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Grid>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+  </Border>
+</UserControl>

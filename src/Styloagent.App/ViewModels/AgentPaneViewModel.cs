@@ -259,6 +259,27 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     [RelayCommand]
     private void OpenLog() => Host?.OpenAgentLog(Prefix);
 
+    // ── Pending operator question (ask_operator top bar) ─────────────────────────────────────
+
+    /// <summary>
+    /// The question this agent has raised to the human operator via <c>ask_operator</c> (empty when none).
+    /// Reconciled by the shell from the OperatorQuestionHub's pending set. Deliberately SEPARATE from
+    /// <see cref="HookState"/>: ask_operator is non-blocking (the asker keeps working / goes idle), so forcing
+    /// WaitingForHuman would poison the hook-driven state the delivery service reads and make it defer the
+    /// very answer meant to reach the asker. This is a "asked-and-continuing" marker, not a blocked state.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOperatorQuestion))]
+    [NotifyPropertyChangedFor(nameof(OperatorQuestionTooltip))]
+    private string _pendingOperatorQuestion = "";
+
+    /// <summary>True while this agent is waiting on an operator answer — drives the roster "asked you" badge
+    /// (glyph "❓" / cyan #4DB8C4, distinct from the amber ⚠ needs-you highlight — rendered in the view).</summary>
+    public bool HasOperatorQuestion => !string.IsNullOrEmpty(PendingOperatorQuestion);
+
+    /// <summary>Tooltip: the pending question, so the operator sees what's asked from the roster.</summary>
+    public string OperatorQuestionTooltip => HasOperatorQuestion ? PendingOperatorQuestion : "";
+
     /// <summary>
     /// The hosting <see cref="MainWindowViewModel"/>, so the per-agent management menu — rendered in a Flyout
     /// popup, OUTSIDE this row's visual tree — can bind to fleet-level commands (Kill / Force-kill / Approve /

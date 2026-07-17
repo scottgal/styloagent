@@ -395,6 +395,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private RouterViewModel? _router;
 
+    /// <summary>The operator-question top-bar VM (ask_operator). Null until the fleet MCP server starts.</summary>
+    [ObservableProperty]
+    private OperatorQuestionsViewModel? _operatorQuestions;
+
     private IGitLog? _gitLog;
     private WorktreeGitWatcher? _gitWatcher;
 
@@ -410,6 +414,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // attached (the hooksDir is under system temp, so the writer can't self-locate). Held in a field so
     // it outlives the wiring and is visible to readers of this type.
     private AgentLogWriter? _agentLogWriter;
+
+    // Operator-question hub (bus-'s ask_operator): pending questions the human answers from the top bar.
+    // Constructed with the MCP server (StartFleetServerAsync); OperatorQuestions (below) mirrors its pending
+    // set for the banner, and the shell reconciles per-pane markers off it (HookState stays hook-driven).
+    private OperatorQuestionHub? _operatorQuestionHub;
 
     private IFactory? _factory;
     private StyloagentDockFactory? _dockFactory;
@@ -486,9 +495,23 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (_mcpServer is not null) return;
         try
         {
+            // Operator-question hub (bus-'s ask_operator): the chosen answer routes back to the asker as a
+            // normal bus message via our existing SendBusMessage — the same path every message takes, so
+            // MCP-native pull delivery applies. OperatorQuestions mirrors the pending set for the banner;
+            // its PendingChanged reconciles per-pane markers (HookState stays hook-driven — see the design).
+            _operatorQuestionHub ??= new OperatorQuestionHub(
+                new OperatorQuestionStore(),
+                (to, subject, body) => SendBusMessage(
+                    new MessageRequest(OperatorQuestionHub.OperatorPrefix, to, subject, body, "normal")));
+            if (OperatorQuestions is null)
+            {
+                OperatorQuestions = new OperatorQuestionsViewModel(_operatorQuestionHub);
+                OperatorQuestions.PendingChanged += ReconcileOperatorQuestionPanes;
+            }
+
             // Feed the live hooksDir so check_inbox drains the SAME PendingInbox store the delivery hooks fill.
             _mcpServer = await StyloagentMcpServer.StartAsync(new FleetController(this), new RouterController(this),
-                _hookChannel?.HooksDirectory).ConfigureAwait(false);
+                _hookChannel?.HooksDirectory, _operatorQuestionHub).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -2004,6 +2027,25 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             catch (InvalidOperationException) { /* collection changed mid-enumeration; retry */ }
         }
         return Array.Empty<AgentPresence>();
+    }
+
+    /// <summary>
+    /// Syncs each pane's <see cref="AgentPaneViewModel.PendingOperatorQuestion"/> marker to the operator-
+    /// question hub's current pending set (fired on PendingChanged, on the UI thread). Kept off HookState so
+    /// the delivery service's view of the recipient stays honest.
+    /// </summary>
+    private void ReconcileOperatorQuestionPanes()
+        => ReconcilePaneQuestions(Panes, OperatorQuestions?.PendingByPrefix ?? EmptyOperatorQuestions);
+
+    private static readonly IReadOnlyDictionary<string, string> EmptyOperatorQuestions
+        = new Dictionary<string, string>();
+
+    /// <summary>Pure reconcile: set each pane's pending-question marker to its question, or clear it. Testable.</summary>
+    internal static void ReconcilePaneQuestions(
+        IEnumerable<AgentPaneViewModel> panes, IReadOnlyDictionary<string, string> pendingByPrefix)
+    {
+        foreach (var pane in panes)
+            pane.PendingOperatorQuestion = pendingByPrefix.TryGetValue(pane.Prefix, out var q) ? q : "";
     }
 
     /// <summary>Rebuilds the oldest-first attention queue from the current panes.</summary>

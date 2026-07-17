@@ -10,9 +10,10 @@ public class AgentPaneViewModelTests
     private static AgentManifestEntry MakeEntry(
         string launchPromptPath = "",
         string restartPromptPath = "",
-        string savedContextPath = "/repo/wt-foss/.context.md") =>
+        string savedContextPath = "/repo/wt-foss/.context.md",
+        string prefix = "foss-") =>
         new(
-            Prefix: "foss-",
+            Prefix: prefix,
             Repo: "/repo",
             Worktree: "/repo/wt-foss",
             LaunchPromptPath: launchPromptPath,
@@ -294,5 +295,51 @@ public class AgentPaneViewModelTests
         Assert.Null(vm.Host);
         var ex = Record.Exception(() => vm.OpenLogCommand.Execute(null));
         Assert.Null(ex);
+    }
+
+    // ── Pending operator question indicator (ask_operator top bar) ─────────────
+
+    [Fact]
+    public void PendingOperatorQuestion_DrivesTheAskedYouBadge_SeparateFromHookState()
+    {
+        var vm = MakeVm();
+        Assert.False(vm.HasOperatorQuestion);
+        Assert.Equal("", vm.OperatorQuestionTooltip);
+
+        var changed = new List<string>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName!);
+
+        vm.PendingOperatorQuestion = "Deploy to prod?";
+
+        Assert.True(vm.HasOperatorQuestion);
+        Assert.Equal("Deploy to prod?", vm.OperatorQuestionTooltip);
+        // Kept OFF HookState so the delivery service's view of the recipient stays honest.
+        Assert.Equal(AgentHookState.Unknown, vm.HookState);
+        Assert.False(vm.NeedsYou);
+        Assert.Contains(nameof(vm.HasOperatorQuestion), changed);
+        Assert.Contains(nameof(vm.OperatorQuestionTooltip), changed);
+
+        vm.PendingOperatorQuestion = "";
+        Assert.False(vm.HasOperatorQuestion);
+    }
+
+    [Fact]
+    public void ReconcilePaneQuestions_SetsAndClearsPerPaneMarkers()
+    {
+        var foss = MakeVm(entry: MakeEntry(prefix: "foss-"));
+        var docs = MakeVm(entry: MakeEntry(prefix: "docs-"));
+        var panes = new[] { foss, docs };
+
+        var pending = new Dictionary<string, string> { ["foss-"] = "Ship it?" };
+        MainWindowViewModel.ReconcilePaneQuestions(panes, pending);
+
+        Assert.Equal("Ship it?", foss.PendingOperatorQuestion);
+        Assert.True(foss.HasOperatorQuestion);
+        Assert.Equal("", docs.PendingOperatorQuestion);   // no pending question for docs- → cleared
+        Assert.False(docs.HasOperatorQuestion);
+
+        // Once answered (empty pending set), the marker clears on the next reconcile.
+        MainWindowViewModel.ReconcilePaneQuestions(panes, new Dictionary<string, string>());
+        Assert.False(foss.HasOperatorQuestion);
     }
 }

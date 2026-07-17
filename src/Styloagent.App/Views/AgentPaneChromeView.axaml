@@ -32,6 +32,10 @@
             <MenuItem Header="Rehydrate" Command="{Binding RehydrateCommand}" />
             <MenuItem Header="Rename" Command="{Binding RenameCommand}" CommandParameter="New Name" />
             <Separator />
+            <!-- Agent-log design slice 3: open this agent's durable .styloagent/logs/<prefix>.md as
+                 rendered markdown. Lands here (cockpit-owned chrome) with no cross-owner edit. -->
+            <MenuItem Header="Log (this agent)" Command="{Binding OpenLogCommand}" />
+            <Separator />
             <MenuItem Header="Approve prompt" IsEnabled="{Binding NeedsYou}"
                       Command="{Binding Host.ApprovePermissionCommand}" CommandParameter="{Binding}" />
             <MenuItem Header="Hide pane" IsVisible="{Binding !IsHidden}"

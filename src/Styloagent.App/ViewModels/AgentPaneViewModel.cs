@@ -252,6 +252,14 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     }
 
     /// <summary>
+    /// Opens THIS agent's durable log (<c>.styloagent/logs/&lt;prefix&gt;.md</c>) in the rendered-markdown
+    /// viewer — the "Log (this agent)" entry in the pane chrome dropdown (agent-log design, slice 3).
+    /// Routes through the host, which resolves the path against the active project.
+    /// </summary>
+    [RelayCommand]
+    private void OpenLog() => Host?.OpenAgentLog(Prefix);
+
+    /// <summary>
     /// The hosting <see cref="MainWindowViewModel"/>, so the per-agent management menu — rendered in a Flyout
     /// popup, OUTSIDE this row's visual tree — can bind to fleet-level commands (Kill / Force-kill / Approve /
     /// Hide / Remove) via <c>Host.…Command</c>. A visual-ancestor binding can't cross a popup boundary; this can.

@@ -282,4 +282,17 @@ public class AgentPaneViewModelTests
         vm.ZoomLevel = 1.5;                  // in range
         Assert.Equal(1.5, vm.ZoomLevel);
     }
+
+    // ── Agent-log "Log (this agent)" entry (item 1) ────────────────────────────
+
+    [Fact]
+    public void OpenLog_IsSafe_WhenNoHostAttached()
+    {
+        // The chrome dropdown's "Log (this agent)" command routes through Host; with no host (unhosted /
+        // test), it must be a harmless no-op, never throw.
+        var vm = MakeVm();
+        Assert.Null(vm.Host);
+        var ex = Record.Exception(() => vm.OpenLogCommand.Execute(null));
+        Assert.Null(ex);
+    }
 }

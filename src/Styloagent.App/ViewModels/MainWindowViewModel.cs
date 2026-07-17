@@ -1932,6 +1932,24 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// The per-agent log file path: <c>&lt;root&gt;/.styloagent/logs/&lt;prefix&gt;.md</c> — the sidecar
+    /// session- appends and repo- indexes (agent-log design). Pure so it is unit-testable without a project.
+    /// </summary>
+    internal static string AgentLogPathFor(string root, string prefix)
+        => Path.Combine(root, ".styloagent", "logs", prefix + ".md");
+
+    /// <summary>
+    /// Opens an agent's durable log (<c>.styloagent/logs/&lt;prefix&gt;.md</c>) as a rendered-markdown
+    /// document — the same open-as-rendered-markdown gesture every markdown surface uses. Scoped to the
+    /// given prefix (the selected agent). No-ops before a project is attached.
+    /// </summary>
+    public void OpenAgentLog(string prefix)
+    {
+        if (_project is null || string.IsNullOrEmpty(prefix)) return;
+        OpenDocumentByPath(AgentLogPathFor(_project.Root, prefix));
+    }
+
     /// <summary>Opens an edit's before/after as a highlighted line-diff document (from a timeline click).</summary>
     public void OpenDiffDocument(TimelineEntry entry)
     {

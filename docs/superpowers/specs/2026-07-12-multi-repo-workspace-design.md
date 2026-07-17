@@ -1,6 +1,14 @@
 # Multi-Repo Workspace — Design Spec
 
-**Status:** Draft for review · 2026-07-12
+> ⚠️ **SUPERSEDED (2026-07-17)** by `.styloagent/spec.md` capability #11 + `.styloagent/PROTOCOL.md`
+> "Cross-repo addressing". This 07-12 draft locked "Integrated workspace, NOT federated instances / ONE
+> shared bus at `.styloagent-workspace/channel`". The operator has since chosen the **opposite**:
+> **fork B — a federation of INDEPENDENT per-repo instances**, each with its own `.styloagent/` guardian
+> and its own `.styloagent/channel/`, the cockpit federates them, and cross-repo messages carry a `repo`
+> dimension (routing keyed by (repo,prefix) = (which-channel, prefix), `all-@*` = N physical copies).
+> Build against spec.md #11, not this file. Kept for history only.
+
+**Status:** SUPERSEDED by spec.md #11 (fork B) — was: Draft for review · 2026-07-12
 
 **Goal:** Let one Styloagent cockpit orchestrate a fleet that works across **several repos at once**
 (the user routinely works across ~4), coordinated by a **workspace overview** agent, with each agent

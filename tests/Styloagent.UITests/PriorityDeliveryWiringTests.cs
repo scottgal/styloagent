@@ -9,9 +9,13 @@ namespace Styloagent.UITests;
 
 /// <summary>
 /// End-to-end proof of the priority-delivery WIRING through a real MainWindowViewModel: a message
-/// dropped into the channel is routed to the recipient pane and injected into its live session,
-/// with ESC-break applied when the recipient is mid-turn. Exercises ResolvePty + SnapshotLiveAgents
-/// + the ChannelDeliveryCoordinator the VM builds.
+/// dropped into the channel is routed to the recipient pane and handed to the delivery service the
+/// VM builds. Since the VM now wires an MCP-native <see cref="Styloagent.Core.Channel.PendingInbox"/>
+/// (design 2026-07-13-mcp-native-delivery-design.md), an urgent message to a hook-connected, mid-turn
+/// recipient is enqueued for that recipient's own Stop hook to force-continue into — it is NOT typed
+/// into the live PTY mid-turn (the fragile ESC-break path is gone). Exercises ResolvePty +
+/// SnapshotLiveAgents + the ChannelDeliveryCoordinator + PendingInbox wiring. The service-level routing
+/// matrix (idle→inject, busy→enqueue, low/info→info file) is unit-tested in Core's MessageDeliveryTests.
 /// </summary>
 [Collection("Avalonia")]
 public class PriorityDeliveryWiringTests
@@ -41,7 +45,7 @@ public class PriorityDeliveryWiringTests
     }
 
     [Fact]
-    public Task Urgent_message_is_injected_into_the_recipient_pane_with_break()
+    public Task Urgent_message_to_a_busy_connected_pane_is_not_injected_midturn()
     {
         var root = MakeChannel();
         return _fx.DispatchAsync(async () =>
@@ -59,9 +63,8 @@ public class PriorityDeliveryWiringTests
                 Assert.NotNull(pane.CurrentPty);
 
                 var pty = (FakePtySession)pane.CurrentPty!;
-                pane.HookState = AgentHookState.Working;   // mid-turn → urgent should ESC-break
-                pty.IsIdle = false;                         // ...and the PTY is actually mid-turn, so the
-                                                            //    injector's IsIdle-gated ESC break fires
+                pane.HookState = AgentHookState.Working;   // hook-connected AND mid-turn (Working != Unknown/Idle)
+                pty.IsIdle = false;
                 pty.ClearWrites();                          // ignore the spawn's own writes
 
                 // A new urgent message addressed to this agent arrives on the channel.
@@ -71,9 +74,14 @@ public class PriorityDeliveryWiringTests
 
                 int delivered = await vm.PumpDeliveryForTest();
 
-                Assert.Equal(1, delivered);
-                Assert.Contains("\x1b", pty.Writes);                                   // ESC broke the turn
-                Assert.Contains(pty.Writes, w => w.Contains("broken-build") && w.Contains("urgent"));
+                // New MCP-native contract: a connected, mid-turn recipient does NOT get typed into mid-turn.
+                // The message is enqueued for its own Stop hook to force-continue into, so the PTY sees no
+                // ESC-break and no injected content. (The pending-store roundtrip is covered by Core's
+                // MessageDeliveryTests; here we prove the VM wires PendingInbox so the fragile inject path
+                // is bypassed end-to-end.)
+                Assert.Equal(1, delivered);                                             // routed to one recipient
+                Assert.DoesNotContain("\x1b", pty.Writes);                              // no mid-turn ESC-break
+                Assert.DoesNotContain(pty.Writes, w => w.Contains("broken-build"));     // nothing typed into the pane
             }
             finally
             {

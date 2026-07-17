@@ -90,7 +90,11 @@ public static class HookSettings
         string safeId = SanitizeAgentId(agentId);
         // Observe: write raw stdin JSON to a unique per-event file tagged with the agent id.
         // uuidgen ships with macOS and util-linux; the file is complete once the write exits.
-        string observe = $"cat > \"{hooksDir}/{safeId}{Separator}$(uuidgen).json\"";
+        // `drop` is the bare path expression (with a live $(uuidgen)); `observe` wraps it in a cat.
+        // Both the observe hook and the Stop delivery hook embed `drop` literally, so each hook
+        // invocation still evaluates $(uuidgen) itself and writes to a unique file.
+        string drop = $"{hooksDir}/{safeId}{Separator}$(uuidgen).json";
+        string observe = $"cat > \"{drop}\"";
 
         // When a gate invocation + repo root are supplied, the PreToolUse hook ALSO runs the ownership gate:
         // it still drops the event (so status badges don't regress) AND pipes it to the app in headless
@@ -117,6 +121,10 @@ public static class HookSettings
             {
                 "SessionStart" when reHydrate => Entry(SessionStartWithHydration(safeId, hooksDir, hydrationFile!)),
                 "PreToolUse" when gate        => Entry(PreToolUseGateCommand(safeId, hooksDir, gateInvocation!, caller ?? agentId, repoRoot!)),
+                // MCP-native delivery (bus-'s DeliveryHookCommands): drain pending messages at turn boundaries.
+                // UserPromptSubmit surfaces low/info as additionalContext; Stop force-continues urgent/normal.
+                "UserPromptSubmit"            => Entry(Styloagent.Core.Channel.DeliveryHookCommands.ForUserPromptSubmit(observe, hooksDir, safeId)),
+                "Stop"                        => Entry(Styloagent.Core.Channel.DeliveryHookCommands.ForStop(drop, hooksDir, safeId)),
                 _                             => Entry(observe),
             };
         }

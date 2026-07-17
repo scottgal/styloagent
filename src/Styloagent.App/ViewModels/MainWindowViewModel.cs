@@ -479,7 +479,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (_mcpServer is not null) return;
         try
         {
-            _mcpServer = await StyloagentMcpServer.StartAsync(new FleetController(this), new RouterController(this)).ConfigureAwait(false);
+            // Feed the live hooksDir so check_inbox drains the SAME PendingInbox store the delivery hooks fill.
+            _mcpServer = await StyloagentMcpServer.StartAsync(new FleetController(this), new RouterController(this),
+                _hookChannel?.HooksDirectory).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -702,7 +704,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // not deliver old messages), then push newly-arrived messages on each bus reload. The policy
         // starts at Default and is refreshed in AttachProject once a project is known.
         vm._channelRoot = channelRoot;
-        vm._deliveryService = new MessageDeliveryService(PriorityPolicy.Default, new PtyMessageInjector(vm.ResolvePty));
+        vm._deliveryService = new MessageDeliveryService(PriorityPolicy.Default, new PtyMessageInjector(vm.ResolvePty),
+            vm._hookChannel is null ? null : new Styloagent.Core.Channel.PendingInbox(vm._hookChannel.HooksDirectory));
         vm._deliveryCoordinator = new ChannelDeliveryCoordinator(
             channelRoot, channelPrefixes, vm._deliveryService, vm.SnapshotLiveAgents);
         await vm._deliveryCoordinator.SeedAsync();

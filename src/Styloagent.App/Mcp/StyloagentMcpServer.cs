@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Styloagent.Core.Channel;
 using Styloagent.Core.Mcp;
 
 namespace Styloagent.App.Mcp;
@@ -26,7 +27,14 @@ public sealed class StyloagentMcpServer : IAsyncDisposable
     private StyloagentMcpServer(WebApplication app, Uri baseUrl, string token)
         => (_app, BaseUrl, Token) = (app, baseUrl, token);
 
-    public static async Task<StyloagentMcpServer> StartAsync(IFleetController controller, IRouterController router)
+    /// <param name="hooksDir">
+    /// The per-run hooks directory whose <c>deliver/</c> subtree backs the MCP-native delivery queue
+    /// (design <c>2026-07-13-mcp-native-delivery-design.md</c>). The <c>check_inbox</c> verb drains the
+    /// same <see cref="PendingInbox"/> the delivery service writes to, so both must be rooted here. When
+    /// null (not yet wired), <c>check_inbox</c> reads a throwaway store and simply reports an empty inbox.
+    /// </param>
+    public static async Task<StyloagentMcpServer> StartAsync(
+        IFleetController controller, IRouterController router, string? hooksDir = null)
     {
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
 
@@ -37,6 +45,8 @@ public sealed class StyloagentMcpServer : IAsyncDisposable
         builder.Services.AddSingleton<IFleetController>(controller);
         builder.Services.AddSingleton<IRouterController>(router);
         builder.Services.AddSingleton(new McpAuth(token));
+        builder.Services.AddSingleton(new PendingInbox(
+            hooksDir ?? Path.Combine(Path.GetTempPath(), "styloagent-pending", Guid.NewGuid().ToString("N"))));
         builder.Services.AddMcpServer()
             .WithHttpTransport(o => o.Stateless = true)
             .WithTools<FleetTools>()

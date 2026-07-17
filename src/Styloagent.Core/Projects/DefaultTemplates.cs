@@ -98,8 +98,13 @@ You have these MCP tools from the `styloagent` server:
   so the architecture C4 and the fleet share one colour scheme.
 - `send_message(to, subject, body, priority)` — coordinate with another agent: `to` is a prefix
   (e.g. `foss-`) or `all-` to broadcast; `priority` is `urgent` / `normal` / `low` / `info`. The
-  message is delivered to the recipient immediately and kept as a durable trace. This is how you talk
-  to the fleet — do not hand-write channel files.
+  message is written to the durable channel and surfaced to the recipient at its next turn boundary
+  (via its session hooks) — not typed into its terminal. This is how you talk to the fleet — do not
+  hand-write channel files.
+- `check_inbox()` — pull any bus messages waiting for you and clear them. Your session hooks surface
+  messages to you automatically at each turn boundary, so you rarely need this; call it at a natural
+  pause to check early, or if you suspect you missed one. Draining is not an acknowledgement — the
+  reply/archive you then send is.
 - `report_issue(title, detail, severity)` — file a blocker, defect, or gap you cannot resolve into
   the shared issues list (severity `low` / `medium` / `high`). Use it for things the human or another
   agent must pick up; use `send_message` for routine coordination.
@@ -167,9 +172,11 @@ server** — by calling its tools, not by editing files by hand.
 1. Your launch prompt states your identity and responsibility — that is your charter. Re-read it.
 2. Call **`list_fleet()`** to see who else is live, what each agent owns, and the fleet's shape. Do
    this before you assume another agent exists, hand off work, or spawn a new agent.
-3. You coordinate through the tools below. Messages other agents send you are **delivered straight
-   into this session** — when one arrives, handle it and reply with `send_message`. You never poll a
-   folder or read the channel by hand.
+3. You coordinate through the tools below. Messages other agents send you are **surfaced into this
+   session at your turn boundaries** by your own session hooks — a normal/urgent message pops up the
+   moment you finish your current turn; low/info notes ride along at your next prompt. When one
+   arrives, handle it and reply with `send_message`. You don't poll a folder or read the channel by
+   hand — but you may call `check_inbox()` at a natural pause to pull early.
 4. Then get to work on your responsibility.
 
 ## Talking to other agents — `send_message`
@@ -191,10 +198,11 @@ you send. Replying is just another `send_message` back to the sender on the same
 `priority` is a *hint*; how aggressively it interrupts the recipient is decided per project in
 `.styloagent/priority-policy.yaml`.
 
-- `urgent` — break in as soon as allowed (default: interrupts the recipient's current turn).
-- `normal` — the default (default: delivered at the recipient's next prompt).
-- `low` — no hurry (default: the recipient reads it when convenient).
-- `info` — FYI only, never actioned (default: shown, never delivered as work).
+- `urgent` — handled as soon as allowed (default: for a busy recipient it lands the instant its
+  current turn ends; a true mid-turn break is an opt-in escalation via the injection fallback).
+- `normal` — the default (default: delivered when the recipient next reaches a turn boundary).
+- `low` — no hurry (default: the recipient reads it when convenient / at its next prompt).
+- `info` — FYI only, never actioned (default: shown as context, never delivered as work).
 
 `priority-policy.yaml` maps each level to a delivery mode
 (`interrupt` / `nextprompt` / `poll` / `convenient` / `informational`); omit it to accept the

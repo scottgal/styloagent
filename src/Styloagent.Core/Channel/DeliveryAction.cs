@@ -17,4 +17,12 @@ public enum DeliveryAction
 
     /// <summary>Hold the message until the recipient next goes idle, then inject.</summary>
     DeferUntilIdle,
+
+    /// <summary>
+    /// MCP-native primary path: the note was written to the recipient's <see cref="PendingInbox"/> and
+    /// will be surfaced by the recipient's own turn-boundary hook (Stop force-continue for pushing modes,
+    /// UserPromptSubmit additionalContext for surfacing modes) — no PTY injection. See design
+    /// <c>2026-07-13-mcp-native-delivery-design.md</c>.
+    /// </summary>
+    EnqueuePending,
 }

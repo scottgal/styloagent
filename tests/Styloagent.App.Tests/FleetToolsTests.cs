@@ -312,4 +312,44 @@ public class FleetToolsTests
         Assert.Null(ctrl.LastWrapUp);
         Assert.Contains("unauthorized", result);
     }
+
+    // ---- check_inbox (MCP-native delivery pull) -------------------------------
+
+    private static Styloagent.Core.Channel.PendingInbox TempInbox() =>
+        new(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "styloagent-fleettools-inbox", System.Guid.NewGuid().ToString("N")));
+
+    [Fact]
+    public void check_inbox_drains_the_callers_pending_notes_and_then_reports_empty()
+    {
+        var inbox = TempInbox();
+        inbox.Enqueue("foss-", "[bus] normal \"topic\" — read it: /ch/inbox/foss-topic.md", pushing: true);
+        var tools = new FleetTools(AccessorWith("foss-", "Bearer secret"), new FakeController(), new McpAuth("secret"), inbox);
+
+        var first = tools.check_inbox();
+        Assert.Contains("topic", first);          // the pending note came back to its owner
+
+        var second = tools.check_inbox();
+        Assert.Equal("(inbox empty)", second);    // draining cleared it
+    }
+
+    [Fact]
+    public void check_inbox_only_returns_the_callers_own_messages()
+    {
+        var inbox = TempInbox();
+        inbox.Enqueue("router-", "for router only", pushing: true);
+        var tools = new FleetTools(AccessorWith("foss-", "Bearer secret"), new FakeController(), new McpAuth("secret"), inbox);
+
+        Assert.Equal("(inbox empty)", tools.check_inbox());   // foss- sees nothing addressed to router-
+    }
+
+    [Fact]
+    public void check_inbox_refuses_a_bad_token()
+    {
+        var inbox = TempInbox();
+        inbox.Enqueue("foss-", "secret note", pushing: true);
+        var tools = new FleetTools(AccessorWith("foss-", "Bearer WRONG"), new FakeController(), new McpAuth("secret"), inbox);
+
+        Assert.Contains("unauthorized", tools.check_inbox());
+        Assert.True(inbox.HasPending("foss-"));   // an unauthorized call must not drain the inbox
+    }
 }

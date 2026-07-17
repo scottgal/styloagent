@@ -32,7 +32,7 @@
       <Border Margin="0,1,0,0" Background="{DynamicResource RowBgBrush}" Opacity="{Binding RowOpacity}">
         <StackPanel>
           <Grid ColumnDefinitions="*,Auto,Auto">
-            <!-- Click the row → toggle expand AND mark the thread SEEN (WAITING → SEEN). -->
+            <!-- Click the row → toggle expand AND mark the thread SEEN (demotes it out of NEEDS ATTENTION). -->
             <Button Grid.Column="0" Background="Transparent" BorderThickness="0" Padding="0"
                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                     Command="{Binding #BusRoot.((vm:BusViewModel)DataContext).ToggleThreadCommand}"
@@ -48,7 +48,7 @@
                   <TextBlock Text="{Binding ParticipantsDisplay}" FontSize="9"
                              Foreground="{Binding ColorHex}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
-                <!-- WAITING → SEEN → DONE status pill (none for in-flight Recent threads) -->
+                <!-- WAITING → WORKING → DONE status pill (none for in-flight Recent threads) -->
                 <Border Grid.Column="3" Background="{Binding StatusPillBgHex}" CornerRadius="3" Padding="4,1"
                         VerticalAlignment="Center" Margin="0,0,6,0" IsVisible="{Binding HasStatusPill}">
                   <TextBlock Text="{Binding StatusPillText}" FontSize="8" FontWeight="SemiBold"

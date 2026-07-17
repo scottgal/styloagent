@@ -724,7 +724,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var channelPrefixes = (await new ChannelManifestSeeder()
                 .SeedAsync(channelRoot, new Dictionary<string, string>()))
             .Select(e => e.Prefix).ToList();
-        vm._busViewModel = new BusViewModel(channelRoot, channelPrefixes)
+        // Single PendingInbox instance, shared by delivery (writes the pending ledger) and the bus
+        // viewer's PickupProjection (reads it for the WORKING pill). Null when delivery isn't MCP-wired,
+        // in which case pickup reads false everywhere → the viewer just shows WAITING/DONE.
+        var pending = vm._hookChannel is null
+            ? null
+            : new Styloagent.Core.Channel.PendingInbox(vm._hookChannel.HooksDirectory);
+        var pickup = new Styloagent.Core.Attention.PickupProjection(pending);
+
+        vm._busViewModel = new BusViewModel(channelRoot, channelPrefixes, isPickedUp: pickup.IsPickedUp)
         {
             OpenDocument = vm.OpenBusMessageDocument,   // double-click a message → its full markdown
             ThreadOpener = vm.OpenBusThreadDocument,     // popout a thread → carousel through it
@@ -734,8 +742,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // not deliver old messages), then push newly-arrived messages on each bus reload. The policy
         // starts at Default and is refreshed in AttachProject once a project is known.
         vm._channelRoot = channelRoot;
-        vm._deliveryService = new MessageDeliveryService(PriorityPolicy.Default, new PtyMessageInjector(vm.ResolvePty),
-            vm._hookChannel is null ? null : new Styloagent.Core.Channel.PendingInbox(vm._hookChannel.HooksDirectory));
+        vm._deliveryService = new MessageDeliveryService(
+            PriorityPolicy.Default, new PtyMessageInjector(vm.ResolvePty), pending);
         vm._deliveryCoordinator = new ChannelDeliveryCoordinator(
             channelRoot, channelPrefixes, vm._deliveryService, vm.SnapshotLiveAgents);
         await vm._deliveryCoordinator.SeedAsync();

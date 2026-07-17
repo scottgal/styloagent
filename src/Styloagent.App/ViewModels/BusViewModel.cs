@@ -48,8 +48,8 @@ public sealed class BusMessageItem
     /// <summary>The owning thread's newest-activity timestamp (the seen-watermark reference).</summary>
     public DateTimeOffset? ThreadLastActivity { get; init; }
 
-    /// <summary>Operator has viewed the thread this message belongs to (seeds the SEEN pill).</summary>
-    public bool IsSeen { get; init; }
+    /// <summary>The recipient has picked this message up (drained it from the MCP-native pending queue).</summary>
+    public bool IsPickedUp { get; init; }
 
     /// <summary>Operator explicitly archived the thread this message belongs to.</summary>
     public bool IsOperatorArchived { get; init; }
@@ -59,27 +59,27 @@ public sealed class BusMessageItem
 
     public string RelativeTime => BusTime.Format(Timestamp);
 
-    // ── 3-state status pill (WAITING → SEEN → DONE) ──────────────────────────────────────────────
-    // WAITING/DONE come from message content (New vs Replied/Archived); SEEN is operator view-state
-    // (the thread was viewed but not yet handled). An explicit operator archive counts as DONE.
+    // ── 3-state status pill (WAITING → WORKING → DONE) ───────────────────────────────────────────
+    // WAITING/DONE come from message content (New vs Replied/Archived); WORKING means a recipient has
+    // picked the note up (PickupProjection). An explicit operator archive counts as DONE.
 
     /// <summary>Handled: replied/archived by content, or explicitly archived by the operator.</summary>
     public bool IsDone => State is "Replied" or "Archived" || IsOperatorArchived;
 
-    /// <summary>Operator viewed this (still-open) message's thread but hasn't replied/archived yet.</summary>
-    public bool IsSeenState => !IsDone && State == "New" && IsSeen;
+    /// <summary>Being worked: still open, but the recipient has picked it up.</summary>
+    public bool IsBeingWorked => !IsDone && State == "New" && IsPickedUp;
 
-    /// <summary>The status pill label: DONE once handled, SEEN once viewed, else WAITING.</summary>
-    public string StatusPillText => IsDone ? "DONE" : IsSeenState ? "SEEN" : "WAITING";
+    /// <summary>The status pill label: DONE once handled, WORKING once picked up, else WAITING.</summary>
+    public string StatusPillText => IsDone ? "DONE" : IsBeingWorked ? "WORKING" : "WAITING";
 
-    /// <summary>Pill background — green (done), steel-blue (seen), amber (waiting).</summary>
-    public string StatusPillBgHex => IsDone ? "#243024" : IsSeenState ? "#1E2A3A" : "#3A2E00";
+    /// <summary>Pill background — green (done), steel-blue (working), amber (waiting).</summary>
+    public string StatusPillBgHex => IsDone ? "#243024" : IsBeingWorked ? "#1E2A3A" : "#3A2E00";
 
-    /// <summary>Pill foreground — green (done), steel-blue (seen), amber (waiting).</summary>
-    public string StatusPillFgHex => IsDone ? "#7FB07F" : IsSeenState ? "#6FA8D6" : "#E5A05A";
+    /// <summary>Pill foreground — green (done), steel-blue (working), amber (waiting).</summary>
+    public string StatusPillFgHex => IsDone ? "#7FB07F" : IsBeingWorked ? "#6FA8D6" : "#E5A05A";
 
-    /// <summary>DONE fades most; SEEN is gently de-emphasized; WAITING stays full-strength.</summary>
-    public double RowOpacity => IsDone ? 0.5 : IsSeenState ? 0.85 : 1.0;
+    /// <summary>DONE fades most; WORKING is gently de-emphasized; WAITING stays full-strength.</summary>
+    public double RowOpacity => IsDone ? 0.5 : IsBeingWorked ? 0.85 : 1.0;
 }
 
 /// <summary>One thread row in the attention-first bus.</summary>
@@ -97,29 +97,25 @@ public sealed partial class BusThreadItem : ObservableObject
     /// <summary>The thread's newest-activity timestamp (the seen-watermark reference).</summary>
     public DateTimeOffset? LastActivity { get; init; }
 
-    public BusThreadSection Section { get; init; }
+    /// <summary>The thread has an unreplied inbound that needs a human reply (drives the WAITING/WORKING pill).
+    /// Carried explicitly because a SEEN thread is demoted to Recent yet still needs a reply.</summary>
+    public bool NeedsReply { get; init; }
+
+    /// <summary>A recipient has picked up the thread's open note (PickupProjection) → WORKING rather than WAITING.</summary>
+    public bool IsPickedUp { get; init; }
+
+    public BusThreadSection Section { get; set; }
     public IReadOnlyList<BusMessageItem> Messages { get; init; } = Array.Empty<BusMessageItem>();
 
     [ObservableProperty]
     private bool _isExpanded;
 
-    /// <summary>Operator has viewed this thread (open / expand) since its last activity → SEEN pill.</summary>
+    /// <summary>Operator explicitly archived (dismissed) this thread → DONE, even if still unreplied.
+    /// Observable so the ✕ gesture flips the pill to DONE in place before the reload re-sections it.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDone))]
     [NotifyPropertyChangedFor(nameof(IsWaiting))]
-    [NotifyPropertyChangedFor(nameof(IsSeenState))]
-    [NotifyPropertyChangedFor(nameof(StatusPillText))]
-    [NotifyPropertyChangedFor(nameof(HasStatusPill))]
-    [NotifyPropertyChangedFor(nameof(StatusPillBgHex))]
-    [NotifyPropertyChangedFor(nameof(StatusPillFgHex))]
-    [NotifyPropertyChangedFor(nameof(RowOpacity))]
-    private bool _isSeen;
-
-    /// <summary>Operator explicitly archived (dismissed) this thread → DONE, even if still unreplied.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsDone))]
-    [NotifyPropertyChangedFor(nameof(IsWaiting))]
-    [NotifyPropertyChangedFor(nameof(IsSeenState))]
+    [NotifyPropertyChangedFor(nameof(IsBeingWorked))]
     [NotifyPropertyChangedFor(nameof(CanArchive))]
     [NotifyPropertyChangedFor(nameof(StatusPillText))]
     [NotifyPropertyChangedFor(nameof(HasStatusPill))]
@@ -131,36 +127,37 @@ public sealed partial class BusThreadItem : ObservableObject
     [RelayCommand]
     private void ToggleExpand() => IsExpanded = !IsExpanded;
 
-    // ── 3-state status pill (WAITING → SEEN → DONE) ──────────────────────────────────────────────
-    // WAITING/DONE come from the content-derived Section (bus-'s classifier); SEEN is operator
-    // view-state layered on top. An explicit operator archive counts as DONE.
+    // ── 3-state status pill (WAITING → WORKING → DONE) ───────────────────────────────────────────
+    // The pill reflects HANDLING status: WAITING (needs a reply, nobody on it) → WORKING (needs a reply,
+    // a recipient picked it up) → DONE (replied/archived, or operator-archived). Operator READ-state
+    // (seen) is expressed separately as a SECTION demotion in BusViewModel, not as a pill.
 
     /// <summary>Handled: the thread reached <see cref="BusThreadSection.Archive"/>, or the operator archived it.</summary>
     public bool IsDone => Section == BusThreadSection.Archive || IsOperatorArchived;
 
-    /// <summary>Loud: an unreplied inbound in <see cref="BusThreadSection.Attention"/> the operator hasn't viewed.</summary>
-    public bool IsWaiting => !IsDone && Section == BusThreadSection.Attention && !IsSeen;
+    /// <summary>Loud: a still-open thread that needs a reply and nobody has picked up.</summary>
+    public bool IsWaiting => !IsDone && NeedsReply && !IsPickedUp;
 
-    /// <summary>The middle rung: an attention thread the operator has viewed but not yet handled.</summary>
-    public bool IsSeenState => !IsDone && Section == BusThreadSection.Attention && IsSeen;
+    /// <summary>The middle rung: a still-open thread that needs a reply and a recipient is working it.</summary>
+    public bool IsBeingWorked => !IsDone && NeedsReply && IsPickedUp;
 
-    /// <summary>Pill label: DONE (handled), SEEN (viewed), WAITING (needs a reply); empty for Recent threads.</summary>
-    public string StatusPillText => IsDone ? "DONE" : IsSeenState ? "SEEN" : IsWaiting ? "WAITING" : "";
+    /// <summary>Pill label: DONE (handled), WORKING (picked up), WAITING (needs a reply); empty otherwise.</summary>
+    public string StatusPillText => IsDone ? "DONE" : IsBeingWorked ? "WORKING" : IsWaiting ? "WAITING" : "";
 
-    /// <summary>Whether to show a status pill at all (Recent threads carry none).</summary>
+    /// <summary>Whether to show a status pill at all (broadcasts / in-flight Recent threads carry none).</summary>
     public bool HasStatusPill => StatusPillText.Length > 0;
 
     /// <summary>The explicit-archive affordance is offered only while the thread is still open (not DONE).</summary>
     public bool CanArchive => !IsDone;
 
-    /// <summary>Pill background — green (done), steel-blue (seen), amber (waiting).</summary>
-    public string StatusPillBgHex => IsDone ? "#243024" : IsSeenState ? "#1E2A3A" : "#3A2E00";
+    /// <summary>Pill background — green (done), steel-blue (working), amber (waiting).</summary>
+    public string StatusPillBgHex => IsDone ? "#243024" : IsBeingWorked ? "#1E2A3A" : "#3A2E00";
 
-    /// <summary>Pill foreground — green (done), steel-blue (seen), amber (waiting).</summary>
-    public string StatusPillFgHex => IsDone ? "#7FB07F" : IsSeenState ? "#6FA8D6" : "#E5A05A";
+    /// <summary>Pill foreground — green (done), steel-blue (working), amber (waiting).</summary>
+    public string StatusPillFgHex => IsDone ? "#7FB07F" : IsBeingWorked ? "#6FA8D6" : "#E5A05A";
 
-    /// <summary>DONE fades most; SEEN is gently de-emphasized; WAITING/Recent stay full-strength.</summary>
-    public double RowOpacity => IsDone ? 0.5 : IsSeenState ? 0.85 : 1.0;
+    /// <summary>DONE fades most; WORKING is gently de-emphasized; WAITING stays full-strength.</summary>
+    public double RowOpacity => IsDone ? 0.5 : IsBeingWorked ? 0.85 : 1.0;
 }
 
 /// <summary>
@@ -176,6 +173,9 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
     private readonly ChannelProjection _projection;
     // Operator-side seen/archived view-state. Today the InMemory fake; swaps 1:1 for bus-'s Core store.
     private readonly IBusViewState _viewState;
+    // Per-message "picked up" lookup (recipient drained the note) → the WORKING pill. Keyed by
+    // (filePath, routingPrefix); wired from Core.Attention.PickupProjection. Null-safe default = never.
+    private readonly Func<string, string, bool> _isPickedUp;
 
     private FileSystemWatcher? _watcher;
     // Single long-lived timer; changed on each FSW event to coalesce rapid bursts.
@@ -210,12 +210,14 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
         string channelRoot,
         IReadOnlyList<string> knownPrefixes,
         ChannelProjection? projection = null,
-        IBusViewState? viewState = null)
+        IBusViewState? viewState = null,
+        Func<string, string, bool>? isPickedUp = null)
     {
         _channelRoot = channelRoot;
         _knownPrefixes = knownPrefixes;
         _projection = projection ?? new ChannelProjection();
         _viewState = viewState ?? new InMemoryBusViewState();
+        _isPickedUp = isPickedUp ?? ((_, _) => false);
 
         // One timer instance, started as "disabled" (Timeout.Infinite).
         _debounceTimer = new Timer(_ => _ = LoadAsync(), null, Timeout.Infinite, Timeout.Infinite);
@@ -259,9 +261,10 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                     IsLoading = true;
                     var threads = await _projection.ReadAsync(_channelRoot, _knownPrefixes, ct);
 
-                    // Build attention-first thread rows, each seeded with the operator's seen/archived
-                    // view-state (a separate fact from bus-'s content-derived section). Message rows are
-                    // built per-thread so each carries its thread's key + view-state for the pill.
+                    // Build attention-first thread rows. Two facts layer over bus-'s pure classifier:
+                    //  • operator READ-state (seen/archived, from _viewState) DEMOTES a seen-but-unreplied
+                    //    thread out of NEEDS ATTENTION → Recent, so the list reflects what's been read;
+                    //  • per-message PICKUP (from _isPickedUp) drives the WORKING pill.
                     var built = threads.Select(t =>
                     {
                         var view = BusThreadClassifier.Classify(t);
@@ -269,6 +272,19 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                         var lastActivity = view.LastActivity;
                         bool seen = _viewState.IsSeen(key, lastActivity);
                         bool archived = _viewState.IsArchived(key);
+                        bool needsReply = view.Section == BusThreadSection.Attention;   // has an unreplied inbound
+
+                        // A thread is "being worked" when its open inbound has been picked up by a recipient.
+                        bool pickedUp = t.Messages.Any(m =>
+                            m.Kind == BusMessageKind.Inbox && m.State == BusMessageState.New
+                            && _isPickedUp(m.FilePath, m.RoutingPrefix));
+
+                        // Effective section: an operator-archive tucks it away; a seen unreplied thread is
+                        // demoted to Recent (THE fix — it stops screaming); otherwise the classifier's call.
+                        BusThreadSection section =
+                            archived ? BusThreadSection.Archive :
+                            (needsReply && seen) ? BusThreadSection.Recent :
+                            view.Section;
 
                         string primaryPrefix = (t.Prefixes.Count > 0 ? t.Prefixes[0] : null)
                                                ?? (t.Messages.Count > 0 ? t.Messages[0].RoutingPrefix : null) ?? "";
@@ -277,7 +293,7 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                             ? primaryPrefix
                             : $"{from} → {primaryPrefix}";
                         var msgItems = t.Messages
-                            .Select(m => BuildMessageItem(m, key, lastActivity, seen, archived))
+                            .Select(m => BuildMessageItem(m, key, lastActivity, archived))
                             .ToList();
                         var threadItem = new BusThreadItem
                         {
@@ -288,9 +304,10 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                             ColorHex            = PresentationStore.DefaultColorFor(primaryPrefix),
                             RelativeTime        = BusTime.Format(view.LastActivity),
                             LastActivity        = lastActivity,
-                            Section             = view.Section,
+                            Section             = section,
                             Messages            = msgItems,
-                            IsSeen              = seen,
+                            NeedsReply          = needsReply,
+                            IsPickedUp          = pickedUp,
                             IsOperatorArchived  = archived,
                         };
                         return (threadItem, msgItems);
@@ -425,26 +442,23 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
         _viewState.Archive(thread.Key);        // persist; Changed → reload re-sections into Archive
     }
 
-    /// <summary>Mark a thread SEEN: reflect it in place (pill) and persist to the view-state store.</summary>
+    /// <summary>Mark a thread SEEN: persist to the view-state store. The store's Changed event triggers a
+    /// reload that DEMOTES the seen-but-unreplied thread out of NEEDS ATTENTION into Recent.</summary>
     private void MarkThreadSeen(BusThreadItem thread)
     {
         if (thread.Key.Length == 0) return;
-        thread.IsSeen = true;                              // in-place pill update (no reload needed)
         _viewState.MarkSeen(thread.Key, thread.LastActivity);
     }
 
-    /// <summary>Mark SEEN by thread key (from a message row), reflecting any visible attention row.</summary>
+    /// <summary>Mark SEEN by thread key (from a message row) → persist; the reload demotes it.</summary>
     private void MarkSeenByKey(string key, DateTimeOffset? lastActivity)
     {
         if (string.IsNullOrEmpty(key)) return;
         _viewState.MarkSeen(key, lastActivity);
-        foreach (var t in AttentionThreads)
-            if (string.Equals(t.Key, key, StringComparison.OrdinalIgnoreCase))
-                t.IsSeen = true;
     }
 
-    private static BusMessageItem BuildMessageItem(
-        BusMessage m, string threadKey, DateTimeOffset? threadLastActivity, bool seen, bool archived) => new()
+    private BusMessageItem BuildMessageItem(
+        BusMessage m, string threadKey, DateTimeOffset? threadLastActivity, bool archived) => new()
     {
         RoutingPrefix      = m.RoutingPrefix,
         Slug               = m.Slug,
@@ -458,7 +472,7 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
         Body               = m.Body,
         ThreadKey          = threadKey,
         ThreadLastActivity = threadLastActivity,
-        IsSeen             = seen,
+        IsPickedUp         = _isPickedUp(m.FilePath, m.RoutingPrefix),
         IsOperatorArchived = archived,
     };
 

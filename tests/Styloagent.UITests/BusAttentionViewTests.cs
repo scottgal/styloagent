@@ -111,10 +111,10 @@ public class BusAttentionViewTests
         });
     }
 
-    // The 3-state upgrade (bus-viewer Seen-state): opening an attention thread flips its pill from
-    // WAITING to the middle SEEN rung, and an explicit Archive (✕) affordance is offered while open.
+    // The real fix (bus-viewer Seen-state): viewing an attention thread DEMOTES it out of NEEDS
+    // ATTENTION into Recent, so the list stops screaming; an Archive (✕) affordance is offered while open.
     [Fact]
-    public Task BusView_opening_a_thread_shows_the_SEEN_pill_and_offers_archive()
+    public Task BusView_opening_a_thread_demotes_it_out_of_needs_attention()
     {
         return _fx.DispatchAsync(async () =>
         {
@@ -135,22 +135,20 @@ public class BusAttentionViewTests
                 window.Show();
                 await HeadlessRender.SettleAsync(window);
 
-                // Starts WAITING; an Archive (✕) button is present while the thread is open.
+                // Starts in NEEDS ATTENTION with a WAITING pill; an Archive (✕) button is offered.
                 var before = window.GetVisualDescendants().OfType<TextBlock>()
                     .Select(t => t.Text ?? string.Empty).ToList();
                 Assert.Contains(before, s => s == "WAITING");
                 Assert.Contains(before, s => s == "✕");
-                Assert.Equal("WAITING", vm.AttentionThreads[0].StatusPillText);
+                Assert.Single(vm.AttentionThreads);
 
-                // Operator opens the thread (carousel gesture) → marks it SEEN; the thread pill flips
-                // in place (WAITING → SEEN) without a reload.
+                // Operator opens the thread → marks it SEEN → a reload demotes it out of NEEDS ATTENTION.
                 vm.OpenThreadCommand.Execute(vm.AttentionThreads[0]);
+                await vm.LoadAsync();
                 await HeadlessRender.SettleAsync(window);
 
-                Assert.Equal("SEEN", vm.AttentionThreads[0].StatusPillText);
-                var after = window.GetVisualDescendants().OfType<TextBlock>()
-                    .Select(t => t.Text ?? string.Empty).ToList();
-                Assert.Contains(after, s => s == "SEEN");   // the middle rung now renders
+                Assert.Empty(vm.AttentionThreads);                                   // NEEDS ATTENTION shrank
+                Assert.Contains(vm.RecentThreads, t => t.Key.Contains("open-question"));
 
                 window.Close();
             }

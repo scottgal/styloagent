@@ -2397,6 +2397,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>Exposes the active-prefix logic for tests.</summary>
     internal string? ActivePrefixForTest() => ActivePrefix();
 
+    /// <summary>Drives an open_document request through the same handler the DocumentOpenHub fires (for
+    /// tests — bypasses the MCP hub + UIThread.Post).</summary>
+    internal void RaiseDocumentOpenForTest(Styloagent.Core.Attention.DocumentOpenRequest req)
+        => HandleDocumentOpen(req);
+
     /// <summary>Returns the first hook id registered (for test seams).</summary>
     internal string FirstHookIdForTest()
         => _panesByHookId.Keys.First();

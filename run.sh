@@ -10,6 +10,8 @@
 #   ./run.sh                      # Debug build → Welcome screen (pick a folder)
 #   ./run.sh Release              # Release build
 #   ./run.sh Debug /path/to/repo  # open that project directly (skips the Welcome screen)
+#
+# Re-running launches ANOTHER independent window (see ./new-window.sh for a rebuild-free one).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -58,4 +60,9 @@ else
 fi
 
 echo "▸ launching…"
-open "${APP}"
+# `open -n` forces a NEW instance every time. A plain `open` (or clicking the Dock icon) just
+# re-focuses an already-running Styloagent — macOS coalesces launches of the same bundle id — so
+# a second window never appears. That was the "can't start multiple instances" gotcha. The app
+# has no single-instance lock: every process gets its own hooks dir, ephemeral MCP port and fleet,
+# so cockpits run side by side.
+open -n "${APP}"

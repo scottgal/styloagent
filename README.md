@@ -29,6 +29,26 @@ the roster — colour-coded by prefix, each with a one-click **Spawn** (or **Spa
 Clicking **Spawn** promotes a proposal into a live, long-lived agent with its own terminal in the
 cockpit. From there the team keeps splitting and specialising through the coordination protocol.
 
+### Multiple projects, side by side
+
+Styloagent has no single-instance lock — run as many cockpits as you like, one per project. Two ways:
+
+- **Separate windows.** Launch another instance and it opens on the Welcome screen, ready for a
+  different folder. Each window is fully independent — its own coordination channel, its own
+  ephemeral MCP port, and its own agent fleet:
+
+  ```bash
+  ./new-window.sh                 # extra window from the current build (no rebuild)
+  ./new-window.sh /path/to/repo   # …opened straight onto that repo
+  ```
+
+  On macOS this needs `open -n`: a plain `open` (or clicking the Dock icon) just re-focuses the
+  running cockpit instead of starting a second one. `run.sh` and `new-window.sh` handle that for you.
+
+- **One cockpit, many repos.** Or federate a second repo *into* the running cockpit with the
+  **open repo** button in the top bar — it joins as its own instance (its own bus pane and overview
+  agent), watched alongside the primary fleet.
+
 ## The cockpit
 
 Agents and their shared **Signal Bus** down the left, dockable agent terminals in the centre, and a

@@ -428,6 +428,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private StyloagentDockFactory? _dockFactory;
     private BusViewModel? _busViewModel;
 
+    // Compaction resilience: watches each live agent's context fill and fires CheckpointNeeded ONCE when it
+    // climbs past 0.80 (re-arms after a compaction shrinks it), so we nudge the agent to write its resume doc
+    // BEFORE a compaction hits. The PreCompact hook is the fallback net if that nudge was missed.
+    private readonly Styloagent.Core.Sessions.ContextCheckpointMonitor _checkpointMonitor = new();
+
     // Priority message delivery: pushes new channel messages to their recipient agents per the
     // project's PriorityPolicy (ESC-break for interrupt, defer-until-idle for next-prompt, HUD-only
     // otherwise). Built in InitializeAsync; policy refreshed in AttachProject.
@@ -771,6 +776,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             channelRoot, channelPrefixes, vm._deliveryService, vm.SnapshotLiveAgents);
         await vm._deliveryCoordinator.SeedAsync();
         vm._busViewModel.Reloaded += () => _ = vm._deliveryCoordinator.PumpAsync();
+
+        // Compaction resilience: when an agent's context climbs past 0.80, nudge it to write its resume doc.
+        vm._checkpointMonitor.CheckpointNeeded += vm.SendCheckpointNudge;
 
         // Debounced .git watcher: refreshes the Git panel when the selected worktree changes on disk
         // (e.g. an agent commits). Subscribed here; Watch() is called in RefreshGitPanelFor so it
@@ -1658,6 +1666,43 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>The 0.80 checkpoint nudge (distinct from the 0.75 human dilution note — two signals, two
+    /// audiences): deliver a bus message asking the agent to write its resume doc before a compaction hits.</summary>
+    private void SendCheckpointNudge(string prefix)
+    {
+        var pane = Panes.FirstOrDefault(p => p.Prefix == prefix);
+        _ = SendBusMessage(new MessageRequest(
+            "cockpit-", prefix, "checkpoint your context",
+            Styloagent.Core.Sessions.CheckpointNudge.For(prefix, SavedContextPathFor(prefix)), "normal"));
+        Timeline.Add(DateTimeOffset.Now, pane?.DisplayName ?? prefix.TrimEnd('-'),
+            "context ~80% — nudged to checkpoint its resume doc", pane?.BorderColorHex ?? "#8888AA");
+    }
+
+    /// <summary>PreCompact fallback (the safety net if the 0.80 nudge was missed): persist a best-effort
+    /// resume anchor from the agent's transcript tail — ONLY if it hasn't authored its own doc
+    /// (degrade-never-destroy, per <see cref="Styloagent.Core.Channel.InPlaceCheckpoint"/>). File-only —
+    /// never frees the PTY.</summary>
+    private async Task WriteInPlaceCheckpointAsync(AgentPaneViewModel pane)
+    {
+        string tail = string.Empty;
+        if (pane.TranscriptPath is { } tp)
+        {
+            try { tail = await Task.Run(() => Styloagent.Core.Transcripts.TranscriptReader.ReadLastAssistantText(tp)); }
+            catch { /* best-effort: a missing/locked transcript just yields an empty anchor body */ }
+        }
+        var result = Styloagent.Core.Channel.InPlaceCheckpoint.Write(
+            pane.Prefix, SavedContextPathFor(pane.Prefix), tail, DateTimeOffset.Now);
+        void Log() => Timeline.Add(DateTimeOffset.Now, pane.DisplayName, $"checkpoint: {result.Detail}", pane.BorderColorHex);
+        if (Dispatcher.UIThread.CheckAccess()) Log(); else Dispatcher.UIThread.Post(Log);
+    }
+
+    /// <summary>Test seam: run the PreCompact fallback checkpoint for an agent, awaitable.</summary>
+    internal Task WriteInPlaceCheckpointForTest(string prefix)
+    {
+        var pane = Panes.FirstOrDefault(p => p.Prefix == prefix);
+        return pane is null ? Task.CompletedTask : WriteInPlaceCheckpointAsync(pane);
+    }
+
     /// <summary>The most recent <paramref name="limit"/> timeline operations (newest first).</summary>
     public IReadOnlyList<TimelineOp> ReadTimeline(int limit)
     {
@@ -2076,6 +2121,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (_panesByHookId.TryGetValue(e.AgentId, out var pane) && pane is not null)
         {
+            // PreCompact fallback: persist a best-effort resume anchor right before a compaction, then stop —
+            // it's not an interaction/state change, so skip the needs-you + delivery bookkeeping below.
+            if (e.EventName == "PreCompact")
+            {
+                _ = WriteInPlaceCheckpointAsync(pane);
+                return;
+            }
+
             pane.ApplyHookEvent(e);
             pane.WaitingSince = pane.NeedsYou ? (pane.WaitingSince ?? DateTimeOffset.UtcNow) : null;
             RecordTimelineFromHook(pane, e);   // add the timeline entry BEFORE the instrument refresh
@@ -2362,6 +2415,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             foreach (var pane in Panes) pane.RefreshUsage();
             CheckContextDilution();
+            // Feed the 0.80 checkpoint monitor off the fresh readings — fires CheckpointNeeded once per
+            // fill-up (re-arms after a compaction), so it's safe to observe every tick.
+            foreach (var pane in Panes)
+                if (pane.State == SessionState.Live)
+                    _checkpointMonitor.Observe(pane.Prefix, pane.ContextFraction);
         }
 
         if (!_interaction.IsBusy(IdleWindow)) AutoRevealHead();

@@ -33,14 +33,17 @@ public sealed class PendingInbox
 
     private string PushPath(string recipientPrefix) => DeliveryHookCommands.PushFile(_hooksDir, Key(recipientPrefix));
     private string InfoPath(string recipientPrefix) => DeliveryHookCommands.InfoFile(_hooksDir, Key(recipientPrefix));
+    private string DeliveredPath(string recipientPrefix) => DeliveryHookCommands.DeliveredFile(_hooksDir, Key(recipientPrefix));
 
     /// <summary>
     /// Enqueue a delivery <paramref name="noteLine"/> for <paramref name="recipientPrefix"/>.
     /// <paramref name="pushing"/> selects the channel: pushing (urgent/normal) accumulates into the
     /// <c>.push</c> file the Stop hook force-continues on; surfacing (low/info) accumulates into the
-    /// <c>.info</c> file the UserPromptSubmit hook shows without forcing a turn.
+    /// <c>.info</c> file the UserPromptSubmit hook shows without forcing a turn. When
+    /// <paramref name="deliveredPath"/> is supplied it is recorded in the durable delivered ledger, so the
+    /// per-message "picked up" fact can flip true once this note drains (see <see cref="PickedUp"/>).
     /// </summary>
-    public void Enqueue(string recipientPrefix, string noteLine, bool pushing)
+    public void Enqueue(string recipientPrefix, string noteLine, bool pushing, string? deliveredPath = null)
     {
         string path = pushing ? PushPath(recipientPrefix) : InfoPath(recipientPrefix);
         lock (_gate)
@@ -49,8 +52,47 @@ public sealed class PendingInbox
             string raw = ReadRaw(path);
             raw += noteLine.TrimEnd('\r', '\n') + "\n";
             WriteJsonStringAtomic(path, raw);
+            if (deliveredPath is not null)
+                RecordDelivered(recipientPrefix, deliveredPath);
         }
     }
+
+    /// <summary>
+    /// Record that the message at <paramref name="filePath"/> was delivered to <paramref name="recipientPrefix"/>
+    /// (enqueued to its pending queue, or injected directly into an idle session) — the durable half of the
+    /// "picked up" derivation. Idempotent. Use for the inject path where no note is enqueued; the
+    /// <see cref="Enqueue"/> overload records it inline for the pending path.
+    /// </summary>
+    public void MarkDelivered(string recipientPrefix, string filePath)
+    {
+        lock (_gate)
+        {
+            Directory.CreateDirectory(DeliverDir);
+            RecordDelivered(recipientPrefix, filePath);
+        }
+    }
+
+    /// <summary>
+    /// True once the message at <paramref name="filePath"/>, delivered to <paramref name="recipientPrefix"/>,
+    /// has been <b>picked up</b>: it was recorded as delivered AND no push/info note referencing it is still
+    /// pending — i.e. the recipient's turn-boundary hook (or an in-session <c>check_inbox</c>) has drained it,
+    /// so the recipient has begun handling it. False while the note is still queued, or if never delivered.
+    ///
+    /// Derived, not stored: the hook drain is a POSIX-<c>sh</c> snippet with no C# in the loop, so pickup is
+    /// observed from delivery state rather than written at drain time. A note still references its own
+    /// <paramref name="filePath"/> verbatim while pending (the nudge carries the path), so its absence from the
+    /// live deliver files is what marks the drain.
+    /// </summary>
+    public bool PickedUp(string recipientPrefix, string filePath)
+    {
+        lock (_gate)
+            return ReadDelivered(recipientPrefix).Contains(filePath) && !IsStillPending(recipientPrefix, filePath);
+    }
+
+    /// <summary>A note is still pending iff the live push or info deliver file still references its FilePath.</summary>
+    private bool IsStillPending(string recipientPrefix, string filePath) =>
+        ReadRaw(PushPath(recipientPrefix)).Contains(filePath, StringComparison.Ordinal) ||
+        ReadRaw(InfoPath(recipientPrefix)).Contains(filePath, StringComparison.Ordinal);
 
     /// <summary>True if <paramref name="recipientPrefix"/> has any pending push or info note.</summary>
     public bool HasPending(string recipientPrefix)
@@ -83,6 +125,38 @@ public sealed class PendingInbox
     {
         try { return File.Exists(path) && new FileInfo(path).Length > 0; }
         catch { return false; }
+    }
+
+    /// <summary>Add <paramref name="filePath"/> to the recipient's delivered ledger if absent. Caller holds the gate.</summary>
+    private void RecordDelivered(string recipientPrefix, string filePath)
+    {
+        var set = ReadDelivered(recipientPrefix);
+        if (set.Add(filePath))
+            WriteDeliveredAtomic(DeliveredPath(recipientPrefix), set);
+    }
+
+    /// <summary>The set of FilePaths delivered to <paramref name="recipientPrefix"/> (newline-delimited on disk;
+    /// FilePaths never contain a newline). Missing/unreadable ledger → empty (degrade: nothing known delivered).</summary>
+    private HashSet<string> ReadDelivered(string recipientPrefix)
+    {
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        try
+        {
+            string path = DeliveredPath(recipientPrefix);
+            if (!File.Exists(path)) return set;
+            foreach (string line in File.ReadAllLines(path))
+                if (line.Length > 0) set.Add(line);
+        }
+        catch { /* unreadable ledger → treat as nothing delivered */ }
+        return set;
+    }
+
+    /// <summary>Write the delivered set as newline-delimited text via a temp file + atomic rename.</summary>
+    private static void WriteDeliveredAtomic(string path, IEnumerable<string> paths)
+    {
+        string tmp = path + ".tmp";
+        File.WriteAllText(tmp, string.Join('\n', paths));
+        File.Move(tmp, path, overwrite: true);
     }
 
     /// <summary>Read a deliver file back to raw text (it stores a JSON string); missing/bad → empty.</summary>

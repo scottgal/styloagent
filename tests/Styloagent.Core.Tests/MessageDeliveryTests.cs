@@ -185,6 +185,36 @@ public class MessageDeliveryTests
         Assert.False(pending.HasPending("beta-"));
     }
 
+    // ---- picked-up signal (bus viewer "being-worked-on" pill) -----------------
+    // The message's FilePath is what the viewer keys pickup by (via its RoutingPrefix == recipient prefix).
+
+    [Fact]
+    public async Task Queued_to_busy_connected_agent_is_not_picked_up_until_the_note_drains()
+    {
+        var pending = TempPending();
+        var svc = new MessageDeliveryService(PriorityPolicy.Default, new FakeInjector(), pending);
+        var msg = Msg(MessagePriority.Urgent);
+
+        await svc.DeliverAsync(msg, "beta-", AgentHookState.Working);   // enqueues push, records delivered
+        Assert.False(pending.PickedUp("beta-", msg.FilePath));          // still waiting
+
+        pending.DrainFormatted("beta-");                                // recipient's Stop hook drains it
+        Assert.True(pending.PickedUp("beta-", msg.FilePath));           // → being worked on
+    }
+
+    [Fact]
+    public async Task Injected_to_idle_connected_agent_is_picked_up_immediately()
+    {
+        var pending = TempPending();
+        var svc = new MessageDeliveryService(PriorityPolicy.Default, new FakeInjector(), pending);
+        var msg = Msg(MessagePriority.Urgent);
+
+        // Idle → injected (a fresh turn), never queued → nothing left pending → picked up right away.
+        var action = await svc.DeliverAsync(msg, "beta-", AgentHookState.Idle);
+        Assert.Equal(DeliveryAction.Inject, action);
+        Assert.True(pending.PickedUp("beta-", msg.FilePath));
+    }
+
     [Fact]
     public async Task Unknown_recipient_falls_back_to_injection_even_with_pending_configured()
     {

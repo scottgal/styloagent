@@ -283,12 +283,52 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (_dockFactory is null) return;
         // Hidden agents are kept off the document surface (Fix F) — their sessions run on, but they don't
         // take a tile/tab, even across a layout-mode switch.
+        var previous = Layout;
         var visible = Panes.Where(p => !p.IsHidden).ToList();
         var active = (SelectedPane is { IsHidden: false } sel ? sel : null) ?? visible.FirstOrDefault();
         var layout = _dockFactory.BuildLayout(visible, LayoutMode);
         Layout = layout;
         _dockFactory.InitLayout(layout);
         if (active is not null) _dockFactory.SetActiveDockable(active);
+        // P0 memory-leak fix: BuildLayout makes a FRESH RootDock every switch, but nothing released the
+        // OLD one — its container docks (+ the Avalonia AgentPaneView/TerminalControl subtrees materialized
+        // under them) stayed rooted, so their scrollback + Skia/composition resources never freed (unbounded
+        // growth per switch). Sever the previous tree so it becomes collectible; the reused pane VMs are
+        // already re-homed in the new layout by InitLayout, so we only clear the discarded container docks.
+        ReleaseDockTree(previous, keep: layout);
+    }
+
+    /// <summary>Detaches a discarded dock tree from itself so it (and every view Avalonia materialized under
+    /// it) can be garbage-collected. Clears only CONTAINER docks — reused pane view-models, already re-homed
+    /// in <paramref name="keep"/>, are left untouched. Part of the layout-switch memory-leak fix.</summary>
+    private static void ReleaseDockTree(global::Dock.Model.Core.IDockable? old, global::Dock.Model.Core.IDock keep)
+    {
+        if (old is null || ReferenceEquals(old, keep)) return;
+
+        static void Walk(global::Dock.Model.Core.IDockable node)
+        {
+            if (node is global::Dock.Model.Core.IDock dock)
+            {
+                if (dock.VisibleDockables is { } children)
+                {
+                    foreach (var child in children.ToList())
+                        Walk(child);
+                    children.Clear();
+                }
+                dock.ActiveDockable = null;
+                dock.DefaultDockable = null;
+                dock.FocusedDockable = null;
+                dock.Owner = null;
+            }
+            // Non-dock dockables (the reused AgentPaneViewModel documents) are kept live — only unlink them
+            // from the discarded tree if they still point back into it.
+            else if (node is not AgentPaneViewModel)
+            {
+                node.Owner = null;
+            }
+        }
+
+        Walk(old);
     }
 
     /// <summary>

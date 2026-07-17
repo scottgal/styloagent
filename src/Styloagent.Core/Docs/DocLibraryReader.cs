@@ -20,20 +20,38 @@ public static class DocLibraryReader
     private const int MaxDirectories = 20_000;
 
     /// <summary>
-    /// Reads all <c>*.md</c> under <paramref name="repoRoot"/> (as <see cref="DocSource.Repo"/>) and
-    /// <paramref name="channelRoot"/> (as <see cref="DocSource.Channel"/>), excluding build/VCS dirs.
-    /// Either root may be null/missing. Results are ordered by source then relative path.
+    /// Reads all <c>*.md</c> under <paramref name="repoRoot"/> (as <see cref="DocSource.Repo"/>),
+    /// <paramref name="channelRoot"/> (as <see cref="DocSource.Channel"/>), and the per-agent log
+    /// directory (as <see cref="DocSource.Log"/>), excluding build/VCS dirs. The log root is
+    /// <paramref name="logsRoot"/> when given, else the <c>logs/</c> sibling of the channel root —
+    /// see <see cref="ResolveLogsRoot"/>. Any root may be null/missing. Ordered by source then relative path.
     /// </summary>
-    public static IReadOnlyList<DocEntry> Read(string? repoRoot, string? channelRoot)
+    public static IReadOnlyList<DocEntry> Read(string? repoRoot, string? channelRoot, string? logsRoot = null)
     {
         var entries = new List<DocEntry>();
         AddFrom(entries, repoRoot, DocSource.Repo);
         AddFrom(entries, channelRoot, DocSource.Channel);
+        AddFrom(entries, ResolveLogsRoot(channelRoot, logsRoot), DocSource.Log);
 
         return entries
             .OrderBy(e => e.Source)
             .ThenBy(e => e.RelativePath, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    /// <summary>
+    /// The per-agent log directory. An explicit <paramref name="logsRoot"/> wins; otherwise it is the
+    /// <c>logs/</c> sibling of <paramref name="channelRoot"/> — both live under <c>.styloagent/</c>, so the
+    /// logs are indexed wherever the channel lives, including the snapshot case where the channel is copied
+    /// out of the repo tree. Null when neither is available.
+    /// </summary>
+    private static string? ResolveLogsRoot(string? channelRoot, string? logsRoot)
+    {
+        if (!string.IsNullOrWhiteSpace(logsRoot)) return logsRoot;
+        if (string.IsNullOrWhiteSpace(channelRoot)) return null;
+
+        var parent = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(channelRoot));
+        return string.IsNullOrEmpty(parent) ? null : Path.Combine(parent, "logs");
     }
 
     private static void AddFrom(List<DocEntry> entries, string? root, DocSource source)

@@ -67,4 +67,46 @@ public class DocLibraryReaderTests : IDisposable
         var only = DocLibraryReader.Read("/no/such/path/xyz", _channel);
         Assert.All(only, e => Assert.Equal(DocSource.Channel, e.Source));
     }
+
+    [Fact]
+    public void Read_indexes_agent_logs_alongside_the_channel_as_log_source()
+    {
+        // Agent logs live in .styloagent/logs/, the sibling of .styloagent/channel/. Read derives that
+        // sibling from the channel root so the logs are indexed wherever the channel lives.
+        var baseDir = Path.Combine(Path.GetTempPath(), "doclib-logs-" + Guid.NewGuid().ToString("N"));
+        var sa = Path.Combine(baseDir, ".styloagent");
+        var chan = Path.Combine(sa, "channel");
+        var logs = Path.Combine(sa, "logs");
+        Directory.CreateDirectory(chan);
+        Directory.CreateDirectory(logs);
+        File.WriteAllText(Path.Combine(chan, "PROTOCOL.md"), "# protocol");
+        File.WriteAllText(Path.Combine(logs, "session-.md"),
+            "# Agent log — session-\n\n## 2026-07-17 01:47:30 · assistant\nindexed by lucene\n");
+        try
+        {
+            var entries = DocLibraryReader.Read(repoRoot: null, channelRoot: chan);
+            Assert.Contains(entries, e => e.Source == DocSource.Log && e.RelativePath == "session-.md");
+
+            // End-to-end: the log must be discoverable via the existing document search.
+            using var idx = new DocumentSearchIndex();
+            idx.Build(entries.Select(e => (e, File.ReadAllText(e.FullPath))));
+            var hits = idx.Search("lucene");
+            Assert.Contains(hits, h => h.FullPath == Path.Combine(logs, "session-.md"));
+        }
+        finally { Directory.Delete(baseDir, recursive: true); }
+    }
+
+    [Fact]
+    public void Read_accepts_an_explicit_logs_root()
+    {
+        var logs = Path.Combine(Path.GetTempPath(), "doclib-logsx-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(logs);
+        File.WriteAllText(Path.Combine(logs, "overview-.md"), "# Agent log — overview-");
+        try
+        {
+            var entries = DocLibraryReader.Read(repoRoot: null, channelRoot: null, logsRoot: logs);
+            Assert.Contains(entries, e => e.Source == DocSource.Log && e.RelativePath == "overview-.md");
+        }
+        finally { Directory.Delete(logs, recursive: true); }
+    }
 }

@@ -5,6 +5,9 @@ public enum DocSource
 {
     Repo,
     Channel,
+
+    /// <summary>A per-agent streaming transcript log under <c>.styloagent/logs/</c> (runtime sidecar).</summary>
+    Log,
 }
 
 /// <summary>

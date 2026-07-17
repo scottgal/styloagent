@@ -38,17 +38,19 @@ public sealed class FleetTools
     private readonly McpAuth _auth;
     private readonly PendingInbox _pending;
     private readonly OperatorQuestionHub _operatorQuestions;
+    private readonly DocumentOpenHub _documentOpen;
 
-    // pending / operatorQuestions are optional so unit tests can construct FleetTools without wiring a
-    // store; in the running server both are the singletons registered in StyloagentMcpServer (pending
-    // rooted at the delivery hooksDir; operatorQuestions constructed by the cockpit VM so its top bar and
-    // this verb share one instance). The fallbacks keep an unwired server degrading gracefully.
+    // pending / operatorQuestions / documentOpen are optional so unit tests can construct FleetTools without
+    // wiring a store; in the running server all three are the singletons registered in StyloagentMcpServer
+    // (pending rooted at the delivery hooksDir; operatorQuestions + documentOpen constructed by the cockpit VM
+    // so its UI and these verbs share one instance). The fallbacks keep an unwired server degrading gracefully.
     public FleetTools(IHttpContextAccessor http, IFleetController controller, McpAuth auth,
-        PendingInbox? pending = null, OperatorQuestionHub? operatorQuestions = null)
-        => (_http, _controller, _auth, _pending, _operatorQuestions) =
+        PendingInbox? pending = null, OperatorQuestionHub? operatorQuestions = null, DocumentOpenHub? documentOpen = null)
+        => (_http, _controller, _auth, _pending, _operatorQuestions, _documentOpen) =
             (http, controller, auth,
              pending ?? new PendingInbox(System.IO.Path.GetTempPath()),
-             operatorQuestions ?? new OperatorQuestionHub(new OperatorQuestionStore(), (_, _, _) => Task.CompletedTask));
+             operatorQuestions ?? new OperatorQuestionHub(new OperatorQuestionStore(), (_, _, _) => Task.CompletedTask),
+             documentOpen ?? new DocumentOpenHub());
 
 #pragma warning disable CA1707 // Identifiers should not contain underscores — tool names are MCP contract and must match the wire protocol
     [McpServerTool, Description("Launch a child agent under you. prefix is a short lowercase tag ending in '-'. Set worktree=true when this agent's work overlaps files another agent owns, so it runs isolated on its own git worktree/branch; otherwise false to share the repo. Keep launchPrompt SHORT (identity + 'read your mission doc'); pass the full brief as missionDoc — Styloagent writes it to .styloagent/missions/<prefix>.md in the new agent's tree (committed on its branch when worktree=true, so an isolated agent can read it from its own checkout) and tells the agent to read it. Leave missionDoc empty to inject launchPrompt alone.")]
@@ -154,6 +156,40 @@ public sealed class FleetTools
 
         _operatorQuestions.Post(caller, question, opts, DateTimeOffset.Now);
         return "raised to the operator — end your turn; the answer arrives as a normal bus message when the operator picks an option (check_inbox to pull it).";
+    }
+
+    [McpServerTool, Description("Surface a document in the cockpit for the HUMAN operator — \"here's THIS doc\", so the operator is looking at the same thing you just wrote or are discussing. 'path' is the document: an ABSOLUTE path, or a path relative to your repo root (e.g. the .md you just created). 'reason' (optional) is a short WHY shown as the pane title/header (e.g. \"here's the seam report\"). The path is canonicalized and must exist within an open repo (rejected otherwise — nothing outside the project opens). Markdown-focused. This does not block your turn and nothing routes back: it returns an ack and the document opens in the operator's cockpit.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public string open_document(string path, string reason = "")
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        var caller = McpAuth.CallerPrefix(ctx);
+        if (caller is null) return "unauthorized: missing caller identity";
+
+        var repos = _controller.ListRepos();
+        var allowedRoots = repos.Select(r => r.Path).ToList();
+        var res = DocumentPathResolver.Resolve(path, SenderRepoRoot(caller, repos), allowedRoots);
+        if (!res.Ok) return $"rejected: {res.Error}";
+
+        _documentOpen.Post(caller, res.Path!, reason);
+        return $"opening {System.IO.Path.GetFileName(res.Path)} in the cockpit for the operator.";
+    }
+
+    /// <summary>
+    /// The caller's own repo root, for resolving a repo-relative <c>open_document</c> path: the repo whose fleet
+    /// the caller runs in, else the workspace's primary repo, else the first open repo (null when none is open).
+    /// </summary>
+    private string? SenderRepoRoot(string caller, IReadOnlyList<RepoInfo> repos)
+    {
+        if (repos.Count == 0) return null;
+        var callerRepo = _controller.FleetStatus().Agents.FirstOrDefault(a => a.Prefix == caller)?.Repo;
+        if (!string.IsNullOrEmpty(callerRepo))
+        {
+            var match = repos.FirstOrDefault(r => r.Name.Equals(callerRepo, StringComparison.OrdinalIgnoreCase));
+            if (match is not null) return match.Path;
+        }
+        return (repos.FirstOrDefault(r => r.Primary) ?? repos[0]).Path;
     }
 
     [McpServerTool, Description("Rich live status of the whole fleet: each agent's prefix, responsibility, state (working | idle | needs-you | exited), current activity, seconds since its last output, context usage (e.g. \"83k · 22%\") and whether it has a git worktree — plus working/waiting counts and the paused flag. Use this to see what everyone is doing and who is stalled or blocked.")]

@@ -40,9 +40,15 @@ public sealed class StyloagentMcpServer : IAsyncDisposable
     /// When null (not yet wired), <c>ask_operator</c> posts into a throwaway store nobody surfaces — the verb
     /// still succeeds, it just isn't shown (graceful degrade, like the delivery inbox fallback).
     /// </param>
+    /// <param name="documentOpen">
+    /// The shared hub behind the <c>open_document</c> verb: an agent surfacing "here's THIS doc" posts a
+    /// resolved open-request here and the cockpit VM (which supplies this instance) opens it as a document pane.
+    /// When null (not yet wired), <c>open_document</c> posts into a hub nobody subscribes to — the verb still
+    /// succeeds, the document just isn't shown (graceful degrade, like the ask_operator fallback).
+    /// </param>
     public static async Task<StyloagentMcpServer> StartAsync(
         IFleetController controller, IRouterController router, string? hooksDir = null,
-        OperatorQuestionHub? operatorQuestions = null)
+        OperatorQuestionHub? operatorQuestions = null, DocumentOpenHub? documentOpen = null)
     {
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
 
@@ -57,6 +63,7 @@ public sealed class StyloagentMcpServer : IAsyncDisposable
             hooksDir ?? Path.Combine(Path.GetTempPath(), "styloagent-pending", Guid.NewGuid().ToString("N"))));
         builder.Services.AddSingleton(operatorQuestions
             ?? new OperatorQuestionHub(new OperatorQuestionStore(), (_, _, _) => Task.CompletedTask));
+        builder.Services.AddSingleton(documentOpen ?? new DocumentOpenHub());
         builder.Services.AddMcpServer()
             .WithHttpTransport(o => o.Stateless = true)
             .WithTools<FleetTools>()

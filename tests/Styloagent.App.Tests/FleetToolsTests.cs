@@ -38,7 +38,8 @@ public class FleetToolsTests
         public IReadOnlyList<string> RecentFiles(int limit) => new[] { "/repo/Foo.cs — foss- (editing, 5s ago)" };
         public IReadOnlyList<Styloagent.Core.Docs.DocSearchHit> SearchDocs(string query, int limit) =>
             new[] { new Styloagent.Core.Docs.DocSearchHit("PROTOCOL", "/repo/.styloagent/PROTOCOL.md", Styloagent.Core.Docs.DocSource.Repo, ".styloagent/PROTOCOL.md") };
-        public IReadOnlyList<RepoInfo> ListRepos() => new[]
+        public IReadOnlyList<RepoInfo>? ReposOverride;   // open_document tests point this at a real temp root
+        public IReadOnlyList<RepoInfo> ListRepos() => ReposOverride ?? new[]
         {
             new RepoInfo("styloagent", "/ws/styloagent", 0, "overview-", "#4C9AFF", true),
             new RepoInfo("lucidRESUME", "/ws/lucidRESUME", 1, "lucidresume-", "#5FD08A", false),
@@ -407,5 +408,92 @@ public class FleetToolsTests
 
         Assert.Contains("unauthorized", tools.ask_operator("Merge or rebase?", ShipOptions));
         Assert.Empty(hub.Pending);                              // never reached the store
+    }
+
+    // ---- open_document (surface a document to the operator) --------------------
+
+    private static string TempRepoWithDoc(out string docPath, string docName = "doc.md")
+    {
+        var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "styloagent-opendoc-verb-" + System.Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(root);
+        docPath = System.IO.Path.Combine(root, docName);
+        System.IO.File.WriteAllText(docPath, "# hi");
+        return root;
+    }
+
+    private static (FleetTools Tools, Styloagent.Core.Attention.DocumentOpenHub Hub) ToolsWithDocHub(string? agent, string auth, string root)
+    {
+        var hub = new Styloagent.Core.Attention.DocumentOpenHub();
+        var ctrl = new FakeController { ReposOverride = new[] { new RepoInfo("proj", root, 0, "overview-", "#4C9AFF", true) } };
+        var tools = new FleetTools(AccessorWith(agent, auth), ctrl, new McpAuth("secret"), null, null, hub);
+        return (tools, hub);
+    }
+
+    [Fact]
+    public void open_document_posts_the_resolved_doc_to_the_hub()
+    {
+        var root = TempRepoWithDoc(out var doc);
+        try
+        {
+            var (tools, hub) = ToolsWithDocHub("foss-", "Bearer secret", root);
+            Styloagent.Core.Attention.DocumentOpenRequest? opened = null;
+            hub.Opened += (_, r) => opened = r;
+
+            var result = tools.open_document(doc, "here's the plan");
+
+            Assert.Contains("opening", result);
+            Assert.NotNull(opened);
+            Assert.Equal("foss-", opened!.AskingPrefix);          // attributed to the asking agent
+            Assert.Equal(System.IO.Path.GetFullPath(doc), opened.Path);
+            Assert.Equal("here's the plan", opened.Reason);
+        }
+        finally { System.IO.Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void open_document_resolves_a_repo_relative_path_against_the_open_repo()
+    {
+        var root = TempRepoWithDoc(out _);
+        try
+        {
+            var (tools, hub) = ToolsWithDocHub("foss-", "Bearer secret", root);
+            Styloagent.Core.Attention.DocumentOpenRequest? opened = null;
+            hub.Opened += (_, r) => opened = r;
+
+            tools.open_document("doc.md", "");                    // relative to the repo root
+
+            Assert.Equal(System.IO.Path.Combine(root, "doc.md"), opened!.Path);
+            Assert.Null(opened.Reason);                           // blank reason → null
+        }
+        finally { System.IO.Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void open_document_rejects_a_path_outside_the_open_repo()
+    {
+        var root = TempRepoWithDoc(out _);
+        try
+        {
+            var (tools, hub) = ToolsWithDocHub("foss-", "Bearer secret", root);
+            bool opened = false;
+            hub.Opened += (_, _) => opened = true;
+
+            var result = tools.open_document("/etc/hosts", "");
+
+            Assert.Contains("rejected", result);
+            Assert.False(opened);                                 // nothing outside the project opens
+        }
+        finally { System.IO.Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void open_document_refuses_a_bad_token()
+    {
+        var (tools, hub) = ToolsWithDocHub("foss-", "Bearer WRONG", System.IO.Path.GetTempPath());
+        bool opened = false;
+        hub.Opened += (_, _) => opened = true;
+
+        Assert.Contains("unauthorized", tools.open_document("/x/doc.md", ""));
+        Assert.False(opened);                                     // never reached the hub
     }
 }

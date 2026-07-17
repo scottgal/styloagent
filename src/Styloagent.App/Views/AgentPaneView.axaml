@@ -2,7 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
              xmlns:terminal="clr-namespace:Styloagent.Terminal;assembly=Styloagent.Terminal"
-             xmlns:ic="using:FluentIcons.Avalonia.Fluent"
+             xmlns:views="clr-namespace:Styloagent.App.Views"
              x:Class="Styloagent.App.Views.AgentPaneView"
              x:DataType="vm:AgentPaneViewModel">
 
@@ -21,67 +21,13 @@
 
       <Grid Grid.Column="1" RowDefinitions="Auto,*">
 
-        <!-- Toolbar -->
-        <StackPanel Grid.Row="0"
-                    Orientation="Horizontal"
-                    Spacing="4"
-                    Margin="4"
-                    Background="{DynamicResource PanelHeaderBgBrush}">
-          <TextBlock Name="AgentDisplayName"
-                     Text="{Binding DisplayName}"
-                     VerticalAlignment="Center"
-                     Margin="4,0,8,0"
-                     FontWeight="SemiBold"
-                     Foreground="{DynamicResource PrimaryTextBrush}" />
-          <Button Name="SpawnButton"
-                  Command="{Binding SpawnCommand}"
-                  ToolTip.Tip="Spawn agent">
-            <StackPanel Orientation="Horizontal" Spacing="4">
-              <ic:SymbolIcon Symbol="Play" FontSize="14" />
-              <TextBlock Text="Spawn" />
-            </StackPanel>
-          </Button>
-          <Button Name="DehydrateButton"
-                  Command="{Binding DehydrateCommand}"
-                  ToolTip.Tip="Dehydrate (suspend) agent">
-            <StackPanel Orientation="Horizontal" Spacing="4">
-              <ic:SymbolIcon Symbol="Pause" FontSize="14" />
-              <TextBlock Text="Dehydrate" />
-            </StackPanel>
-          </Button>
-          <Button Name="RehydrateButton"
-                  Command="{Binding RehydrateCommand}"
-                  ToolTip.Tip="Rehydrate (resume) agent">
-            <StackPanel Orientation="Horizontal" Spacing="4">
-              <ic:SymbolIcon Symbol="PlayCircle" FontSize="14" />
-              <TextBlock Text="Rehydrate" />
-            </StackPanel>
-          </Button>
-          <Button Name="RenameButton"
-                  Command="{Binding RenameCommand}"
-                  CommandParameter="New Name"
-                  ToolTip.Tip="Rename agent">
-            <StackPanel Orientation="Horizontal" Spacing="4">
-              <ic:SymbolIcon Symbol="Rename" FontSize="14" />
-              <TextBlock Text="Rename" />
-            </StackPanel>
-          </Button>
-          <ComboBox Name="ThemePicker"
-                    ItemsSource="{Binding TerminalThemes}"
-                    SelectedItem="{Binding SelectedTerminalTheme}"
-                    VerticalAlignment="Center" MinWidth="92" FontSize="11"
-                    ToolTip.Tip="Terminal theme">
-            <ComboBox.ItemTemplate>
-              <DataTemplate x:DataType="terminal:TerminalTheme">
-                <TextBlock Text="{Binding Name}" />
-              </DataTemplate>
-            </ComboBox.ItemTemplate>
-          </ComboBox>
-        </StackPanel>
+        <!-- Pane header chrome (cockpit-owned: ⋯ actions menu + zoom slider + theme picker) -->
+        <views:AgentPaneChromeView Grid.Row="0" />
 
         <!-- Terminal area -->
         <terminal:TerminalControl Name="Terminal"
-                                  Grid.Row="1" />
+                                  Grid.Row="1"
+                                  ZoomLevel="{Binding ZoomLevel, Mode=TwoWay}" />
 
       </Grid>
     </Grid>

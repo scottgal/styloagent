@@ -216,11 +216,15 @@ public class ReadmeScreenshotTests
                 var window = new Window { Width = 300, Height = 320, Content = view };
                 window.Show();
 
-                // The PROPOSED ItemsControl materializes its cards asynchronously — poll until the
-                // first card's prefix text appears rather than relying on a single settle.
+                // The PROPOSED roster is a collapsed-by-default Expander, so expand it (each pass, as soon
+                // as it materializes) before capturing — otherwise the figure shows only the collapsed
+                // "PROPOSED" header, not the agent cards. Its cards then materialize asynchronously, so poll
+                // until the first card's prefix text appears rather than relying on a single settle.
                 bool HasCards() => window.GetVisualDescendants().OfType<TextBlock>().Any(t => (t.Text ?? "") == "foss-");
                 for (int i = 0; i < 40 && !HasCards(); i++)
                 {
+                    foreach (var exp in window.GetVisualDescendants().OfType<Expander>())
+                        exp.IsExpanded = true;
                     await HeadlessRender.SettleAsync(window);
                     await Task.Delay(25);
                 }

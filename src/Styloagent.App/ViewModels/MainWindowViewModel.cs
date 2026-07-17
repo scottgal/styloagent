@@ -1802,7 +1802,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             _project?.ProtocolPath,
             _channelRoot);
         var file = _hookChannel.WriteHydrationFile(hookId, hydration);
-        return _hookChannel.SettingsArgsFor(hookId, file, PermissionMode)
+        // Ownership PreToolUse gate: pass the gate-mode invocation + the repo root + the OWNERSHIP PREFIX as
+        // caller (entry.Prefix, NOT hookId — ReserveHookId may suffix hookId to e.g. "session--1"). The gate
+        // enforces main-sharing agents against ownership.yaml; worktree agents edit outside _repoRoot ⇒
+        // unowned ⇒ allow (safe no-op in v1). Wired here by overview- (coordination-root bypass) per the
+        // ownership-enforcement design; the gate logic itself is session-'s Core/Hooks work.
+        return _hookChannel.SettingsArgsFor(hookId, file, PermissionMode,
+                Styloagent.Core.Hooks.HookSettings.DefaultGateInvocation(), _repoRoot, entry.Prefix)
             .Concat(Styloagent.Core.Hooks.HookSettings.PermissionArgs(PermissionMode))
             .ToList();
     }

@@ -36,7 +36,14 @@ public sealed record IssueOutcome(bool Filed, string? Id, string Message)
 }
 
 /// <summary>A send_message request from an agent (sender is the caller prefix).</summary>
-public sealed record MessageRequest(string From, string To, string Subject, string Body, string Priority);
+/// <param name="Repo">
+/// Cross-repo target (Model A): the repo NAME to address in a multi-repo workspace, or null/blank for the
+/// sender's own repo (the intra-repo default → single-repo back-compat is free). The cockpit resolves it to
+/// the target repo's channel via <c>RepoMessageRouting.Resolve</c>; the message is stamped with the sender's
+/// repo as From-Repo so a reply routes home.
+/// </param>
+public sealed record MessageRequest(
+    string From, string To, string Subject, string Body, string Priority, string? Repo = null);
 
 /// <summary>Result of sending a bus message (never an exception).</summary>
 public sealed record MessageOutcome(bool Sent, string? Path, string Message)

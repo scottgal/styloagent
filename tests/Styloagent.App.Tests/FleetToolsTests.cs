@@ -159,6 +159,28 @@ public class FleetToolsTests
     }
 
     [Fact]
+    public async Task send_message_passes_the_repo_through_for_cross_repo_addressing()
+    {
+        var ctrl = new FakeController();
+        var tools = new FleetTools(AccessorWith("foss-", "Bearer secret"), ctrl, new McpAuth("secret"));
+
+        await tools.send_message("overview-", "cross", "hi", "normal", "styloissues");
+
+        Assert.Equal("styloissues", ctrl.LastMessage!.Repo);   // cross-repo target carried to the controller
+    }
+
+    [Fact]
+    public async Task send_message_defaults_repo_to_null_for_intra_repo_back_compat()
+    {
+        var ctrl = new FakeController();
+        var tools = new FleetTools(AccessorWith("foss-", "Bearer secret"), ctrl, new McpAuth("secret"));
+
+        await tools.send_message("router-", "s", "b", "normal");   // no repo arg → sender's own repo
+
+        Assert.Null(ctrl.LastMessage!.Repo);
+    }
+
+    [Fact]
     public async Task screenshot_returns_the_capture_path()
     {
         var ctrl = new FakeController();

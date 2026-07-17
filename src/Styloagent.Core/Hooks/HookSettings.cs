@@ -85,7 +85,7 @@ public static class HookSettings
 
     public static string BuildSettingsJson(string agentId, string hooksDir, string? hydrationFile = null,
         FleetPermissionMode permissionMode = FleetPermissionMode.Prompt,
-        string? gateInvocation = null, string? repoRoot = null)
+        string? gateInvocation = null, string? repoRoot = null, string? caller = null)
     {
         string safeId = SanitizeAgentId(agentId);
         // Observe: write raw stdin JSON to a unique per-event file tagged with the agent id.
@@ -116,7 +116,7 @@ public static class HookSettings
             hooks[ev] = ev switch
             {
                 "SessionStart" when reHydrate => Entry(SessionStartWithHydration(safeId, hooksDir, hydrationFile!)),
-                "PreToolUse" when gate        => Entry(PreToolUseGateCommand(safeId, hooksDir, gateInvocation!, agentId, repoRoot!)),
+                "PreToolUse" when gate        => Entry(PreToolUseGateCommand(safeId, hooksDir, gateInvocation!, caller ?? agentId, repoRoot!)),
                 _                             => Entry(observe),
             };
         }
@@ -186,6 +186,6 @@ public static class HookSettings
     /// <summary>The CLI args (<c>--settings &lt;json&gt;</c>) to append to a <c>claude</c> launch.</summary>
     public static IReadOnlyList<string> BuildSettingsArgs(string agentId, string hooksDir, string? hydrationFile = null,
         FleetPermissionMode permissionMode = FleetPermissionMode.Prompt,
-        string? gateInvocation = null, string? repoRoot = null)
-        => new[] { "--settings", BuildSettingsJson(agentId, hooksDir, hydrationFile, permissionMode, gateInvocation, repoRoot) };
+        string? gateInvocation = null, string? repoRoot = null, string? caller = null)
+        => new[] { "--settings", BuildSettingsJson(agentId, hooksDir, hydrationFile, permissionMode, gateInvocation, repoRoot, caller) };
 }

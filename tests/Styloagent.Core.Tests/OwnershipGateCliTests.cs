@@ -126,17 +126,19 @@ public class OwnershipGateCliTests
     [Fact]
     public void Settings_json_puts_the_gate_on_PreToolUse_and_leaves_other_events_observing()
     {
+        // Drop-file id ("session--1", a de-duped hook id) is DISTINCT from the ownership caller ("session-").
         string json = HookSettings.BuildSettingsJson(
-            "session-", "/tmp/hooks", hydrationFile: null,
+            "session--1", "/tmp/hooks", hydrationFile: null,
             permissionMode: FleetPermissionMode.Scoped,
-            gateInvocation: "\"/dotnet\" \"/app/Styloagent.App.dll\"", repoRoot: "/work/repo");
+            gateInvocation: "\"/dotnet\" \"/app/Styloagent.App.dll\"", repoRoot: "/work/repo", caller: "session-");
 
         using var doc = JsonDocument.Parse(json);
         var hooks = doc.RootElement.GetProperty("hooks");
 
         string pre = hooks.GetProperty("PreToolUse")[0].GetProperty("hooks")[0].GetProperty("command").GetString()!;
         Assert.Contains(OwnershipGateCli.GateModeFlag, pre);          // invokes gate-mode
-        Assert.Contains("--caller \"session-\"", pre);               // as this agent
+        Assert.Contains("--caller \"session-\"", pre);               // as the OWNERSHIP PREFIX, not the hook id
+        Assert.Contains("session--1__", pre);                        // …while the drop file still uses the hook id
         Assert.Contains("--root \"/work/repo\"", pre);               // against this repo
         Assert.Contains("/app/Styloagent.App.dll", pre);            // via the app
         Assert.Contains("$(uuidgen)", pre);                          // STILL drops the event (observation)

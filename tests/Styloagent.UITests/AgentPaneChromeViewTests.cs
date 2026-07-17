@@ -37,10 +37,13 @@ public class AgentPaneChromeViewTests
 
     // Renders the real cockpit-owned pane chrome (0b) over an AgentPaneViewModel and asserts the identity,
     // the consolidated ⋯ actions button, the zoom readout (proving the ZoomLevel relay binding resolves)
-    // and the theme picker all materialize. Compiled bindings (x:DataType) already validate the paths at
+    // and the zoom slider all materialize. Compiled bindings (x:DataType) already validate the paths at
     // build; this proves the control renders end-to-end headless.
+    //
+    // Compaction: the theme picker moved OFF the header into the ⋯ menu (so no ComboBox renders in the
+    // header until the flyout is opened) and the header row is short — the operator's "way too tall" fix.
     [Fact]
-    public Task Chrome_renders_identity_actions_menu_and_zoom_readout()
+    public Task Chrome_is_compact_with_identity_actions_menu_and_zoom_readout()
     {
         return _fx.DispatchAsync(async () =>
         {
@@ -48,7 +51,9 @@ public class AgentPaneChromeViewTests
             pane.ZoomLevel = 1.5;   // exercises the two-way zoom relay + readout
 
             var view = new AgentPaneChromeView { DataContext = pane };
-            var window = new Window { Width = 480, Height = 60, Content = view };
+            // StackPanel host gives the chrome its natural (unstretched) height so we can measure it.
+            var host = new StackPanel { Children = { view } };
+            var window = new Window { Width = 480, Height = 160, Content = host };
             window.Show();
 
             await HeadlessRender.SettleAsync(window);
@@ -62,9 +67,14 @@ public class AgentPaneChromeViewTests
             var buttons = window.GetVisualDescendants().OfType<Button>().ToList();
             Assert.Contains(buttons, b => (b.Content as string)?.Contains("Actions") == true);
 
-            Assert.Contains(window.GetVisualDescendants().OfType<ComboBox>(), _ => true);   // theme picker
             Assert.Contains(window.GetVisualDescendants().OfType<Slider>(), _ => true);      // zoom slider
+            // The theme picker moved into the ⋯ menu; its ComboBox is in the (unopened) flyout, not the header.
+            Assert.Empty(window.GetVisualDescendants().OfType<ComboBox>());
 
+            // Compact: the header row is short (the "way too tall" fix). The old bar was ~40px; assert well under.
+            Assert.True(view.Bounds.Height <= 30, $"pane chrome header too tall: {view.Bounds.Height}px");
+
+            await ScreenshotCapture.CaptureControlAsync(window, view, "/tmp/styloagent-pane-chrome-compact.png");
             window.Close();
         });
     }

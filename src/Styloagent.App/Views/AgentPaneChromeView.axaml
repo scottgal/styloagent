@@ -7,12 +7,13 @@
 
   <!-- Consolidated pane header (0b): the agent name, a single ⋯ actions menu that replaces the row of
        per-terminal buttons (Spawn/Dehydrate/Rehydrate/Rename + fleet actions) the operator asked to
-       de-clutter, a terminal-zoom slider bound to the VM ZoomLevel relay, and the theme picker. This
-       control is cockpit-owned, so item-1's "Log (this agent)" entry lands in the menu below with no
-       cross-owner edit. session- hosts it in AgentPaneView.axaml and binds TerminalControl.ZoomLevel
-       two-way to the same VM.ZoomLevel relay. -->
-  <Border Background="{DynamicResource PanelHeaderBgBrush}" Padding="4">
-    <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+       de-clutter, and a compact terminal-zoom slider bound to the VM ZoomLevel relay. The theme picker
+       lives INSIDE the ⋯ menu (the operator asked to compress this header — it was way too tall — and
+       move the theme selector into the menu). This control is cockpit-owned, so item-1's "Log (this
+       agent)" entry lands in the menu below with no cross-owner edit. session- hosts it in
+       AgentPaneView.axaml and binds TerminalControl.ZoomLevel two-way to the same VM.ZoomLevel relay. -->
+  <Border Background="{DynamicResource PanelHeaderBgBrush}" Padding="4,1">
+    <Grid ColumnDefinitions="Auto,Auto,*,Auto">
 
       <!-- Agent identity (its terminal accent colour) -->
       <TextBlock Grid.Column="0" Name="AgentDisplayName"
@@ -23,8 +24,8 @@
       <!-- Single ⋯ actions menu: every per-pane action tucked into one dropdown. VM commands bind
            directly (the flyout inherits this control's AgentPaneViewModel DataContext); fleet-level
            commands go via Host (they live on MainWindowViewModel) — same split as the roster ⋯ menu. -->
-      <Button Grid.Column="1" Content="⋯ Actions" FontSize="12" Padding="8,2" VerticalAlignment="Center"
-              ToolTip.Tip="Agent actions">
+      <Button Grid.Column="1" Content="⋯ Actions" FontSize="11" Padding="6,1" MinHeight="0"
+              VerticalAlignment="Center" ToolTip.Tip="Agent actions">
         <Button.Flyout>
           <MenuFlyout>
             <MenuItem Header="Spawn" Command="{Binding SpawnCommand}" />
@@ -35,6 +36,28 @@
             <!-- Agent-log design slice 3: open this agent's durable .styloagent/logs/<prefix>.md as
                  rendered markdown. Lands here (cockpit-owned chrome) with no cross-owner edit. -->
             <MenuItem Header="Log (this agent)" Command="{Binding OpenLogCommand}" />
+            <Separator />
+            <!-- Terminal theme picker, moved off the header into the menu to keep the header short.
+                 The flyout inherits this control's AgentPaneViewModel DataContext, so the theme
+                 bindings resolve exactly as they did on the header. StaysOpenOnClick keeps the menu
+                 up while the operator opens the theme dropdown. -->
+            <MenuItem StaysOpenOnClick="True" ToolTip.Tip="Terminal theme">
+              <MenuItem.Header>
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                  <TextBlock Text="Theme" VerticalAlignment="Center" />
+                  <ComboBox Name="ThemePicker"
+                            ItemsSource="{Binding TerminalThemes}"
+                            SelectedItem="{Binding SelectedTerminalTheme}"
+                            MinWidth="120" FontSize="11" VerticalAlignment="Center">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="terminal:TerminalTheme">
+                        <TextBlock Text="{Binding Name}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
+              </MenuItem.Header>
+            </MenuItem>
             <Separator />
             <MenuItem Header="Approve prompt" IsEnabled="{Binding NeedsYou}"
                       Command="{Binding Host.ApprovePermissionCommand}" CommandParameter="{Binding}" />
@@ -53,30 +76,18 @@
       </Button>
 
       <!-- Terminal zoom: the slider drives the VM ZoomLevel relay; session- binds TerminalControl.ZoomLevel
-           two-way to the same property, so the slider zooms the terminal and Ctrl+MouseWheel moves it back. -->
+           two-way to the same property, so the slider zooms the terminal and Ctrl+MouseWheel moves it back.
+           Compact (short slider) so the header stays short. -->
       <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="8,0">
         <TextBlock Text="zoom" FontSize="10" VerticalAlignment="Center"
                    Foreground="{DynamicResource MutedTextBrush}" />
-        <Slider Name="ZoomSlider" Width="110" VerticalAlignment="Center"
+        <Slider Name="ZoomSlider" Width="110" Height="18" MinHeight="0" VerticalAlignment="Center"
                 Minimum="0.5" Maximum="3.0" SmallChange="0.1" LargeChange="0.5" TickFrequency="0.1"
                 Value="{Binding ZoomLevel, Mode=TwoWay}"
                 ToolTip.Tip="Terminal zoom" />
         <TextBlock Text="{Binding ZoomLevel, StringFormat={}{0:P0}}" FontSize="10" MinWidth="34"
                    VerticalAlignment="Center" Foreground="{DynamicResource MutedTextBrush}" />
       </StackPanel>
-
-      <!-- Terminal theme -->
-      <ComboBox Grid.Column="4" Name="ThemePicker"
-                ItemsSource="{Binding TerminalThemes}"
-                SelectedItem="{Binding SelectedTerminalTheme}"
-                VerticalAlignment="Center" MinWidth="92" FontSize="11"
-                ToolTip.Tip="Terminal theme">
-        <ComboBox.ItemTemplate>
-          <DataTemplate x:DataType="terminal:TerminalTheme">
-            <TextBlock Text="{Binding Name}" />
-          </DataTemplate>
-        </ComboBox.ItemTemplate>
-      </ComboBox>
 
     </Grid>
   </Border>

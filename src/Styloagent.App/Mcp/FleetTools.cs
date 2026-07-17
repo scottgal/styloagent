@@ -3,6 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Server;
+using Styloagent.Core.Attention;
 using Styloagent.Core.Channel;
 using Styloagent.Core.Git;
 using Styloagent.Core.Mcp;
@@ -36,12 +37,18 @@ public sealed class FleetTools
     private readonly IFleetController _controller;
     private readonly McpAuth _auth;
     private readonly PendingInbox _pending;
+    private readonly OperatorQuestionHub _operatorQuestions;
 
-    // pending is optional so unit tests can construct FleetTools without wiring a store; in the running
-    // server it is always the singleton registered in StyloagentMcpServer, rooted at the delivery hooksDir.
-    public FleetTools(IHttpContextAccessor http, IFleetController controller, McpAuth auth, PendingInbox? pending = null)
-        => (_http, _controller, _auth, _pending) =
-            (http, controller, auth, pending ?? new PendingInbox(System.IO.Path.GetTempPath()));
+    // pending / operatorQuestions are optional so unit tests can construct FleetTools without wiring a
+    // store; in the running server both are the singletons registered in StyloagentMcpServer (pending
+    // rooted at the delivery hooksDir; operatorQuestions constructed by the cockpit VM so its top bar and
+    // this verb share one instance). The fallbacks keep an unwired server degrading gracefully.
+    public FleetTools(IHttpContextAccessor http, IFleetController controller, McpAuth auth,
+        PendingInbox? pending = null, OperatorQuestionHub? operatorQuestions = null)
+        => (_http, _controller, _auth, _pending, _operatorQuestions) =
+            (http, controller, auth,
+             pending ?? new PendingInbox(System.IO.Path.GetTempPath()),
+             operatorQuestions ?? new OperatorQuestionHub(new OperatorQuestionStore(), (_, _, _) => Task.CompletedTask));
 
 #pragma warning disable CA1707 // Identifiers should not contain underscores — tool names are MCP contract and must match the wire protocol
     [McpServerTool, Description("Launch a child agent under you. prefix is a short lowercase tag ending in '-'. Set worktree=true when this agent's work overlaps files another agent owns, so it runs isolated on its own git worktree/branch; otherwise false to share the repo. Keep launchPrompt SHORT (identity + 'read your mission doc'); pass the full brief as missionDoc — Styloagent writes it to .styloagent/missions/<prefix>.md in the new agent's tree (committed on its branch when worktree=true, so an isolated agent can read it from its own checkout) and tells the agent to read it. Leave missionDoc empty to inject launchPrompt alone.")]
@@ -128,6 +135,25 @@ public sealed class FleetTools
 
         var pending = _pending.DrainFormatted(caller);
         return string.IsNullOrWhiteSpace(pending) ? "(inbox empty)" : pending.TrimEnd('\n');
+    }
+
+    [McpServerTool, Description("Raise a STRUCTURED question to the HUMAN operator (not another agent) and wait for their pick. Use this when you are blocked on a decision only the human can make — a fork in the approach, a risky/irreversible action, missing intent. 'question' is what you need decided; 'options' are the concrete choices the operator clicks between (2-4 short labels; pass an empty array for a plain acknowledge). The question appears in the cockpit's operator top bar with one-click option buttons. This does NOT block your turn: it returns immediately — end your turn, and the operator's chosen option is delivered back to you as a normal bus message (surfaced at your next turn boundary, or via check_inbox). Prefer this over send_message for human decisions; use send_message for agent-to-agent coordination.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public string ask_operator(string question, string[] options)
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        var caller = McpAuth.CallerPrefix(ctx);
+        if (caller is null) return "unauthorized: missing caller identity";
+        if (string.IsNullOrWhiteSpace(question)) return "rejected: question is required";
+
+        var opts = (options ?? Array.Empty<string>())
+            .Where(o => !string.IsNullOrWhiteSpace(o))
+            .Select(o => o.Trim())
+            .ToArray();
+
+        _operatorQuestions.Post(caller, question, opts, DateTimeOffset.Now);
+        return "raised to the operator — end your turn; the answer arrives as a normal bus message when the operator picks an option (check_inbox to pull it).";
     }
 
     [McpServerTool, Description("Rich live status of the whole fleet: each agent's prefix, responsibility, state (working | idle | needs-you | exited), current activity, seconds since its last output, context usage (e.g. \"83k · 22%\") and whether it has a git worktree — plus working/waiting counts and the paused flag. Use this to see what everyone is doing and who is stalled or blocked.")]

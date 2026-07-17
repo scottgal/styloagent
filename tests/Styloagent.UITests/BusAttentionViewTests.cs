@@ -110,4 +110,54 @@ public class BusAttentionViewTests
             }
         });
     }
+
+    // The 3-state upgrade (bus-viewer Seen-state): opening an attention thread flips its pill from
+    // WAITING to the middle SEEN rung, and an explicit Archive (✕) affordance is offered while open.
+    [Fact]
+    public Task BusView_opening_a_thread_shows_the_SEEN_pill_and_offers_archive()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var root = Path.Combine(Path.GetTempPath(), "busseen-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(root, "inbox"));
+            Directory.CreateDirectory(Path.Combine(root, "outbox"));
+            try
+            {
+                File.WriteAllText(Path.Combine(root, "inbox", "alpha-open-question.md"),
+                    "**From:** ops\n**Timestamp:** 2024-01-10T10:00:00Z\n\nQ?");   // unreplied → Attention/WAITING
+
+                var vm = new BusViewModel(root, Prefixes, new ChannelProjection());
+                await vm.LoadAsync();
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+                var view = new BusView { DataContext = vm };
+                var window = new Window { Width = 320, Height = 480, Content = view };
+                window.Show();
+                await HeadlessRender.SettleAsync(window);
+
+                // Starts WAITING; an Archive (✕) button is present while the thread is open.
+                var before = window.GetVisualDescendants().OfType<TextBlock>()
+                    .Select(t => t.Text ?? string.Empty).ToList();
+                Assert.Contains(before, s => s == "WAITING");
+                Assert.Contains(before, s => s == "✕");
+                Assert.Equal("WAITING", vm.AttentionThreads[0].StatusPillText);
+
+                // Operator opens the thread (carousel gesture) → marks it SEEN; the thread pill flips
+                // in place (WAITING → SEEN) without a reload.
+                vm.OpenThreadCommand.Execute(vm.AttentionThreads[0]);
+                await HeadlessRender.SettleAsync(window);
+
+                Assert.Equal("SEEN", vm.AttentionThreads[0].StatusPillText);
+                var after = window.GetVisualDescendants().OfType<TextBlock>()
+                    .Select(t => t.Text ?? string.Empty).ToList();
+                Assert.Contains(after, s => s == "SEEN");   // the middle rung now renders
+
+                window.Close();
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            }
+        });
+    }
 }

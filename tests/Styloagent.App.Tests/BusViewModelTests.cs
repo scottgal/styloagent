@@ -172,6 +172,214 @@ public class BusViewModelTests : IDisposable
         Assert.Equal(opacity, t.RowOpacity);
     }
 
+    // ── 3-state upgrade: SEEN is the middle rung (operator viewed but not yet replied/archived) ──────
+
+    [Fact]
+    public void BusThreadItem_Attention_Seen_ShowsSeenPill_BetweenWaitingAndDone()
+    {
+        var t = new BusThreadItem { Section = BusThreadSection.Attention, IsSeen = true };
+        Assert.Equal("SEEN", t.StatusPillText);
+        Assert.True(t.HasStatusPill);
+        Assert.True(t.IsSeenState);
+        Assert.False(t.IsWaiting);   // no longer loud
+        Assert.False(t.IsDone);      // still needs a reply
+        // De-emphasized but NOT as faded as DONE — it still awaits a reply.
+        Assert.True(t.RowOpacity < 1.0 && t.RowOpacity > 0.5);
+    }
+
+    [Fact]
+    public void BusThreadItem_SeenPill_ColorsAreDistinctFromWaitingAndDone()
+    {
+        var waiting = new BusThreadItem { Section = BusThreadSection.Attention };
+        var seen    = new BusThreadItem { Section = BusThreadSection.Attention, IsSeen = true };
+        var done    = new BusThreadItem { Section = BusThreadSection.Archive };
+        Assert.NotEqual(waiting.StatusPillFgHex, seen.StatusPillFgHex);
+        Assert.NotEqual(done.StatusPillFgHex, seen.StatusPillFgHex);
+        Assert.StartsWith("#", seen.StatusPillBgHex);
+        Assert.StartsWith("#", seen.StatusPillFgHex);
+    }
+
+    [Fact]
+    public void BusThreadItem_OperatorArchived_IsDone_EvenIfStillInAttention()
+    {
+        // Operator explicitly dismissed an unreplied thread → DONE, regardless of content section.
+        var t = new BusThreadItem { Section = BusThreadSection.Attention, IsOperatorArchived = true };
+        Assert.True(t.IsDone);
+        Assert.Equal("DONE", t.StatusPillText);
+        Assert.Equal(0.5, t.RowOpacity);
+    }
+
+    [Fact]
+    public void BusThreadItem_SeenIsIgnored_OnceDone()
+    {
+        // A replied/archived thread is DONE; a stale seen flag must not downgrade it to SEEN.
+        var t = new BusThreadItem { Section = BusThreadSection.Archive, IsSeen = true };
+        Assert.True(t.IsDone);
+        Assert.Equal("DONE", t.StatusPillText);
+    }
+
+    [Fact]
+    public void BusThreadItem_PillProps_RaiseChange_WhenSeenFlips()
+    {
+        // Marking a live thread SEEN must update the pill in place (no reload) — so the derived
+        // pill props raise PropertyChanged when IsSeen flips.
+        var t = new BusThreadItem { Section = BusThreadSection.Attention };
+        var changed = new List<string>();
+        t.PropertyChanged += (_, e) => changed.Add(e.PropertyName ?? "");
+        t.IsSeen = true;
+        Assert.Contains(nameof(BusThreadItem.StatusPillText), changed);
+        Assert.Contains(nameof(BusThreadItem.RowOpacity), changed);
+    }
+
+    [Theory]
+    [InlineData("New", false, false, "WAITING")]
+    [InlineData("New", true,  false, "SEEN")]     // operator viewed the thread this message belongs to
+    [InlineData("New", false, true,  "DONE")]     // operator archived it
+    [InlineData("Replied", true, false, "DONE")]  // seen is irrelevant once handled
+    public void BusMessageItem_MapsState_Seen_Archived_ToPill(
+        string state, bool seen, bool archived, string pill)
+    {
+        var m = new BusMessageItem { State = state, IsSeen = seen, IsOperatorArchived = archived };
+        Assert.Equal(pill, m.StatusPillText);
+        Assert.StartsWith("#", m.StatusPillBgHex);
+        Assert.StartsWith("#", m.StatusPillFgHex);
+    }
+
+    // ── 3-state gestures: mark-seen on view, explicit archive, live re-seed on reload ────────────
+
+    /// <summary>A single unreplied inbound so the one thread lands in Attention/WAITING.</summary>
+    private static string AttentionRoot()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "busseen-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "inbox"));
+        Directory.CreateDirectory(Path.Combine(root, "outbox"));
+        File.WriteAllText(Path.Combine(root, "inbox", "alpha-open-question.md"),
+            "**From:** ops\n**Timestamp:** 2024-01-10T10:00:00Z\n\nQ?");
+        return root;
+    }
+
+    [Fact]
+    public async Task ToggleThread_Expanding_MarksThreadSeen_InPlaceAndInStore()
+    {
+        var root = AttentionRoot();
+        try
+        {
+            var store = new InMemoryBusViewState();
+            var vm = new BusViewModel(root, Prefixes3, new ChannelProjection(), store);
+            await vm.LoadAsync();
+            await WaitUntil(() => vm.AttentionThreads.Count > 0);
+
+            var thread = vm.AttentionThreads[0];
+            Assert.Equal("WAITING", thread.StatusPillText);      // starts loud
+
+            vm.ToggleThreadCommand.Execute(thread);              // operator opens it
+
+            Assert.True(thread.IsExpanded);
+            Assert.Equal("SEEN", thread.StatusPillText);         // in-place pill update
+            Assert.True(store.IsSeen(thread.Key, thread.LastActivity));   // persisted
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task OpenThread_MarksThreadSeen()
+    {
+        var root = AttentionRoot();
+        try
+        {
+            var store = new InMemoryBusViewState();
+            var vm = new BusViewModel(root, Prefixes3, new ChannelProjection(), store);
+            await vm.LoadAsync();
+            await WaitUntil(() => vm.AttentionThreads.Count > 0);
+
+            var thread = vm.AttentionThreads[0];
+            vm.OpenThreadCommand.Execute(thread);
+
+            Assert.Equal("SEEN", thread.StatusPillText);
+            Assert.True(store.IsSeen(thread.Key, thread.LastActivity));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task ArchiveThread_MarksDone_AndReSectionsIntoArchive_OnReload()
+    {
+        var root = AttentionRoot();
+        try
+        {
+            var store = new InMemoryBusViewState();
+            var vm = new BusViewModel(root, Prefixes3, new ChannelProjection(), store);
+            await vm.LoadAsync();
+            await WaitUntil(() => vm.AttentionThreads.Count > 0);
+
+            var thread = vm.AttentionThreads[0];
+            vm.ArchiveThreadCommand.Execute(thread);
+
+            Assert.True(thread.IsDone);                          // in-place → DONE immediately
+            Assert.Equal("DONE", thread.StatusPillText);
+            Assert.True(store.IsArchived(thread.Key));           // persisted
+
+            // A reload (FSW path) re-sections the operator-archived thread into the Archive drawer,
+            // even though its content is still an unreplied inbound (classifier says Attention).
+            await vm.LoadAsync();
+            await WaitUntil(() => vm.ArchivedThreads.Count > 0 && vm.AttentionThreads.Count == 0);
+            Assert.Contains(vm.ArchivedThreads, t => t.Subject.Contains("open"));
+            Assert.DoesNotContain(vm.AttentionThreads, t => t.Subject.Contains("open"));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task Reload_ReSeedsSeenFromStore_AndPreservesExpander()
+    {
+        var root = AttentionRoot();
+        try
+        {
+            var store = new InMemoryBusViewState();
+            var vm = new BusViewModel(root, Prefixes3, new ChannelProjection(), store);
+            await vm.LoadAsync();
+            await WaitUntil(() => vm.AttentionThreads.Count > 0);
+
+            var thread = vm.AttentionThreads[0];
+            vm.ToggleThreadCommand.Execute(thread);              // expand + mark seen
+            Assert.True(thread.IsExpanded);
+
+            // Simulate an FSW-driven reload — the rebuilt row must stay SEEN (from store) and expanded.
+            await vm.LoadAsync();
+            await WaitUntil(() => vm.AttentionThreads.Count > 0);
+            var rebuilt = vm.AttentionThreads[0];
+            Assert.Equal("SEEN", rebuilt.StatusPillText);
+            Assert.True(rebuilt.IsExpanded);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task NewActivity_AfterSeen_RevertsThreadToWaiting_OnReload()
+    {
+        var root = AttentionRoot();
+        try
+        {
+            var store = new InMemoryBusViewState();
+            var vm = new BusViewModel(root, Prefixes3, new ChannelProjection(), store);
+            await vm.LoadAsync();
+            await WaitUntil(() => vm.AttentionThreads.Count > 0);
+
+            var thread = vm.AttentionThreads[0];
+            vm.ToggleThreadCommand.Execute(thread);
+            Assert.Equal("SEEN", thread.StatusPillText);
+
+            // A fresh follow-up on the SAME thread (newer than the seen-watermark) re-demands attention.
+            File.WriteAllText(Path.Combine(root, "inbox", "alpha-follow-up-open-question.md"),
+                "**From:** ops\n**Timestamp:** 2024-01-10T12:00:00Z\n\nAny update?");
+            await vm.LoadAsync();
+            await WaitUntil(() => vm.AttentionThreads.Count > 0);
+            var rebuilt = vm.AttentionThreads.First(t => t.Key.Contains("open-question"));
+            Assert.Equal("WAITING", rebuilt.StatusPillText);     // un-seen by new activity
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
     [Fact]
     public async Task LoadAsync_BucketsThreads_IntoAttentionRecentArchive()
     {

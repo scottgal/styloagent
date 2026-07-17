@@ -23,3 +23,6 @@ publish/
 
 # Per-project runtime state the app scaffolds when a repo is opened (channel/router/issues/config)
 .styloagent/
+
+# Local multi-repo workspace config (machine-specific absolute repo paths)
+.styloagent-workspace/

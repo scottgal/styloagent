@@ -118,9 +118,24 @@ Slice 2 is the MVP that would have prevented today's collision.
   — pure, never-throws, most-specific-glob-wins, loads `.styloagent/ownership.yaml` via VYaml. 11 TDD tests
   green (`tests/Styloagent.Core.Tests/OwnershipMapTests.cs`), including the carve-out-beats-broad-owner
   headline case, backslash/`./` normalisation, and invalid-YAML→Empty (degrade-never-destroy). On main.
-- **Slice 2 (PreToolUse gate) — NEXT; session-'s domain** (Core/Hooks + spawn wiring). A PreToolUse hook on
-  `Edit`/`Write`/`NotebookEdit` that extracts the target path, calls `OwnershipMap.OwnerOf(path)`, and BLOCKS
-  a cross-owner write with the prod message — applying §4's escape hatches (overview- bypasses; unowned ⇒
-  allow; `obj/bin`, `tests/`, `docs/`, `.styloagent/`, gitignored exempt; fail-OPEN on hook error). The
-  resolver it depends on is now ready and tested. Hand to session- once it clears the terminal-render issue,
-  or assign fresh. Slice 2 is the MVP that would have prevented this session's collisions.
+- **Slice 2 (PreToolUse gate) — IN PROGRESS (session-).**
+  - **Decision core DONE** (`c4a986e`): `OwnershipGate.Decide(caller, tool, path) -> Allow | Deny+prod`
+    composes `OwnershipMap` with all §4 rules — writes-only (Edit/Write/NotebookEdit; Read/Grep/Glob/Bash
+    pass), overview- bypass, exemptions (tests/docs/.styloagent/obj/bin), unowned⇒allow, owner==caller⇒allow,
+    cross-owner⇒deny+prod, and FAIL-OPEN (never throws). 23 TDD tests; Core 300/300. Lives in Core/Hooks.
+  - **TRANSPORT CORRECTION (supersedes the §4.4 "local socket" assumption).** The running hook transport is
+    an *observational file-drop* (`<hooksDir>/<id>__<uuid>.json`, consumed async by `HookChannel` for status
+    badges) — it structurally CANNOT block. A PreToolUse gate must return the deny decision **synchronously**
+    on stdout before the tool runs, so it needs a NEW synchronous path (the observational drop stays for badges).
+  - **MECHANISM — GREENLIT: "gate-mode"** (overview-, 2026-07-17). The App exe short-circuits at
+    `Program.Main` (BEFORE Avalonia) when invoked as a hook: `OwnershipGateCli` parses the PreToolUse event
+    JSON, loads `<root>/.styloagent/ownership.yaml`, runs `OwnershipGate`, emits the standard PreToolUse deny
+    JSON for a cross-owner write (else nothing). Chosen over a cockpit round-trip because the safety gate must
+    NOT depend on cockpit liveness — a frozen/closed cockpit must never stall or disable edits (degrade-never-
+    destroy) — and gate-mode is faster (no Avalonia) with no new project. *Future (non-blocking): split a
+    trimmed gate CLI if per-edit spawn latency bites.*
+  - **DOGFOODING:** wiring the gate needs cockpit-'s files (`Program.cs` early-exit branch + threading the
+    repo root into the hook-settings call site in `MainWindowViewModel.cs`). session- correctly did NOT edit
+    them (the rule working before it's enforced) and routes the exact diff through overview-, who applies it
+    (coordination-root bypass). Remaining: `OwnershipGateCli` (session-, TDD, in progress) + the ~2-line App
+    diff (overview- lands it). Slice 2 is the MVP that would have prevented this session's collisions.

@@ -210,11 +210,46 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
         : StatusHeadline;
 
     /// <summary>
-    /// Called by the hosting view when the user interacts with this pane's terminal.
-    /// Wired by <see cref="MainWindowViewModel"/> to <c>InteractionMonitor.RecordInput</c>
-    /// so auto-reveal is suppressed while the human is actively typing.
+    /// The raw "human touched this terminal" callback the host wires to
+    /// <c>InteractionMonitor.RecordInput</c> so auto-reveal is suppressed while the human is actively
+    /// typing. Kept separate from <see cref="UserInteracted"/> so the pane can layer its own optimistic
+    /// badge-clear on top without every wiring site having to compose it.
     /// </summary>
-    public Action? UserInteracted { get; set; }
+    public Action? InteractionRecorder { get; set; }
+
+    private Action? _userInteracted;
+
+    /// <summary>
+    /// Called by the hosting view when the user interacts with this pane's terminal. Does two things in
+    /// order: (1) optimistically clears a stale ⚠ "needs you" badge — the operator answering in-terminal
+    /// IS the answer, so the roster flips to "working" the instant they type rather than lingering amber
+    /// until the next hook event lands; (2) forwards to <see cref="InteractionRecorder"/> for idle-gating.
+    /// A get-only cached delegate so the session-owned view can keep invoking it as an <see cref="Action"/>.
+    /// </summary>
+    public Action UserInteracted => _userInteracted ??= HandleUserInteraction;
+
+    private void HandleUserInteraction()
+    {
+        if (NoteTerminalInteraction()) Host?.RefreshAttention();
+        InteractionRecorder?.Invoke();
+    }
+
+    /// <summary>
+    /// Optimistically advances a <see cref="AgentHookState.WaitingForHuman"/> pane to
+    /// <see cref="AgentHookState.Working"/> when the operator interacts with its terminal (answering the
+    /// pending prompt), clearing the waiting metadata so the roster badge updates immediately instead of
+    /// waiting on the next Claude Code hook event — which can lag seconds behind a slow approved tool.
+    /// Real hook events then keep the state honest. Returns true when the state actually changed, so the
+    /// host can refresh the fleet attention HUD.
+    /// </summary>
+    public bool NoteTerminalInteraction()
+    {
+        if (HookState != AgentHookState.WaitingForHuman) return false;
+        HookState = AgentHookState.Working;
+        WaitingSince = null;
+        WaitingQuestion = "";
+        return true;
+    }
 
     /// <summary>
     /// The hosting <see cref="MainWindowViewModel"/>, so the per-agent management menu — rendered in a Flyout

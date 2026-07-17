@@ -769,7 +769,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             presentation.DisplayName,
             presentation.BorderColorHex)
         {
-            UserInteracted = vm._interaction.RecordInput,
+            InteractionRecorder = vm._interaction.RecordInput,
             Host = vm,
         };
         vm.Panes.Add(vm.Pane);
@@ -788,8 +788,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             (_, _) => vm.OnIdleTick());
         vm._idleTimer.Start();
 
-        // Assign UserInteracted on first pane after _interaction may have been replaced above.
-        vm.Pane.UserInteracted = vm._interaction.RecordInput;
+        // Assign the input recorder on the first pane after _interaction may have been replaced above.
+        vm.Pane.InteractionRecorder = vm._interaction.RecordInput;
 
         var dockFactory = new StyloagentDockFactory(vm.Pane, vm._busViewModel);
         vm._dockFactory = dockFactory;
@@ -885,7 +885,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             presentation.DisplayName,
             presentation.BorderColorHex)
         {
-            UserInteracted = _interaction.RecordInput,
+            InteractionRecorder = _interaction.RecordInput,
             Host = this,
             ParentPrefix = owner is not null && owner.Prefix != entry.Prefix ? owner.Prefix : null,
             Depth = owner is not null && owner.Prefix != entry.Prefix ? owner.Depth + 1 : 0,
@@ -946,7 +946,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         var paneVm = new AgentPaneViewModel(session, entry, overview.Prefix.TrimEnd('-'), overview.ColorHex)
         {
-            UserInteracted = _interaction.RecordInput,
+            InteractionRecorder = _interaction.RecordInput,
             Host = this,
         };
         Panes.Add(paneVm);
@@ -1610,7 +1610,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             ParentPrefix = parentPrefix,
             Depth = depth,
             Responsibility = p.Responsibility,
-            UserInteracted = _interaction.RecordInput,
+            InteractionRecorder = _interaction.RecordInput,
             Host = this,
         };
         paneVm.WorktreePath = worktreeOverride;

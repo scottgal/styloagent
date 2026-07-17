@@ -220,4 +220,48 @@ public class AgentPaneViewModelTests
         Assert.Equal("idle", vm.HookStateText);
         Assert.Equal("#111122", vm.RowHighlightHex);
     }
+
+    // ── Optimistic badge clear on in-terminal answer (roster-badge-slow-to-update fix) ──────────
+
+    [Fact]
+    public void NoteTerminalInteraction_WhileWaiting_FlipsBadgeToWorking_WithoutAHookEvent()
+    {
+        var vm = MakeVm();
+        // The agent is blocked on the human — amber ⚠ "needs you" badge.
+        vm.ApplyHookEvent(new HookEvent("foss", "Notification", "permission_prompt", "Allow?", null, null));
+        vm.WaitingSince = DateTimeOffset.UtcNow;
+        Assert.True(vm.NeedsYou);
+
+        var changed = new List<string>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName!);
+
+        // The operator answers in-terminal. That interaction IS the answer, so the badge must flip to
+        // "working" immediately — not linger amber until the next hook event lands.
+        bool flipped = vm.NoteTerminalInteraction();
+
+        Assert.True(flipped);
+        Assert.Equal(AgentHookState.Working, vm.HookState);
+        Assert.False(vm.NeedsYou);
+        Assert.Equal("●", vm.HookStateGlyph);
+        Assert.Equal("#57A64A", vm.HookStateColorHex);
+        Assert.Equal("", vm.WaitingQuestion);
+        Assert.Null(vm.WaitingSince);
+        // Roster badge reacts to PropertyChanged (no full reload).
+        Assert.Contains(nameof(vm.NeedsYou), changed);
+        Assert.Contains(nameof(vm.HookStateGlyph), changed);
+        Assert.Contains(nameof(vm.HookStateColorHex), changed);
+    }
+
+    [Fact]
+    public void NoteTerminalInteraction_WhenNotWaiting_IsNoOp()
+    {
+        var vm = MakeVm();
+        vm.ApplyHookEvent(new HookEvent("foss", "PreToolUse", null, null, null, null));
+        Assert.Equal(AgentHookState.Working, vm.HookState);
+
+        bool flipped = vm.NoteTerminalInteraction();
+
+        Assert.False(flipped);
+        Assert.Equal(AgentHookState.Working, vm.HookState);
+    }
 }

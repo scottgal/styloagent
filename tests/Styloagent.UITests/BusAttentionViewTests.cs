@@ -158,4 +158,85 @@ public class BusAttentionViewTests
             }
         });
     }
+
+    // The middle rung: an unreplied thread whose note a recipient has picked up (PickupProjection) shows a
+    // WORKING pill instead of WAITING — the "being worked on" signal.
+    [Fact]
+    public Task BusView_shows_a_working_pill_when_the_thread_is_picked_up()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var root = Path.Combine(Path.GetTempPath(), "busworking-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(root, "inbox"));
+            Directory.CreateDirectory(Path.Combine(root, "outbox"));
+            try
+            {
+                File.WriteAllText(Path.Combine(root, "inbox", "alpha-open-question.md"),
+                    "**From:** ops\n**Timestamp:** 2024-01-10T10:00:00Z\n\nQ?");   // unreplied inbound
+
+                // isPickedUp true → the recipient drained it → WORKING (not WAITING).
+                var vm = new BusViewModel(root, Prefixes, new ChannelProjection(), isPickedUp: (_, _) => true);
+                await vm.LoadAsync();
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+                var view = new BusView { DataContext = vm };
+                var window = new Window { Width = 320, Height = 480, Content = view };
+                window.Show();
+                await HeadlessRender.SettleAsync(window);
+
+                var texts = window.GetVisualDescendants().OfType<TextBlock>()
+                    .Select(t => t.Text ?? string.Empty).ToList();
+                Assert.Contains(texts, s => s == "WORKING");
+                Assert.DoesNotContain(texts, s => s == "WAITING");
+
+                window.Close();
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            }
+        });
+    }
+
+    // Archive (✕): dismissing a thread marks it DONE and drops it out of NEEDS ATTENTION into the Archive drawer.
+    [Fact]
+    public Task BusView_archiving_a_thread_marks_it_done_and_leaves_needs_attention()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var root = Path.Combine(Path.GetTempPath(), "busarchive-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(root, "inbox"));
+            Directory.CreateDirectory(Path.Combine(root, "outbox"));
+            try
+            {
+                File.WriteAllText(Path.Combine(root, "inbox", "alpha-open-question.md"),
+                    "**From:** ops\n**Timestamp:** 2024-01-10T10:00:00Z\n\nQ?");
+
+                var vm = new BusViewModel(root, Prefixes, new ChannelProjection());
+                await vm.LoadAsync();
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+                var view = new BusView { DataContext = vm };
+                var window = new Window { Width = 320, Height = 480, Content = view };
+                window.Show();
+                await HeadlessRender.SettleAsync(window);
+                Assert.Single(vm.AttentionThreads);
+
+                vm.ArchiveThreadCommand.Execute(vm.AttentionThreads[0]);   // operator dismisses it
+                Assert.Equal("DONE", vm.ArchivedThreads.Concat(vm.AttentionThreads)
+                    .First(t => t.Key.Contains("open-question")).StatusPillText);
+                await vm.LoadAsync();                                       // reload re-sections it
+                await HeadlessRender.SettleAsync(window);
+
+                Assert.Empty(vm.AttentionThreads);
+                Assert.Contains(vm.ArchivedThreads, t => t.Key.Contains("open-question"));
+
+                window.Close();
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            }
+        });
+    }
 }

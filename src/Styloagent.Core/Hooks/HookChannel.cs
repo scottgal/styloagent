@@ -35,8 +35,9 @@ public sealed class HookChannel : IAsyncDisposable
     /// hydration text on compact/resume (the compaction guard).
     /// </summary>
     public IReadOnlyList<string> SettingsArgsFor(string agentId, string? hydrationFile = null,
-        FleetPermissionMode permissionMode = FleetPermissionMode.Prompt)
-        => HookSettings.BuildSettingsArgs(agentId, _hooksDir, hydrationFile, permissionMode);
+        FleetPermissionMode permissionMode = FleetPermissionMode.Prompt,
+        string? gateInvocation = null, string? repoRoot = null)
+        => HookSettings.BuildSettingsArgs(agentId, _hooksDir, hydrationFile, permissionMode, gateInvocation, repoRoot);
 
     /// <summary>
     /// Writes <paramref name="hydrationText"/> as a JSON string to a stable per-agent file under the

@@ -13,6 +13,42 @@ namespace Styloagent.Core.Hooks;
 /// </summary>
 public static class OwnershipGateCli
 {
+    /// <summary>The first CLI arg that puts the app in headless gate-mode (short-circuits before Avalonia).</summary>
+    public const string GateModeFlag = "--owner-gate";
+
+    /// <summary>Whether <paramref name="args"/> requests gate-mode — call at the very top of Program.Main.</summary>
+    public static bool IsGateMode(string[]? args)
+        => args is { Length: > 0 } && args[0] == GateModeFlag;
+
+    /// <summary>
+    /// Headless gate-mode entry: parse <c>--caller</c>/<c>--root</c> from <paramref name="args"/>, read the
+    /// PreToolUse event from <paramref name="stdin"/>, and write the deny payload to <paramref name="stdout"/>
+    /// for a blocked cross-owner write (nothing = allow). Never-throws (fail-open ⇒ write nothing ⇒ allow).
+    /// </summary>
+    public static void RunGateMode(string[] args, TextReader stdin, TextWriter stdout)
+    {
+        try
+        {
+            string? caller = ArgValue(args, "--caller");
+            string? root = ArgValue(args, "--root");
+            string json = stdin.ReadToEnd();
+            string? deny = Evaluate(caller, root, json);
+            if (!string.IsNullOrEmpty(deny)) stdout.Write(deny);
+        }
+        catch
+        {
+            // fail-open: emit nothing ⇒ the tool proceeds.
+        }
+    }
+
+    /// <summary>Reads the value following <paramref name="name"/> in <paramref name="args"/> (or null).</summary>
+    private static string? ArgValue(string[] args, string name)
+    {
+        for (int i = 0; i < args.Length - 1; i++)
+            if (args[i] == name) return args[i + 1];
+        return null;
+    }
+
     /// <summary>
     /// Evaluate a PreToolUse <paramref name="eventJson"/> for <paramref name="caller"/> against
     /// <paramref name="gate"/>. Returns the deny-decision JSON to emit on stdout, or null to allow.

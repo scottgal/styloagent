@@ -84,12 +84,18 @@ public static class HookSettings
             : Array.Empty<string>();
 
     public static string BuildSettingsJson(string agentId, string hooksDir, string? hydrationFile = null,
-        FleetPermissionMode permissionMode = FleetPermissionMode.Prompt)
+        FleetPermissionMode permissionMode = FleetPermissionMode.Prompt,
+        string? gateInvocation = null, string? repoRoot = null)
     {
         string safeId = SanitizeAgentId(agentId);
         // Observe: write raw stdin JSON to a unique per-event file tagged with the agent id.
         // uuidgen ships with macOS and util-linux; the file is complete once the write exits.
         string observe = $"cat > \"{hooksDir}/{safeId}{Separator}$(uuidgen).json\"";
+
+        // When a gate invocation + repo root are supplied, the PreToolUse hook ALSO runs the ownership gate:
+        // it still drops the event (so status badges don't regress) AND pipes it to the app in headless
+        // gate-mode, whose stdout (a deny payload for a cross-owner write, or nothing) becomes the hook's.
+        bool gate = !string.IsNullOrWhiteSpace(gateInvocation) && !string.IsNullOrWhiteSpace(repoRoot);
 
         // hooks: { "<Event>": [ { "hooks": [ { "type":"command", "command":"..." } ] } ], ... }
         static List<Dictionary<string, object>> Entry(string command) => new()
@@ -107,9 +113,12 @@ public static class HookSettings
         var hooks = new Dictionary<string, object>();
         foreach (string ev in ObservedEvents)
         {
-            hooks[ev] = (ev == "SessionStart" && reHydrate)
-                ? Entry(SessionStartWithHydration(safeId, hooksDir, hydrationFile!))
-                : Entry(observe);
+            hooks[ev] = ev switch
+            {
+                "SessionStart" when reHydrate => Entry(SessionStartWithHydration(safeId, hooksDir, hydrationFile!)),
+                "PreToolUse" when gate        => Entry(PreToolUseGateCommand(safeId, hooksDir, gateInvocation!, agentId, repoRoot!)),
+                _                             => Entry(observe),
+            };
         }
 
         var settings = new Dictionary<string, object> { ["hooks"] = hooks };
@@ -145,8 +154,38 @@ public static class HookSettings
             $"\"$(cat \"{hydrationFile}\")\" ;; esac";
     }
 
+    /// <summary>
+    /// The PreToolUse hook command when ownership gating is on: read stdin ONCE, drop it for observation
+    /// (badges), then pipe the same bytes to the app in headless gate-mode — whose stdout (a PreToolUse deny
+    /// payload for a cross-owner write, or nothing) becomes the hook's stdout, so a blocked write is denied
+    /// synchronously. <paramref name="caller"/> is the agent's own prefix (matched against ownership.yaml).
+    /// </summary>
+    private static string PreToolUseGateCommand(
+        string safeId, string hooksDir, string gateInvocation, string caller, string repoRoot)
+    {
+        string drop = $"{hooksDir}/{safeId}{Separator}$(uuidgen).json";
+        return $"d=$(cat); printf '%s' \"$d\" > \"{drop}\"; " +
+               $"printf '%s' \"$d\" | {gateInvocation} {OwnershipGateCli.GateModeFlag} " +
+               $"--caller \"{caller}\" --root \"{repoRoot}\"";
+    }
+
+    /// <summary>
+    /// Best-effort command that re-invokes THIS app in headless gate-mode. <see cref="Environment.ProcessPath"/>
+    /// is the running host: for a framework-dependent launch (<c>dotnet Styloagent.App.dll</c>) it's the
+    /// <c>dotnet</c> muxer, so the app dll must be appended; for a native apphost it runs the app directly.
+    /// </summary>
+    public static string DefaultGateInvocation()
+    {
+        string host = Environment.ProcessPath ?? "dotnet";
+        bool isMuxer = string.Equals(Path.GetFileNameWithoutExtension(host), "dotnet", StringComparison.OrdinalIgnoreCase);
+        if (!isMuxer) return $"\"{host}\"";
+        string appDll = Path.Combine(AppContext.BaseDirectory, "Styloagent.App.dll");
+        return $"\"{host}\" \"{appDll}\"";
+    }
+
     /// <summary>The CLI args (<c>--settings &lt;json&gt;</c>) to append to a <c>claude</c> launch.</summary>
     public static IReadOnlyList<string> BuildSettingsArgs(string agentId, string hooksDir, string? hydrationFile = null,
-        FleetPermissionMode permissionMode = FleetPermissionMode.Prompt)
-        => new[] { "--settings", BuildSettingsJson(agentId, hooksDir, hydrationFile, permissionMode) };
+        FleetPermissionMode permissionMode = FleetPermissionMode.Prompt,
+        string? gateInvocation = null, string? repoRoot = null)
+        => new[] { "--settings", BuildSettingsJson(agentId, hooksDir, hydrationFile, permissionMode, gateInvocation, repoRoot) };
 }

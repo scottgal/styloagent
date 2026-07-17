@@ -1024,11 +1024,29 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _repoCoordinator ??= new RepoInstanceCoordinator(
             RepoFolderPicker,
             (path, ct) => _git.ResolveRepoRootAsync(path, ct),
-            new StubRepoInstanceOpener(root =>
-                Timeline.Add(DateTimeOffset.Now, "workspace",
-                    $"opening {RepoName(root)} — federation seam pending", "#8899BB")));
+            new CockpitRepoInstanceOpener(new Styloagent.Core.Channel.RepoChannelResolver(), SurfaceRepoBus));
 
         LogRepoInstanceResult(await _repoCoordinator.OpenAsync());
+    }
+
+    /// <summary>
+    /// Surface a federated repo instance's own bus feed as a document tab (interim slice: SEE the instance).
+    /// A fresh <see cref="BusViewModel"/> watches the repo's OWN channel; driving it (per-repo delivery
+    /// coordinator via <c>RepoInstanceFactory</c> + cross-repo messaging) is the next slice, same repoRoot key.
+    /// </summary>
+    private void SurfaceRepoBus(Styloagent.Core.Channel.RepoChannel channel)
+    {
+        if (_dockFactory?.DocumentDock is not { } dock)
+            return;
+
+        var bus = new BusViewModel(channel.ChannelRoot, channel.Prefixes)
+        {
+            OpenDocument = OpenBusMessageDocument,
+            ThreadOpener = OpenBusThreadDocument,
+        };
+        var doc = new RepoBusDocumentViewModel(channel.RepoRoot, channel.Name, bus);
+        _dockFactory.AddDockable(dock, doc);
+        Timeline.Add(DateTimeOffset.Now, "workspace", $"opened {channel.Name} · bus", "#8899BB");
     }
 
     /// <summary>Surface the gesture's outcome on the activity timeline (rejects + errors; silent on cancel).</summary>

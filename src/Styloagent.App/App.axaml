@@ -47,6 +47,10 @@
     <DataTemplate DataType="vm:BusThreadDocumentViewModel">
       <views:BusThreadDocumentView />
     </DataTemplate>
+    <!-- A federated repo instance's bus feed hosted as a document tab (its Bus renders as a BusView). -->
+    <DataTemplate DataType="vm:RepoBusDocumentViewModel">
+      <views:BusView DataContext="{Binding Bus}" />
+    </DataTemplate>
     <DataTemplate DataType="vm:SourceDocumentViewModel">
       <views:SourceDocumentView />
     </DataTemplate>

@@ -203,9 +203,28 @@
             </StackPanel>
           </Expander>
 
-          <!-- Live roster -->
-          <ItemsControl ItemsSource="{Binding Panes}"
-                        ItemTemplate="{StaticResource AgentRowTemplate}" />
+          <!-- Live roster, grouped by repo so each repo's fleet roots at ITS OWN overview (BUG 3). The
+               repo header shows only in a multi-repo workspace; a single repo renders as one header-less
+               group — visually identical to the old flat list. -->
+          <ItemsControl ItemsSource="{Binding RosterGroups}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="vm:RosterRepoGroup">
+                <StackPanel>
+                  <Border IsVisible="{Binding ShowHeader}"
+                          Background="{DynamicResource PanelHeaderBgBrush}"
+                          Padding="8,3" Margin="0,4,0,1" CornerRadius="2">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                      <Ellipse Width="7" Height="7" Fill="{Binding ColorHex}" VerticalAlignment="Center" />
+                      <TextBlock Text="{Binding RepoName}" FontSize="10" FontWeight="SemiBold"
+                                 Foreground="{Binding ColorHex}" LetterSpacing="1" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Border>
+                  <ItemsControl ItemsSource="{Binding Agents}"
+                                ItemTemplate="{StaticResource AgentRowTemplate}" />
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
 
         </StackPanel>
       </ScrollViewer>

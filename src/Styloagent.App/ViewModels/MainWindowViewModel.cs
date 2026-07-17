@@ -38,6 +38,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>All open agent panes — bound by the shell's tab strip.</summary>
     public System.Collections.ObjectModel.ObservableCollection<AgentPaneViewModel> Panes { get; } = new();
 
+    /// <summary>The roster grouped by repo (BUG 3): each repo's agents nest under THEIR OWN overview,
+    /// with a repo header shown in multi-repo workspaces. Rebuilt from <see cref="Panes"/> + the known
+    /// repos on every roster/repo change. Single-repo workspaces render as one header-less group.</summary>
+    public System.Collections.ObjectModel.ObservableCollection<RosterRepoGroup> RosterGroups { get; } = new();
+
     /// <summary>Panes currently waiting for human attention, oldest-first.</summary>
     public System.Collections.ObjectModel.ObservableCollection<AgentPaneViewModel> AttentionQueue { get; } = new();
 
@@ -625,6 +630,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(FleetCount));
             OnPropertyChanged(nameof(FleetHudText));
             ArmDiagramDebounce();
+            RebuildRoster();   // keep the repo-grouped roster in sync as agents come and go (BUG 3)
 
             // Track each pane's lifecycle so dehydrate/rehydrate land on the activity timeline.
             if (e.NewItems is not null)
@@ -634,6 +640,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                     p.PropertyChanged += OnPaneLifecycleChanged;
                 }
         };
+    }
+
+    /// <summary>Rebuild <see cref="RosterGroups"/> from the current panes + known repos so each repo's
+    /// fleet roots at its own overview with repo attribution (BUG 3). Runs on the UI thread (panes and
+    /// the repo set only change there).</summary>
+    private void RebuildRoster()
+    {
+        var groups = RosterGrouping.Build(Panes.ToList(), _repos, p => RepoNameForPrefix(p.Prefix));
+        RosterGroups.Clear();
+        foreach (var g in groups) RosterGroups.Add(g);
     }
 
     private readonly Dictionary<AgentPaneViewModel, SessionState> _paneState = new();
@@ -1166,6 +1182,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             RepoIndex: _repoInstances.Count + 1,
             ColorHex: PresentationStore.DefaultColorFor(prefix),
             IsPrimary: false);
+        // Register the repo BEFORE adding its overview pane so RepoNameForPrefix + the repo-grouped roster
+        // attribute this instance's agents to IT (not the primary) the moment they appear (BUG 3).
+        AddWorkspaceRepo(overview);
         AddRepoOverview(overview, hooks, inst.Channel.ChannelRoot, channel.RepoRoot,
             Path.Combine(inst.Channel.ChannelRoot, "PROTOCOL.md"), channel.RepoRoot);
 
@@ -1856,14 +1875,30 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// repo-grouped UI can enumerate them. A single repo becomes a one-entry list. Set once at startup.
     /// </summary>
     public void SetReposFromOverviews(IReadOnlyList<Styloagent.Core.Workspace.RepoOverview> overviews)
-        => _repos = overviews.Select(o => new RepoInfo(
-                Name: Path.GetFileName(o.RepoRoot.TrimEnd('/', '\\')),
-                Path: o.RepoRoot,
-                Index: o.RepoIndex,
-                Prefix: o.Prefix,
-                ColorHex: o.ColorHex,
-                Primary: o.IsPrimary))
-            .ToList();
+    {
+        _repos = overviews.Select(RepoInfoFor).ToList();
+        RebuildRoster();   // repo set changed → re-attribute + regroup the roster (BUG 3)
+    }
+
+    /// <summary>
+    /// Register a repo opened LIVE (the federated open-repo gesture) so <see cref="RepoNameForPrefix"/> and
+    /// the repo-grouped roster recognise its agents — otherwise the live-opened repo's fleet mis-attributes
+    /// to the primary repo and its children nest under the wrong overview (BUG 3). Idempotent by prefix.
+    /// </summary>
+    public void AddWorkspaceRepo(Styloagent.Core.Workspace.RepoOverview overview)
+    {
+        if (_repos.Any(r => r.Prefix == overview.Prefix)) return;
+        _repos = _repos.Append(RepoInfoFor(overview)).ToList();
+        RebuildRoster();
+    }
+
+    private static RepoInfo RepoInfoFor(Styloagent.Core.Workspace.RepoOverview o) => new(
+        Name: Path.GetFileName(o.RepoRoot.TrimEnd('/', '\\')),
+        Path: o.RepoRoot,
+        Index: o.RepoIndex,
+        Prefix: o.Prefix,
+        ColorHex: o.ColorHex,
+        Primary: o.IsPrimary);
 
     /// <summary>The repos in the open workspace, for the <c>list_repos</c> MCP tool.</summary>
     public IReadOnlyList<RepoInfo> BuildRepoList() => _repos;

@@ -352,4 +352,60 @@ public class FleetToolsTests
         Assert.Contains("unauthorized", tools.check_inbox());
         Assert.True(inbox.HasPending("foss-"));   // an unauthorized call must not drain the inbox
     }
+
+    // ---- ask_operator (structured question to the human) ----------------------
+
+    private static readonly string[] ShipOptions = { "Ship it", "Hold" };
+    private static readonly string[] OptionsWithBlanks = { "Yes", "  ", "", "No" };
+    private static readonly string[] YesNo = { "Yes", "No" };
+
+    private static (FleetTools Tools, Styloagent.Core.Attention.OperatorQuestionHub Hub) ToolsWithHub(string? agent, string auth)
+    {
+        var hub = new Styloagent.Core.Attention.OperatorQuestionHub(
+            new Styloagent.Core.Attention.OperatorQuestionStore(), (_, _, _) => Task.CompletedTask);
+        var tools = new FleetTools(AccessorWith(agent, auth), new FakeController(), new McpAuth("secret"), null, hub);
+        return (tools, hub);
+    }
+
+    [Fact]
+    public void ask_operator_posts_the_callers_question_with_its_options()
+    {
+        var (tools, hub) = ToolsWithHub("foss-", "Bearer secret");
+
+        var result = tools.ask_operator("Merge or rebase?", ShipOptions);
+
+        Assert.Contains("operator", result);
+        var pending = Assert.Single(hub.Pending);
+        Assert.Equal("foss-", pending.AskingPrefix);            // keyed by the asking agent
+        Assert.Equal("Merge or rebase?", pending.Question);
+        Assert.Equal(ShipOptions, pending.Options);
+    }
+
+    [Fact]
+    public void ask_operator_drops_blank_options()
+    {
+        var (tools, hub) = ToolsWithHub("foss-", "Bearer secret");
+
+        tools.ask_operator("Proceed?", OptionsWithBlanks);
+
+        Assert.Equal(YesNo, hub.Pending[0].Options);
+    }
+
+    [Fact]
+    public void ask_operator_rejects_an_empty_question()
+    {
+        var (tools, hub) = ToolsWithHub("foss-", "Bearer secret");
+
+        Assert.Contains("rejected", tools.ask_operator("   ", ShipOptions));
+        Assert.Empty(hub.Pending);                              // nothing raised
+    }
+
+    [Fact]
+    public void ask_operator_refuses_a_bad_token()
+    {
+        var (tools, hub) = ToolsWithHub("foss-", "Bearer WRONG");
+
+        Assert.Contains("unauthorized", tools.ask_operator("Merge or rebase?", ShipOptions));
+        Assert.Empty(hub.Pending);                              // never reached the store
+    }
 }

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Styloagent.Core.Attention;
 using Styloagent.Core.Channel;
 using Styloagent.Core.Mcp;
 
@@ -33,8 +34,15 @@ public sealed class StyloagentMcpServer : IAsyncDisposable
     /// same <see cref="PendingInbox"/> the delivery service writes to, so both must be rooted here. When
     /// null (not yet wired), <c>check_inbox</c> reads a throwaway store and simply reports an empty inbox.
     /// </param>
+    /// <param name="operatorQuestions">
+    /// The shared operator-question store behind the <c>ask_operator</c> verb and the cockpit's question top
+    /// bar. Supplied by the cockpit VM so the verb posts into the SAME instance the top bar renders/answers.
+    /// When null (not yet wired), <c>ask_operator</c> posts into a throwaway store nobody surfaces — the verb
+    /// still succeeds, it just isn't shown (graceful degrade, like the delivery inbox fallback).
+    /// </param>
     public static async Task<StyloagentMcpServer> StartAsync(
-        IFleetController controller, IRouterController router, string? hooksDir = null)
+        IFleetController controller, IRouterController router, string? hooksDir = null,
+        OperatorQuestionHub? operatorQuestions = null)
     {
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
 
@@ -47,6 +55,8 @@ public sealed class StyloagentMcpServer : IAsyncDisposable
         builder.Services.AddSingleton(new McpAuth(token));
         builder.Services.AddSingleton(new PendingInbox(
             hooksDir ?? Path.Combine(Path.GetTempPath(), "styloagent-pending", Guid.NewGuid().ToString("N"))));
+        builder.Services.AddSingleton(operatorQuestions
+            ?? new OperatorQuestionHub(new OperatorQuestionStore(), (_, _, _) => Task.CompletedTask));
         builder.Services.AddMcpServer()
             .WithHttpTransport(o => o.Stateless = true)
             .WithTools<FleetTools>()

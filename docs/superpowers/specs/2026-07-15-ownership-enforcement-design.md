@@ -146,5 +146,10 @@ Slice 2 is the MVP that would have prevented today's collision.
     Core 322/322. **ACTIVE for agents spawned from now on** (the hook is injected at spawn — agents already
     live this session are not retro-gated). Remaining: live-agent confirmation (session-, after rehydrate) —
     a freshly spawned gated agent actually blocked in its PTY — then close `enforce-ownership-boundaries`.
-    Deferred: Slice 3 (leases + `request_lease`/`grant_lease`), Slice 4 (cockpit UI, `Bash`-mutation gating);
-    documented residuals from session-'s security pass (`b17cad7`): case-insensitive-FS + symlink traversal.
+    Security-hardened by two commit-reviews (re-smoked by overview- on current main, App builds clean):
+    `b17cad7` closes 3 authorization bypasses — `../` path traversal into another owner + traversal via an
+    exempt segment (fixed by canonicalising `..`/`.` before resolution), and `MultiEdit` not gated (added to
+    the write-tool set); `f507667` POSIX-single-quotes the hook command interpolations (command-injection +
+    correctness for paths with spaces/quotes). Deferred: Slice 3 (leases + `request_lease`/`grant_lease`),
+    Slice 4 (cockpit UI, `Bash`-mutation gating); remaining residuals (need FS/case awareness beyond the pure
+    resolver, deferred): case-insensitive-FS evasion + symlink traversal.

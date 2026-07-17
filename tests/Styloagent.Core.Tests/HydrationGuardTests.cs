@@ -70,6 +70,20 @@ public class HydrationGuardTests
         Assert.DoesNotContain("additionalContext", sessionStartCmd);
     }
 
+    [Fact]
+    public void PreCompact_is_observed_so_a_pre_compaction_snapshot_can_fire()
+    {
+        // The pre-save half of compaction resilience: PreCompact must be a watched event so its drop-file
+        // fires the fallback checkpoint right before the hard compaction (in case the 0.80 nudge was missed).
+        var json = HookSettings.BuildSettingsJson("foss-", "/tmp/hooks");
+        using var doc = JsonDocument.Parse(json);
+        var preCompactCmd = HookCommand(doc, "PreCompact");
+
+        // Observed (dropped) like the other non-special events, tagged with the agent id.
+        Assert.StartsWith("cat > ", preCompactCmd);
+        Assert.Contains("/tmp/hooks/foss", preCompactCmd);
+    }
+
     private static string HookCommand(JsonDocument doc, string ev)
         => doc.RootElement.GetProperty("hooks").GetProperty(ev)[0]
               .GetProperty("hooks")[0].GetProperty("command").GetString()!;

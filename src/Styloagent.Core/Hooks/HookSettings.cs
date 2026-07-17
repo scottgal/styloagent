@@ -28,7 +28,9 @@ public static class HookSettings
 
     /// <summary>
     /// The hook events we observe. Deliberately limited to the well-documented core events so an
-    /// unknown key can never make <c>claude</c> fail to launch.
+    /// unknown key can never make <c>claude</c> fail to launch. <c>PreCompact</c> fires right before a
+    /// context compaction — its drop-file is the fallback trigger for a pre-compaction state snapshot,
+    /// the safety net if the 0.80-fill checkpoint nudge was missed (compaction-resilience pre-save).
     /// </summary>
     private static readonly string[] ObservedEvents =
     {
@@ -38,6 +40,7 @@ public static class HookSettings
         "PreToolUse",
         "PostToolUse",
         "Notification",
+        "PreCompact",
         "Stop",
     };
 

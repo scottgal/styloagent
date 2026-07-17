@@ -1045,6 +1045,153 @@ public class TerminalControlTests
         });
     }
 
+    // ── Follow-tail on relayout (window resize + zoom) ───────────────────────
+    // Regression for the operator-reported P1: "when we resize the window it doesn't jump to the bottom
+    // (needed for agents)" and "Same with zoom, it needs to stick to the bottom for agents." A relayout
+    // (window resize OR a zoom/font-size change) re-lays-out the viewport but PRESERVES the old scroll
+    // offset — so a view that was pinned to the tail loses the agent's newest lines. If we were following
+    // the tail, the relayout must re-pin to the bottom. If the operator had scrolled up, it must NOT.
+
+    /// <summary>
+    /// While following the tail, a WINDOW RESIZE must re-pin the viewport to the bottom so the agent's latest
+    /// output stays visible. Fill the transcript past the viewport (auto-followed to the bottom), then shrink
+    /// the window: the relayout grows the max scroll offset, and preserving the stale offset would strand the
+    /// view above the tail. After the resize the offset must sit back at the bottom.
+    /// </summary>
+    [Fact]
+    public Task WindowResize_WhileFollowingTail_RePinsToBottom()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);
+            var window = new Window { Content = control, Width = 800, Height = 400, Name = "ResizeFollowWindow" };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Normal);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            // A transcript far taller than the viewport, ending at the tail (auto-followed to the bottom).
+            for (int i = 1; i <= 80; i++)
+                fake.FireOutput($"L{i:D2}\r\n");
+            fake.FireOutput("PROMPT>");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            var sv = control.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Name == "ScrollArea");
+            double maxBefore = sv.Extent.Height - sv.Viewport.Height;
+            Assert.True(sv.Offset.Y >= maxBefore - 2.0, $"precondition: should start at the tail; offset {sv.Offset.Y}, max {maxBefore}");
+
+            // Resize the window SHORTER — the viewport shrinks, the max scroll offset grows, and the preserved
+            // stale offset now sits well above the new bottom (the exact "lost the tail on resize" scenario).
+            window.Height = 180;
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            double maxAfter = sv.Extent.Height - sv.Viewport.Height;
+            Assert.True(maxAfter > 0, $"the shorter window must still overflow so there is a tail to re-pin to; max {maxAfter}");
+            Assert.True(sv.Offset.Y >= maxAfter - 2.0,
+                $"a resize while following must re-pin to the tail; offset {sv.Offset.Y}, max {maxAfter}");
+
+            window.Close();
+        });
+    }
+
+    /// <summary>
+    /// While following the tail, a ZOOM / font-size change must re-pin the viewport to the bottom. Zooming
+    /// re-measures the cell and refits the grid — a relayout that (like a resize) preserves the stale offset
+    /// and would strand the view above the tail. After the zoom the offset must sit back at the bottom.
+    /// </summary>
+    [Fact]
+    public Task ZoomChange_WhileFollowingTail_RePinsToBottom()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);
+            var window = new Window { Content = control, Width = 800, Height = 400, Name = "ZoomFollowWindow" };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Normal);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            for (int i = 1; i <= 80; i++)
+                fake.FireOutput($"L{i:D2}\r\n");
+            fake.FireOutput("PROMPT>");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            var sv = control.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Name == "ScrollArea");
+            double maxBefore = sv.Extent.Height - sv.Viewport.Height;
+            Assert.True(sv.Offset.Y >= maxBefore - 2.0, $"precondition: should start at the tail; offset {sv.Offset.Y}, max {maxBefore}");
+
+            // Zoom IN — bigger cell, taller rows: the transcript's pixel extent grows and the stale offset no
+            // longer sits at the bottom. A view that was following the tail must re-pin.
+            control.ZoomLevel = 2.0;
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            double maxAfter = sv.Extent.Height - sv.Viewport.Height;
+            Assert.True(maxAfter > 0, $"the zoomed transcript must still overflow so there is a tail to re-pin to; max {maxAfter}");
+            Assert.True(sv.Offset.Y >= maxAfter - 2.0,
+                $"a zoom while following must re-pin to the tail; offset {sv.Offset.Y}, max {maxAfter}");
+
+            window.Close();
+        });
+    }
+
+    /// <summary>
+    /// Guardrail: if the operator has deliberately scrolled UP to review scrollback, a window resize must NOT
+    /// yank the view to the bottom. Scroll to the top, resize, and assert the view stays near the top — the
+    /// re-pin fires ONLY when the view was already following the tail.
+    /// </summary>
+    [Fact]
+    public Task WindowResize_WhileScrolledUp_DoesNotYankToBottom()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);
+            var window = new Window { Content = control, Width = 800, Height = 400, Name = "ResizeScrolledUpWindow" };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Normal);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            for (int i = 1; i <= 80; i++)
+                fake.FireOutput($"L{i:D2}\r\n");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            var sv = control.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Name == "ScrollArea");
+
+            // Operator scrolls all the way UP to review the earliest output (leaves the tail).
+            control.HandleWheelScroll(1000);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+            Assert.True(sv.Offset.Y < sv.Viewport.Height,
+                $"precondition: should be scrolled up near the top; offset {sv.Offset.Y}, viewport {sv.Viewport.Height}");
+
+            // Resize — a deliberately scrolled-up view must be left where it is, not yanked to the tail.
+            window.Height = 180;
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            double maxAfter = sv.Extent.Height - sv.Viewport.Height;
+            Assert.True(maxAfter > sv.Viewport.Height,
+                $"the transcript must still overflow by more than a viewport so top and tail are far apart; max {maxAfter}");
+            Assert.True(sv.Offset.Y < sv.Viewport.Height,
+                $"a resize while scrolled up must NOT yank to the tail; offset {sv.Offset.Y}, max {maxAfter}");
+
+            window.Close();
+        });
+    }
+
     /// <summary>
     /// <see cref="TerminalControl.ZoomLevel"/> is clamped to [<see cref="TerminalControl.MinZoom"/>,
     /// <see cref="TerminalControl.MaxZoom"/>] via property coercion — the contract a bound cockpit slider

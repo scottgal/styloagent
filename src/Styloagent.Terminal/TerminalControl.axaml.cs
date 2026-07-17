@@ -640,12 +640,25 @@ public sealed partial class TerminalControl : UserControl
         // banner isn't drawn wide then reflowed narrow.
         Styloagent.Core.Sessions.AgentSession.SetInitialGrid(cols, rows);
 
+        // Capture whether the view was following the tail BEFORE the relayout. A window resize or a zoom (which
+        // routes here via ApplyFontMetrics) changes the ScrollViewer's extent/viewport but PRESERVES the old
+        // scroll offset — so a view that was pinned to the bottom loses the agent's newest lines. Worse, the
+        // extent/viewport change fires OnScrollChanged, which recomputes _followTail from the now-stale offset
+        // and clears it; so we must decide off the PRE-relayout follow state, not the post-relayout one.
+        bool wasFollowing = _followTail;
+
         if (cols != _terminal.Cols || rows != _terminal.Rows)
         {
             _terminal.Resize(cols, rows);
             _session?.Resize(cols, rows);
             RebuildRows();
         }
+
+        // Re-pin to the tail AFTER layout absorbs the new extent/viewport (Loaded runs post-layout, same as the
+        // coalesced-rebuild tail-follow), so a resize/zoom that was following keeps the live prompt in view.
+        // Only when we were already at the bottom — a deliberately scrolled-up operator is left untouched.
+        if (wasFollowing)
+            Dispatcher.UIThread.Post(ScrollToTail, DispatcherPriority.Loaded);
     }
 
     // ── Buffer render ────────────────────────────────────────────────────────

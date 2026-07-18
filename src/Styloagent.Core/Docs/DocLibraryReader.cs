@@ -1,6 +1,22 @@
 namespace Styloagent.Core.Docs;
 
 /// <summary>
+/// One immediate child of a directory listed by <see cref="DocLibraryReader.ListChildren"/>: a subfolder
+/// or a <c>*.md</c> file, distinguished by <see cref="IsDirectory"/>. Carries the cheap-to-obtain name and
+/// last-write time so the tree can sort by name or modified date without a second I/O pass.
+/// </summary>
+public sealed record DocDirectoryEntry(string Name, string FullPath, bool IsDirectory, DateTime LastWriteUtc);
+
+/// <summary>Order for <see cref="DocLibraryReader.ListChildren"/> — folders always group before files.</summary>
+public enum DocSortOrder
+{
+    NameAsc,
+    NameDesc,
+    ModifiedNewest,
+    ModifiedOldest,
+}
+
+/// <summary>
 /// Enumerates markdown documents from a repo/worktree root and a channel root into <see cref="DocEntry"/>s.
 /// Tolerant by design: unreadable directories are skipped and it never throws — a missing or bad path
 /// simply yields fewer entries.
@@ -40,6 +56,75 @@ public static class DocLibraryReader
             .OrderBy(e => e.Source)
             .ThenBy(e => e.RelativePath, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    /// <summary>
+    /// Lists the immediate children of <paramref name="directoryPath"/> — its subfolders (excluding
+    /// build/VCS dirs) and its <c>*.md</c> files, one level only, no recursive walk. Backs the
+    /// collapsed-by-default doc tree: each folder's contents load on expand instead of up front, so the
+    /// 200+ channel messages and agent logs cost nothing until opened. Tolerant like <see cref="Read"/>:
+    /// a null/missing/unreadable path yields an empty list and never throws. Folders always precede files;
+    /// within each group the order follows <paramref name="order"/>.
+    /// </summary>
+    public static IReadOnlyList<DocDirectoryEntry> ListChildren(
+        string? directoryPath, DocSortOrder order = DocSortOrder.NameAsc)
+    {
+        if (string.IsNullOrWhiteSpace(directoryPath)) return Array.Empty<DocDirectoryEntry>();
+
+        DirectoryInfo dir;
+        try
+        {
+            dir = new DirectoryInfo(directoryPath);
+            if (!dir.Exists) return Array.Empty<DocDirectoryEntry>();
+        }
+        catch { return Array.Empty<DocDirectoryEntry>(); }
+
+        var children = new List<DocDirectoryEntry>();
+
+        // Immediate subfolders, minus build/VCS dirs. DirectoryInfo carries the write time from the
+        // enumeration, so sorting by modified date needs no extra stat call.
+        try
+        {
+            foreach (var sub in dir.EnumerateDirectories())
+            {
+                if (ExcludedDirs.Contains(sub.Name)) continue;
+                children.Add(new DocDirectoryEntry(sub.Name, sub.FullName, IsDirectory: true, SafeWriteUtc(sub)));
+            }
+        }
+        catch { /* unreadable dir — yield what we have, never throw */ }
+
+        // Immediate *.md files only (parity with the recursive Read).
+        try
+        {
+            foreach (var file in dir.EnumerateFiles("*.md"))
+                children.Add(new DocDirectoryEntry(file.Name, file.FullName, IsDirectory: false, SafeWriteUtc(file)));
+        }
+        catch { /* unreadable dir — yield what we have, never throw */ }
+
+        return SortChildren(children, order);
+    }
+
+    /// <summary>Folders first, then the chosen key within each group; a name tiebreak keeps it deterministic.</summary>
+    private static IReadOnlyList<DocDirectoryEntry> SortChildren(List<DocDirectoryEntry> children, DocSortOrder order)
+    {
+        var foldersFirst = children.OrderByDescending(e => e.IsDirectory);
+        return order switch
+        {
+            DocSortOrder.NameDesc => foldersFirst
+                .ThenByDescending(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList(),
+            DocSortOrder.ModifiedNewest => foldersFirst
+                .ThenByDescending(e => e.LastWriteUtc).ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList(),
+            DocSortOrder.ModifiedOldest => foldersFirst
+                .ThenBy(e => e.LastWriteUtc).ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList(),
+            _ => foldersFirst
+                .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList(),
+        };
+    }
+
+    private static DateTime SafeWriteUtc(FileSystemInfo info)
+    {
+        try { return info.LastWriteTimeUtc; }
+        catch { return DateTime.MinValue; }
     }
 
     /// <summary>

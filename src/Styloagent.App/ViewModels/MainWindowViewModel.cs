@@ -1230,6 +1230,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void AttachProject(ProjectConfig project)
     {
         _project = project;
+        RaiseTitleChanged();   // project root known → title can show its name even before repos are set
 
         // Drive the per-agent log writer off the same hook Stop stream that feeds the badges. Wired here
         // (not at HookChannel creation) because project.Root — which locates the sidecar logs dir the
@@ -1870,6 +1871,34 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // ── Workspace repos (multi-repo) ─────────────────────────────────────────
     private IReadOnlyList<RepoInfo> _repos = Array.Empty<RepoInfo>();
 
+    /// <summary>The current project's display name — the primary (anchor) repo's name, else the first known
+    /// repo, else the project/repo root's folder name. Shown in the title so the operator (and multiple
+    /// open cockpits) can tell which project this is. Empty only before any project/repo is known.</summary>
+    public string ProjectName
+    {
+        get
+        {
+            var name = _repos.FirstOrDefault(r => r.Primary)?.Name ?? (_repos.Count > 0 ? _repos[0].Name : null);
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                var root = _project?.Root ?? _repoRoot;
+                name = string.IsNullOrWhiteSpace(root) ? "" : RepoName(root);
+            }
+            return name ?? "";
+        }
+    }
+
+    /// <summary>The OS window title: the project name first (so cockpit windows are distinguishable in the
+    /// title bar / dock / window switcher), then the product name. Falls back to the product name alone.</summary>
+    public string WindowTitle
+        => string.IsNullOrWhiteSpace(ProjectName) ? "Styloagent Cockpit" : $"{ProjectName} — Styloagent Cockpit";
+
+    private void RaiseTitleChanged()
+    {
+        OnPropertyChanged(nameof(ProjectName));
+        OnPropertyChanged(nameof(WindowTitle));
+    }
+
     /// <summary>
     /// Records the open workspace's repos (from its overview list) so the <c>list_repos</c> MCP tool and
     /// repo-grouped UI can enumerate them. A single repo becomes a one-entry list. Set once at startup.
@@ -1878,6 +1907,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         _repos = overviews.Select(RepoInfoFor).ToList();
         RebuildRoster();   // repo set changed → re-attribute + regroup the roster (BUG 3)
+        RaiseTitleChanged();   // primary repo now known → refresh the title
     }
 
     /// <summary>
@@ -1890,6 +1920,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (_repos.Any(r => r.Prefix == overview.Prefix)) return;
         _repos = _repos.Append(RepoInfoFor(overview)).ToList();
         RebuildRoster();
+        RaiseTitleChanged();
     }
 
     private static RepoInfo RepoInfoFor(Styloagent.Core.Workspace.RepoOverview o) => new(

@@ -5,6 +5,7 @@ using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -572,6 +573,12 @@ public sealed partial class TerminalControl : UserControl
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
         UserInteracted?.Invoke(this, EventArgs.Empty);
+
+        // Standard mac clipboard chords (Cmd+C / Cmd+X / Cmd+V, "like Rider"). Handle these BEFORE the PTY
+        // key path so Cmd never reaches the child — and so Cmd+C (copy) is never confused with Ctrl+C, which
+        // stays the PTY's SIGINT/ETX. Copy works without a live session; paste is gated on one internally.
+        if (TryHandleClipboardShortcut(e)) return;
+
         if (_session is null) return;
 
         string? vtSequence = TranslateKey(e);
@@ -581,6 +588,84 @@ public sealed partial class TerminalControl : UserControl
         NoteHumanInput(vtSequence);   // opens/closes the compose window that gates device-query answers
         // Fix 1: route through shared fire-and-forget helper so exceptions are never silently lost.
         FireAndForgetWrite(vtSequence);
+    }
+
+    // ── Clipboard (copy / paste / cut) ───────────────────────────────────────
+
+    /// <summary>
+    /// Handles the standard mac clipboard chords — Cmd+C (copy the selection), Cmd+X (the child's screen is
+    /// read-only, so cut behaves as copy), Cmd+V (paste into the PTY). Returns true when it consumed the key.
+    /// Bound to <see cref="KeyModifiers.Meta"/> (Cmd) ONLY — NOT Alt/Option (Option+C/V/X are the printable
+    /// characters ç √ ≈ the terminal must still type), and NOT Ctrl (which the PTY needs for Ctrl+C=ETX /
+    /// Ctrl+D=EOT). Always consumes the chord so a stray Cmd+letter never leaks to the child.
+    /// </summary>
+    private bool TryHandleClipboardShortcut(KeyEventArgs e)
+    {
+        if ((e.KeyModifiers & KeyModifiers.Meta) == 0) return false;
+        switch (e.Key)
+        {
+            case AvaloniaKey.C:
+            case AvaloniaKey.X:
+                CopySelectionToClipboard();
+                e.Handled = true;
+                return true;
+            case AvaloniaKey.V:
+                PasteFromClipboard();
+                e.Handled = true;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>Copies the terminal's current text selection to the system clipboard (no-op if nothing is selected).</summary>
+    private async void CopySelectionToClipboard()
+    {
+        try { await CopySelectionToClipboardAsync(); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[TerminalControl] copy failed: {ex}"); }
+    }
+
+    /// <summary>Core of copy (test seam): puts the selected text on the clipboard; returns false when there's nothing to copy.</summary>
+    internal async Task<bool> CopySelectionToClipboardAsync()
+    {
+        string? selection = ScreenText.SelectedText;
+        if (string.IsNullOrEmpty(selection)) return false;
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard is null) return false;
+        await clipboard.SetTextAsync(selection);
+        return true;
+    }
+
+    /// <summary>Pastes the system clipboard's text into the PTY (bracketed-paste-aware — see <see cref="WritePaste"/>).</summary>
+    private async void PasteFromClipboard()
+    {
+        try { await PasteFromClipboardAsync(); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[TerminalControl] paste failed: {ex}"); }
+    }
+
+    /// <summary>Core of paste (test seam): reads the clipboard and writes it to the PTY.</summary>
+    internal async Task PasteFromClipboardAsync()
+    {
+        if (_session is null) return;
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard is null) return;
+        string? text = await clipboard.TryGetTextAsync();
+        if (string.IsNullOrEmpty(text)) return;
+        WritePaste(text);
+    }
+
+    /// <summary>
+    /// Writes pasted <paramref name="text"/> to the PTY. When the child enabled bracketed-paste mode (DECSET
+    /// 2004) the text is wrapped in <c>ESC[200~ … ESC[201~</c> so the child treats it as literal data and a
+    /// multi-line paste doesn't auto-execute line by line — what every real terminal does. Otherwise the raw
+    /// text is sent. Internal so a headless test can drive it without a real clipboard.
+    /// </summary>
+    internal void WritePaste(string text)
+    {
+        if (_session is null || string.IsNullOrEmpty(text)) return;
+        NoteHumanInput(text);   // pasted text is human input — gates device-query answers like typing does
+        string payload = _terminal.BracketedPasteMode ? "\u001b[200~" + text + "\u001b[201~" : text;
+        FireAndForgetWrite(payload);
     }
 
     /// <summary>Clicking the terminal focuses it so it receives keyboard input.</summary>

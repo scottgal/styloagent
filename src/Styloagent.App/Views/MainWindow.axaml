@@ -10,7 +10,7 @@
         xmlns:terminal="clr-namespace:Styloagent.Terminal;assembly=Styloagent.Terminal"
         x:Class="Styloagent.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="Styloagent Cockpit"
+        Title="{Binding WindowTitle}"
         Icon="/icon.png"
         Width="1200"
         Height="800"
@@ -28,6 +28,14 @@
             Padding="8,4">
       <Grid ColumnDefinitions="Auto,Auto,*,Auto">
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+          <!-- Current project name (operator): makes it obvious which project this cockpit is focused on,
+               and distinguishes multiple open cockpit windows. Hidden until a project/repo is known. -->
+          <TextBlock Text="{Binding ProjectName}" FontWeight="Bold" FontSize="14" VerticalAlignment="Center"
+                     Margin="2,0,6,0" Foreground="{DynamicResource AccentBrush}"
+                     ToolTip.Tip="Current project"
+                     IsVisible="{Binding ProjectName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <Border Width="1" Margin="0,2,8,2" Background="{DynamicResource MutedTextBrush}"
+                  IsVisible="{Binding ProjectName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
           <Button Command="{Binding AddAgentCommand}" Padding="10,4" FontSize="13">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <ic:SymbolIcon Symbol="Add" FontSize="16" />

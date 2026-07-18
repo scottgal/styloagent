@@ -25,6 +25,18 @@ public sealed class PtyMessageInjector : IMessageInjector
     public static TimeSpan SubmitSettleDelay { get; set; } = TimeSpan.Zero;
     public static TimeSpan SubmitRetryDelay { get; set; } = TimeSpan.Zero;
 
+    // Compose gate: a delivery must NOT type a nudge into a line the OPERATOR is mid-way through composing
+    // in the target pane, or it clobbers their input and prematurely submits the half-typed line. When the
+    // operator is composing (TerminalControl publishes it via OperatorInputState), the injector WAITS for
+    // them to submit — bounded by ComposeDeferTimeout so a never-submitted line can't starve delivery.
+    // Non-zero by default so the gate is live in production without startup wiring (App.axaml.cs may retune
+    // it alongside the other delays); tests override both.
+    /// <summary>How long a delivery waits for the operator to finish composing before injecting anyway.</summary>
+    public static TimeSpan ComposeDeferTimeout { get; set; } = TimeSpan.FromSeconds(8);
+
+    /// <summary>Poll interval while waiting for the operator's compose window to close.</summary>
+    public static TimeSpan ComposePollDelay { get; set; } = TimeSpan.FromMilliseconds(50);
+
     private readonly Func<string, IPtySession?> _resolve;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
 
@@ -36,6 +48,12 @@ public sealed class PtyMessageInjector : IMessageInjector
         var pty = _resolve(agentId);
         if (pty is null) return;   // no live session — nothing to inject into
 
+        // Don't clobber the operator mid-keystroke: if they're composing a line in this pane, wait for them
+        // to submit it (or a bounded timeout) before typing the nudge. Same compose window TerminalControl
+        // tracks to gate device-report echoes — a delivery is the analogous "unwanted bytes into the typed
+        // line" hazard, so it defers on the same signal.
+        await DeferWhileOperatorComposingAsync(pty, ct).ConfigureAwait(false);
+
         await _writeGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -46,6 +64,31 @@ public sealed class PtyMessageInjector : IMessageInjector
         finally
         {
             _writeGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Waits out the operator's compose window in the target pane so a delivery nudge doesn't type into — and
+    /// prematurely submit — their half-finished line. Returns immediately when the operator isn't composing
+    /// there or the gate is disabled; polls until the window closes (operator submits) and, on
+    /// <see cref="ComposeDeferTimeout"/>, returns anyway so a never-submitted line can't starve delivery.
+    /// </summary>
+    private static async Task DeferWhileOperatorComposingAsync(IPtySession pty, CancellationToken ct)
+    {
+        if (ComposeDeferTimeout <= TimeSpan.Zero) return;          // gate disabled
+        if (!OperatorInputState.IsComposing(pty)) return;         // fast path — operator isn't typing here
+
+        var poll = ComposePollDelay > TimeSpan.Zero ? ComposePollDelay : TimeSpan.FromMilliseconds(10);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(ComposeDeferTimeout);
+        try
+        {
+            while (OperatorInputState.IsComposing(pty))
+                await Task.Delay(poll, timeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // Operator never submitted within the timeout — inject anyway rather than starve delivery.
         }
     }
 

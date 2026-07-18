@@ -127,4 +127,90 @@ public class PtyMessageInjectorTests
         // Must not throw when there is nothing to inject into.
         await injector.InjectAsync("ghost", "hello", breakFirst: true);
     }
+
+    // ── Compose gate: don't clobber the operator's typing ────────────────────────
+
+    [Fact]
+    public async Task Inject_defers_while_operator_is_composing_then_flushes_on_submit()
+    {
+        var prevTimeout = PtyMessageInjector.ComposeDeferTimeout;
+        var prevPoll = PtyMessageInjector.ComposePollDelay;
+        PtyMessageInjector.ComposeDeferTimeout = TimeSpan.FromSeconds(5);
+        PtyMessageInjector.ComposePollDelay = TimeSpan.FromMilliseconds(5);
+        var pty = new BreakingPty(escapesToIdle: 0);
+        try
+        {
+            // Operator is mid-line in this pane.
+            OperatorInputState.SetComposing(pty, true);
+            var injector = new PtyMessageInjector(_ => pty);
+
+            var inject = injector.InjectAsync("beta", "hello", breakFirst: false);
+
+            // While the operator is composing, the delivery must NOT type anything into their line.
+            await Task.Delay(60);
+            Assert.False(inject.IsCompleted, "delivery should be deferred while the operator is composing");
+            Assert.Empty(pty.Writes);
+
+            // Operator submits — the compose window closes; the delivery flushes now.
+            OperatorInputState.SetComposing(pty, false);
+            await inject;
+
+            Assert.Equal(new[] { "hello", Cr }, pty.Writes);
+        }
+        finally
+        {
+            OperatorInputState.Clear(pty);
+            PtyMessageInjector.ComposeDeferTimeout = prevTimeout;
+            PtyMessageInjector.ComposePollDelay = prevPoll;
+        }
+    }
+
+    [Fact]
+    public async Task Inject_is_bounded_and_delivers_when_operator_never_submits()
+    {
+        var prevTimeout = PtyMessageInjector.ComposeDeferTimeout;
+        var prevPoll = PtyMessageInjector.ComposePollDelay;
+        PtyMessageInjector.ComposeDeferTimeout = TimeSpan.FromMilliseconds(100);
+        PtyMessageInjector.ComposePollDelay = TimeSpan.FromMilliseconds(5);
+        var pty = new BreakingPty(escapesToIdle: 0);
+        try
+        {
+            // Operator starts a line and never submits — the gate must not starve delivery forever.
+            OperatorInputState.SetComposing(pty, true);
+            var injector = new PtyMessageInjector(_ => pty);
+
+            await injector.InjectAsync("beta", "hello", breakFirst: false);
+
+            Assert.Equal(new[] { "hello", Cr }, pty.Writes);
+        }
+        finally
+        {
+            OperatorInputState.Clear(pty);
+            PtyMessageInjector.ComposeDeferTimeout = prevTimeout;
+            PtyMessageInjector.ComposePollDelay = prevPoll;
+        }
+    }
+
+    [Fact]
+    public async Task Inject_does_not_defer_when_operator_is_not_composing()
+    {
+        var prevTimeout = PtyMessageInjector.ComposeDeferTimeout;
+        PtyMessageInjector.ComposeDeferTimeout = TimeSpan.FromSeconds(30);   // long — proves we DON'T wait
+        var pty = new BreakingPty(escapesToIdle: 0);
+        try
+        {
+            // No compose flag for this pane → the fast path injects immediately, no wait.
+            var injector = new PtyMessageInjector(_ => pty);
+
+            var inject = injector.InjectAsync("beta", "hello", breakFirst: false);
+            await inject.WaitAsync(TimeSpan.FromSeconds(2));   // must complete well within the 30s timeout
+
+            Assert.Equal(new[] { "hello", Cr }, pty.Writes);
+        }
+        finally
+        {
+            OperatorInputState.Clear(pty);
+            PtyMessageInjector.ComposeDeferTimeout = prevTimeout;
+        }
+    }
 }

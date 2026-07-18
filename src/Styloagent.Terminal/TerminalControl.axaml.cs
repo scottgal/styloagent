@@ -359,6 +359,7 @@ public sealed partial class TerminalControl : UserControl
         finally { _replaying = false; }
         session.Exited += OnSessionExited;
         _humanComposing = false;   // a fresh session starts with no line half-typed
+        OperatorInputState.SetComposing(session, false);   // clear any stale compose flag for a re-attached session
     }
 
     /// <summary>
@@ -369,6 +370,7 @@ public sealed partial class TerminalControl : UserControl
         if (_session is null) return;
         _session.Output -= OnSessionOutput;
         _session.Exited -= OnSessionExited;
+        OperatorInputState.Clear(_session);   // operator can't be composing in a detached pane
         _session = null;
     }
 
@@ -755,6 +757,8 @@ public sealed partial class TerminalControl : UserControl
         if (string.IsNullOrEmpty(vtSequence)) return;
         _humanComposing = !(vtSequence.Contains('\r') || vtSequence.Contains('\n') ||
                             vtSequence.Contains('\x03') || vtSequence.Contains('\x04'));
+        // Publish the compose window so a message-delivery nudge defers instead of clobbering the typed line.
+        if (_session is { } composeSession) OperatorInputState.SetComposing(composeSession, _humanComposing);
     }
 
     /// <summary>

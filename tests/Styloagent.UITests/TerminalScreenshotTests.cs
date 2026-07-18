@@ -170,9 +170,10 @@ public class TerminalScreenshotTests
             var fake = new FakePtySession();
             var control = new TerminalControl();
             control.Attach(fake);   // attach BEFORE Show so the initial layout refit resizes the session too
-            // 940x600 fits exactly the 118x39 grid the capture was taken at, so btop fills the pane edge-to-edge
-            // (no blank surplus rows/cols) and its bottom status row rests on the bottom edge.
-            var window = new Window { Width = 940, Height = 600, Content = control, Name = "BtopLiveWindow" };
+            // 946x600 fits exactly the 118x39 grid the capture was taken at, so btop fills the pane edge-to-edge
+            // (no blank surplus rows/cols) and its bottom status row rests on the bottom edge. Width tracks the
+            // terminal's horizontal gutter (PadX=18): 940 + the +6 left-margin bump keeps 118 cols fitting.
+            var window = new Window { Width = 946, Height = 600, Content = control, Name = "BtopLiveWindow" };
             window.Show();
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Normal);
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);

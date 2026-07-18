@@ -10,9 +10,12 @@
        WHOLE transcript so the scrollbar spans the full buffer, while the text block is virtualized: it
        holds only the rows intersecting the viewport (+ over-scan) and is positioned via Canvas.Top. That
        keeps every rebuild O(viewport) instead of O(transcript) — the fix for the layout-switch lockup. -->
+  <!-- Padding is the terminal's gutter: a roomier LEFT gutter (12) so text isn't hard-flush against the
+       pane edge, a slim right/top/bottom. This is the ScrollViewer content inset; PadX/PadY in the
+       code-behind MUST mirror the horizontal/vertical totals or the grid col/row fit drifts. -->
   <ScrollViewer Name="ScrollArea"
                 Background="#0C0C0C"
-                Padding="6,4"
+                Padding="12,4,6,4"
                 HorizontalScrollBarVisibility="Auto"
                 VerticalScrollBarVisibility="Auto">
     <Canvas Name="Surface" Background="#0C0C0C">

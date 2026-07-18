@@ -71,9 +71,10 @@ public sealed partial class TerminalControl : UserControl
     private double _cellW = 7.8;
     private double _cellH = 16.0;
 
-    // The ScrollViewer's Padding="6,4" (see XAML): 6+6 horizontal, 4+4 vertical. The grid must fit the
-    // padded content box, not the full control, or cols/rows are overestimated and text wraps off the edge.
-    private const double PadX = 12.0;
+    // The ScrollViewer's Padding="12,4,6,4" (see XAML): 12+6 horizontal (roomier LEFT gutter), 4+4 vertical.
+    // The grid must fit the padded content box, not the full control, or cols/rows are overestimated and text
+    // wraps off the edge. Keep these two in lockstep with the XAML Padding.
+    private const double PadX = 18.0;
     private const double PadY = 8.0;
 
     // ── Zoom (per-terminal font scale; a cockpit slider binds ZoomLevel) ──────

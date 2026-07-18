@@ -81,6 +81,15 @@ public sealed class DocumentSearchIndex : IDisposable
         if (!ReferenceEquals(oldDir, dir)) oldDir?.Dispose();
     }
 
+    /// <summary>
+    /// A fast, names-first build: indexes each doc's <c>filename</c> + <c>title</c> (both derived from the
+    /// path — no file read) and leaves content empty. So the whole library's names are searchable via
+    /// <see cref="SearchByName"/> almost instantly, decoupled from the slow content read; call
+    /// <see cref="Build"/> afterwards to stream the content in. Replaces any prior index.
+    /// </summary>
+    public void BuildNames(IEnumerable<DocEntry> entries)
+        => Build(entries.Select(e => (e, "")));
+
     /// <summary>Top <paramref name="max"/> hits for <paramref name="query"/> — per-term prefix match, title-boosted.</summary>
     public IReadOnlyList<DocSearchHit> Search(string query, int max = 8)
     {

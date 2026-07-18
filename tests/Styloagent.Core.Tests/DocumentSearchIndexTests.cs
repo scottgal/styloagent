@@ -4,8 +4,11 @@ namespace Styloagent.Core.Tests;
 
 public class DocumentSearchIndexTests
 {
+    private static DocEntry Entry(string title, string rel)
+        => new DocEntry(title, "/docs/" + rel, DocSource.Repo, rel);
+
     private static (DocEntry, string) Doc(string title, string rel, string content)
-        => (new DocEntry(title, "/docs/" + rel, DocSource.Repo, rel), content);
+        => (Entry(title, rel), content);
 
     [Fact]
     public void Finds_by_content_prefix_as_you_type()
@@ -136,6 +139,30 @@ public class DocumentSearchIndexTests
         var hits = idx.SearchByName("runtime");
         Assert.Contains(hits, h => h.Title == "runtime.md");
         Assert.DoesNotContain(hits, h => h.Title == "notes.md");
+    }
+
+    [Fact]
+    public void BuildNames_makes_names_searchable_without_reading_content()
+    {
+        using var idx = new DocumentSearchIndex();
+        // No content supplied — a names-first pass indexes filename/title only, so it's instant and the
+        // "find by name" box works before the (slow) content read has happened.
+        idx.BuildNames(new[] { Entry("activity-timeline.md", "activity-timeline.md") });
+
+        Assert.Contains(idx.SearchByName("timeline"), h => h.Title == "activity-timeline.md");
+    }
+
+    [Fact]
+    public void BuildNames_then_Build_streams_in_the_content_search()
+    {
+        using var idx = new DocumentSearchIndex();
+        var entry = Entry("notes.md", "notes.md");
+
+        idx.BuildNames(new[] { entry });
+        Assert.Empty(idx.Search("streamedbody"));   // body not indexed yet — names-only pass
+
+        idx.Build(new[] { (entry, "streamedbody appears here") });
+        Assert.Contains(idx.Search("streamedbody"), h => h.Title == "notes.md");   // content now searchable
     }
 
     [Fact]

@@ -30,7 +30,10 @@ public class FleetSpawnTests
     /// (shared, headless) UI dispatcher, so under parallel test load they populate shortly AFTER the call
     /// that triggers them returns — a fixed delay races; this waits for the actual condition.
     /// </summary>
-    private static async Task WaitUntil(Func<bool> condition, int timeoutMs = 3000)
+    // Generous ceiling: panes populate via the SHARED headless UI dispatcher, which is heavily contended
+    // when the (now-large) App.Tests suite runs in parallel — 3s starved under load. This is a condition
+    // wait, so it returns the instant the pane appears; the high max only matters if it genuinely never does.
+    private static async Task WaitUntil(Func<bool> condition, int timeoutMs = 10000)
     {
         for (int waited = 0; waited < timeoutMs && !condition(); waited += 10)
             await Task.Delay(10);
@@ -149,7 +152,10 @@ public class FleetSpawnTests
 
             await vm.SpawnProposedAsync(new Styloagent.Core.Projects.ProposedAgent("hello-", "writes hello world", ".", "You are hello-."));
 
-            await WaitUntil(() => vm.Panes.Any(p => p.Prefix == "hello-"));
+            // Wait for the child to be present AND spawned (State=Live): CreatePaneForProposed adds the pane
+            // synchronously but starts SpawnAsync fire-and-forget, so State→Live lands slightly later — under
+            // parallel load, later than the pane's mere presence. The dehydrate-command assert below needs Live.
+            await WaitUntil(() => vm.Panes.Any(p => p.Prefix == "hello-" && p.State == Styloagent.Core.Model.SessionState.Live));
             var child = vm.Panes.First(p => p.Prefix == "hello-");
             Assert.Equal("overview-", child.ParentPrefix);       // the overview OWNS it
             Assert.Equal(overview.Depth + 1, child.Depth);

@@ -723,6 +723,112 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         foreach (var g in groups) RosterGroups.Add(g);
     }
 
+    // ── Roster reparent (drag-drop v2a): edit the authority hierarchy WITHIN a repo ──────────────
+
+    /// <summary>The outcome of a reparent attempt — <see cref="Applied"/>, operator-<see cref="Cancelled"/>,
+    /// or rejected with a <see cref="Reason"/> (the view snaps the drag back and shows it).</summary>
+    public sealed record ReparentResult(bool Applied, bool Cancelled, string? Reason)
+    {
+        public static ReparentResult Ok() => new(true, false, null);
+        public static ReparentResult Cancel() => new(false, true, null);
+        public static ReparentResult Reject(string reason) => new(false, false, reason);
+    }
+
+    /// <summary>Wired by the shell to a modal confirm (message → true to apply). Null → apply without asking.</summary>
+    public Func<string, Task<bool>>? ConfirmReparentAsync { get; set; }
+
+    /// <summary>
+    /// Reparent <paramref name="dragged"/> under <paramref name="newOwner"/> (drag-drop v2a): change its
+    /// <c>ParentPrefix</c> and recompute <c>Depth</c> for it + its descendants, then rebuild the grouped
+    /// roster. WITHIN-REPO only — cross-repo cascades through delivery routing so it snaps back. Every drop
+    /// is guarded BEFORE applying: the existing Core authority lint (cycle / root / missing-parent /
+    /// owner-with-worktree), <see cref="MaxDepth"/>, and a confirm. Returns why it was rejected/cancelled.
+    /// </summary>
+    public async Task<ReparentResult> ReparentAgentAsync(AgentPaneViewModel? dragged, AgentPaneViewModel? newOwner)
+    {
+        if (dragged is null || newOwner is null) return ReparentResult.Reject("nothing to move");
+        if (ReferenceEquals(dragged, newOwner)) return ReparentResult.Reject("can't move an agent onto itself");
+        if (string.Equals(dragged.ParentPrefix, newOwner.Prefix, StringComparison.Ordinal))
+            return ReparentResult.Reject($"{dragged.DisplayName} is already under {newOwner.DisplayName}");
+        if (string.IsNullOrEmpty(dragged.ParentPrefix))
+            return ReparentResult.Reject($"can't reparent {dragged.DisplayName} — it's a repo overview (the root)");
+
+        // v2a: within-repo only. Cross-repo changes the agent's repo identity (delivery routing keyed by
+        // (repo,prefix), spawn lineage, _paneRepoRoot) — deferred to v2b.
+        if (!string.Equals(RepoNameForPrefix(dragged.Prefix), RepoNameForPrefix(newOwner.Prefix), StringComparison.Ordinal))
+            return ReparentResult.Reject("cross-repo moves aren't supported yet");
+
+        // Guard 1: run the EXISTING Core authority lint (read-only) over the PROPOSED tree.
+        var proposed = Panes.Select(p => new Styloagent.Core.Architecture.AuthorityNode(
+            p.Prefix,
+            ReferenceEquals(p, dragged) ? newOwner.Prefix : p.ParentPrefix,
+            p.WorktreePath is not null)).ToList();
+        var violations = Styloagent.Core.Architecture.AuthorityTreeLint.Check(proposed);
+        if (violations.Count > 0)
+            return ReparentResult.Reject(ReparentReason(violations[0], dragged, newOwner));
+
+        // Guard 2: the moved subtree must not exceed the max depth.
+        int newDepth = newOwner.Depth + 1;
+        if (newDepth + SubtreeHeight(dragged) > MaxDepth)
+            return ReparentResult.Reject($"that move would exceed the max depth of {MaxDepth}");
+
+        // Guard 3: confirm — it edits the authority hierarchy.
+        if (ConfirmReparentAsync is not null)
+        {
+            int descendants = DescendantsOf(dragged).Count;
+            var msg = descendants == 0
+                ? $"Move {dragged.DisplayName} under {newOwner.DisplayName}?"
+                : $"Move {dragged.DisplayName} (and its {descendants} descendant{(descendants == 1 ? "" : "s")}) under {newOwner.DisplayName}?";
+            if (!await ConfirmReparentAsync(msg)) return ReparentResult.Cancel();
+        }
+
+        // Apply: re-owner + recompute depths for the moved subtree, then regroup the roster.
+        dragged.ParentPrefix = newOwner.Prefix;
+        RecomputeDepths(dragged, newDepth);
+        RebuildRoster();
+        Timeline.Add(DateTimeOffset.Now, dragged.DisplayName, $"reparented under {newOwner.DisplayName}", dragged.BorderColorHex);
+        return ReparentResult.Ok();
+    }
+
+    private static string ReparentReason(Styloagent.Core.Architecture.AuthorityViolation v,
+        AgentPaneViewModel dragged, AgentPaneViewModel newOwner) => v.Kind switch
+    {
+        "cycle"               => $"can't move {dragged.DisplayName} under its own descendant",
+        "owner-has-worktree"  => $"{newOwner.DisplayName} holds a worktree — it can't own agents",
+        "multiple-roots" or "no-root" => $"can't reparent {dragged.DisplayName} — it would break the single root",
+        "missing-parent"      => $"{newOwner.DisplayName} isn't in the fleet",
+        _                     => v.Detail,
+    };
+
+    /// <summary>Every descendant of <paramref name="node"/> (its subtree, excluding itself).</summary>
+    private List<AgentPaneViewModel> DescendantsOf(AgentPaneViewModel node)
+    {
+        var result = new List<AgentPaneViewModel>();
+        var stack = new Stack<AgentPaneViewModel>(Panes.Where(p => p.ParentPrefix == node.Prefix));
+        while (stack.Count > 0)
+        {
+            var n = stack.Pop();
+            result.Add(n);
+            foreach (var c in Panes.Where(p => p.ParentPrefix == n.Prefix)) stack.Push(c);
+        }
+        return result;
+    }
+
+    /// <summary>Longest descendant chain below <paramref name="node"/> (0 for a leaf).</summary>
+    private int SubtreeHeight(AgentPaneViewModel node)
+    {
+        var children = Panes.Where(p => p.ParentPrefix == node.Prefix).ToList();
+        return children.Count == 0 ? 0 : 1 + children.Max(SubtreeHeight);
+    }
+
+    /// <summary>Set <paramref name="node"/>'s depth and cascade depth+1 to its descendants.</summary>
+    private void RecomputeDepths(AgentPaneViewModel node, int depth)
+    {
+        node.Depth = depth;
+        foreach (var c in Panes.Where(p => p.ParentPrefix == node.Prefix).ToList())
+            RecomputeDepths(c, depth + 1);
+    }
+
     private readonly Dictionary<AgentPaneViewModel, SessionState> _paneState = new();
 
     private void OnPaneLifecycleChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

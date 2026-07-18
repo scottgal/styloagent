@@ -34,6 +34,8 @@ public partial class MainWindow : Window
             // Graceful shut down: confirm over this window, then trigger the app's graceful close (the
             // ShutdownRequested handler disposes the VM/watchers) — never Environment.Exit.
             vm.ConfirmShutdownAsync = message => new ConfirmDialog(message).ShowDialog<bool>(this);
+            // Roster reparent (drag-drop): confirm the consequential authority-tree edit over this window.
+            vm.ConfirmReparentAsync = message => new ConfirmDialog(message, "Move").ShowDialog<bool>(this);
             vm.RequestShutdown = () =>
             {
                 if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)

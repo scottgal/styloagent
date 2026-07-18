@@ -403,11 +403,15 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     /// <summary>The agent's prefix (e.g. "foss-"), read from the manifest entry.</summary>
     public string Prefix => _manifest.Prefix;
 
-    /// <summary>Prefix of the parent agent, or null for root-level panes.</summary>
-    public string? ParentPrefix { get; init; }
+    /// <summary>Prefix of the parent (owner) agent, or null for root-level panes. Settable so a roster
+    /// reparent can re-owner the agent (drag-drop v2a).</summary>
+    [ObservableProperty]
+    private string? _parentPrefix;
 
-    /// <summary>Nesting depth: 0 for root panes (overview, manually-added), 1+ for spawned children.</summary>
-    public int Depth { get; init; }
+    /// <summary>Nesting depth: 0 for root panes (overview, manually-added), 1+ for spawned children.
+    /// Observable so a reparent updates the roster indent live.</summary>
+    [ObservableProperty]
+    private int _depth;
 
     /// <summary>Human-readable responsibility description for this agent.</summary>
     public string Responsibility { get; init; } = "";

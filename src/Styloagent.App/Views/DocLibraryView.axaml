@@ -1,12 +1,13 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
+             xmlns:docs="clr-namespace:Styloagent.Core.Docs;assembly=Styloagent.Core"
              xmlns:ic="using:FluentIcons.Avalonia.Fluent"
              x:Class="Styloagent.App.Views.DocLibraryView"
              x:DataType="vm:DocLibraryViewModel">
 
   <Border Background="{DynamicResource PanelBgBrush}" CornerRadius="4">
-    <Grid RowDefinitions="Auto,*">
+    <Grid RowDefinitions="Auto,Auto,*">
 
       <Border Grid.Row="0" Background="{DynamicResource PanelHeaderBgBrush}" Padding="8,6">
         <StackPanel Orientation="Horizontal" Spacing="6">
@@ -19,45 +20,94 @@
         </StackPanel>
       </Border>
 
-      <!-- File/folder tree of the docs. Folders expand/collapse; files are buttons that open. -->
-      <TreeView Grid.Row="1"
-                x:Name="DocsTree"
-                ItemsSource="{Binding Roots}"
-                Background="Transparent">
-        <TreeView.Styles>
-          <!-- Bind each container's expansion to the node so folders honour DocNode.IsExpanded. -->
-          <Style Selector="TreeViewItem">
-            <Setter Property="IsExpanded" Value="{Binding IsExpanded}" />
-          </Style>
-        </TreeView.Styles>
-        <TreeView.ItemTemplate>
-          <TreeDataTemplate x:DataType="vm:DocLibraryViewModel+DocNode" ItemsSource="{Binding Children}">
-            <Panel>
-              <!-- Folder row -->
-              <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,1"
-                          IsVisible="{Binding IsFolder}">
-                <ic:SymbolIcon Symbol="Folder" FontSize="14" VerticalAlignment="Center"
-                               Foreground="#9D7FE0" />
-                <TextBlock Text="{Binding Name}" FontSize="11.5" VerticalAlignment="Center"
-                           Foreground="#CCCCDD" TextTrimming="CharacterEllipsis" />
-              </StackPanel>
-              <!-- File row: a borderless button that opens the doc on click. -->
-              <Button IsVisible="{Binding !IsFolder}"
-                      Background="Transparent" BorderThickness="0" Padding="0,1"
-                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                      Command="{Binding $parent[TreeView].((vm:DocLibraryViewModel)DataContext).OpenDocCommand}"
-                      CommandParameter="{Binding Entry}">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                  <ic:SymbolIcon Symbol="Document" FontSize="14" VerticalAlignment="Center"
-                                 Foreground="#8899BB" />
+      <!-- Toolbar: filename search + sort-by. -->
+      <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="6,4" >
+        <TextBox Grid.Column="0" Text="{Binding SearchText}" Watermark="Search by name…"
+                 FontSize="11" Padding="6,2" MinHeight="0" VerticalAlignment="Center" />
+        <ComboBox Grid.Column="1" Margin="6,0,0,0" MinHeight="0" FontSize="11" VerticalAlignment="Center"
+                  ItemsSource="{Binding SortModes}" SelectedItem="{Binding SelectedSort}"
+                  ToolTip.Tip="Sort by">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:DocSortOption">
+              <TextBlock Text="{Binding Label}" FontSize="11" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+      </Grid>
+
+      <Grid Grid.Row="2">
+
+        <!-- Lazy file/folder tree: three collapsed sections; each folder loads its children on first
+             expand. Shown unless a name search is active. -->
+        <TreeView x:Name="DocsTree"
+                  ItemsSource="{Binding Roots}"
+                  Background="Transparent"
+                  IsVisible="{Binding !ShowSearchResults}">
+          <TreeView.Styles>
+            <!-- Two-way so a user expand flows to DocNode.IsExpanded → triggers the lazy load. -->
+            <Style Selector="TreeViewItem">
+              <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+            </Style>
+          </TreeView.Styles>
+          <TreeView.ItemTemplate>
+            <TreeDataTemplate x:DataType="vm:DocLibraryViewModel+DocNode" ItemsSource="{Binding Children}">
+              <Panel>
+                <!-- Loading placeholder for an unexpanded folder -->
+                <TextBlock Text="…" IsVisible="{Binding IsPlaceholder}" Margin="0,1"
+                           FontStyle="Italic" Foreground="{DynamicResource MutedTextBrush}" />
+                <!-- Folder row -->
+                <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,1"
+                            IsVisible="{Binding IsFolder}">
+                  <ic:SymbolIcon Symbol="Folder" FontSize="14" VerticalAlignment="Center"
+                                 Foreground="#9D7FE0" />
                   <TextBlock Text="{Binding Name}" FontSize="11.5" VerticalAlignment="Center"
                              Foreground="#CCCCDD" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
-              </Button>
-            </Panel>
-          </TreeDataTemplate>
-        </TreeView.ItemTemplate>
-      </TreeView>
+                <!-- File row: a borderless button that opens the doc on click. -->
+                <Button IsVisible="{Binding IsFile}"
+                        Background="Transparent" BorderThickness="0" Padding="0,1"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                        Command="{Binding $parent[TreeView].((vm:DocLibraryViewModel)DataContext).OpenDocCommand}"
+                        CommandParameter="{Binding Entry}">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <ic:SymbolIcon Symbol="Document" FontSize="14" VerticalAlignment="Center"
+                                   Foreground="#8899BB" />
+                    <TextBlock Text="{Binding Name}" FontSize="11.5" VerticalAlignment="Center"
+                               Foreground="#CCCCDD" TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                </Button>
+              </Panel>
+            </TreeDataTemplate>
+          </TreeView.ItemTemplate>
+        </TreeView>
+
+        <!-- Flat filename-search results: shown INSTEAD of the tree while a query is entered. -->
+        <ScrollViewer IsVisible="{Binding ShowSearchResults}" VerticalScrollBarVisibility="Auto">
+          <ItemsControl ItemsSource="{Binding SearchResults}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="docs:DocEntry">
+                <Button Background="Transparent" BorderThickness="0" Padding="6,2"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                        Command="{Binding $parent[ItemsControl].((vm:DocLibraryViewModel)DataContext).OpenDocCommand}"
+                        CommandParameter="{Binding}">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <ic:SymbolIcon Symbol="Document" FontSize="14" VerticalAlignment="Center"
+                                   Foreground="#8899BB" />
+                    <StackPanel>
+                      <TextBlock Text="{Binding Title}" FontSize="11.5" Foreground="#CCCCDD"
+                                 TextTrimming="CharacterEllipsis" />
+                      <TextBlock Text="{Binding RelativePath}" FontSize="9.5"
+                                 Foreground="{DynamicResource MutedTextBrush}"
+                                 TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                  </StackPanel>
+                </Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+
+      </Grid>
 
     </Grid>
   </Border>

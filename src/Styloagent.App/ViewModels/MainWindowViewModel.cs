@@ -949,7 +949,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             ShowBusSequenceCommand = vm.ShowBusSequenceCommand,
             ShowArchitectureCommand = vm.ShowArchitectureCommand,
         };
-        vm.BuildSearchIndex(docRepoRoot, channelRoot);
+        // Build the (content) search index OFF the startup critical path — it reads every doc's full text,
+        // which was a big chunk of the "show everything is slow" cost. With the doc library now lazy, the
+        // index is no longer needed to populate the tree, so it can finish in the background.
+        _ = Task.Run(() => vm.BuildSearchIndex(docRepoRoot, channelRoot));
         vm.Timeline.OpenSource = vm.OpenSourceDocument;
         vm.Timeline.OpenDiff = vm.OpenDiffDocument;
 

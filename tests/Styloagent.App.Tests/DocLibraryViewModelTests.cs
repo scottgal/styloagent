@@ -15,69 +15,138 @@ public class DocLibraryViewModelTests : IDisposable
     {
         _repoRoot = Path.Combine(Path.GetTempPath(), "doclib-repo-" + Guid.NewGuid().ToString("N"));
         _channelRoot = Path.Combine(Path.GetTempPath(), "doclib-channel-" + Guid.NewGuid().ToString("N"));
-
         Directory.CreateDirectory(_repoRoot);
         Directory.CreateDirectory(_channelRoot);
-
         File.WriteAllText(Path.Combine(_repoRoot, "readme.md"), RepoMd1Content);
         File.WriteAllText(Path.Combine(_channelRoot, "notes.md"), ChannelMd1Content);
     }
 
     public void Dispose()
     {
-        if (Directory.Exists(_repoRoot))
-            Directory.Delete(_repoRoot, recursive: true);
-        if (Directory.Exists(_channelRoot))
-            Directory.Delete(_channelRoot, recursive: true);
+        if (Directory.Exists(_repoRoot)) Directory.Delete(_repoRoot, recursive: true);
+        if (Directory.Exists(_channelRoot)) Directory.Delete(_channelRoot, recursive: true);
     }
 
-    // The library now enumerates OFF the UI thread (BUG 2 fix), so population is async — await RefreshAsync
-    // to settle it deterministically before asserting (the enumeration no longer completes in the ctor).
-    [Fact]
-    public async Task Groups_ArePopulated_BySource()
+    // ── A fully in-memory per-directory lister so the lazy tree can be driven without a real filesystem. ──
+    private sealed class FakeLister : IDocDirLister
     {
-        var vm = new DocLibraryViewModel(_repoRoot, _channelRoot, _ => { });
-        await vm.RefreshAsync();
-
-        Assert.Equal(2, vm.Groups.Count);
-        Assert.Contains(vm.Groups, g => g.Header == "repo");
-        Assert.Contains(vm.Groups, g => g.Header == "channel");
+        public Dictionary<string, List<DocDirItem>> Dirs { get; } = new(StringComparer.Ordinal);
+        public IReadOnlyList<DocDirItem> List(string dir)
+            => Dirs.TryGetValue(dir, out var v) ? v : new List<DocDirItem>();
     }
 
-    [Fact]
-    public async Task Groups_RepoIsFirst()
+    private static DateTimeOffset T(int day) => new(2024, 1, day, 0, 0, 0, TimeSpan.Zero);
+    private static DocDirItem Folder(string root, string name, int day)
+        => new(name, Path.Combine(root, name), IsFolder: true, T(day));
+    private static DocDirItem Md(string root, string name, int day)
+        => new(name, Path.Combine(root, name), IsFolder: false, T(day));
+
+    private static async Task WaitUntil(Func<bool> cond, int timeoutMs = 2000)
     {
-        var vm = new DocLibraryViewModel(_repoRoot, _channelRoot, _ => { });
-        await vm.RefreshAsync();
+        for (int w = 0; w < timeoutMs && !cond(); w += 10) await Task.Delay(10);
+    }
 
-        Assert.Equal("repo", vm.Groups[0].Header);
-        Assert.Equal("channel", vm.Groups[1].Header);
+    // ── Lazy tree (the "show everything is slow" fix): collapsed sections; children load on first expand. ──
+
+    [Fact]
+    public async Task Sections_start_collapsed_with_a_placeholder_and_load_children_on_first_expand()
+    {
+        const string repo = "/fake/repo";
+        var lister = new FakeLister();
+        lister.Dirs[repo] = new()
+        {
+            Folder(repo, "zsub", 3),
+            Md(repo, "beta.md", 2),
+            Md(repo, "alpha.md", 1),
+        };
+
+        var vm = new DocLibraryViewModel(repo, null, _ => { }, lister: lister);
+
+        var repoSection = vm.Roots.Single(r => r.Name == "repo");
+        Assert.False(repoSection.IsExpanded);                          // collapsed by default
+        Assert.Single(repoSection.Children);
+        Assert.True(repoSection.Children[0].IsPlaceholder);            // lazy: no real children yet
+
+        repoSection.IsExpanded = true;                                 // first expand → load
+        await WaitUntil(() => repoSection.Children.Count > 1 || (repoSection.Children.Count == 1 && !repoSection.Children[0].IsPlaceholder));
+
+        // Real children materialized, sorted Name A–Z with folders first.
+        Assert.Equal("zsub,alpha.md,beta.md", string.Join(",", repoSection.Children.Select(c => c.Name)));
+        Assert.True(repoSection.Children.Single(c => c.Name == "zsub").IsFolder);
+        Assert.True(repoSection.Children.Single(c => c.Name == "alpha.md").IsFile);
     }
 
     [Fact]
-    public async Task OpenDoc_InvokesCallback_WithCorrectViewModel()
+    public async Task Changing_sort_reorders_loaded_children()
+    {
+        const string repo = "/fake/repo";
+        var lister = new FakeLister();
+        lister.Dirs[repo] = new()
+        {
+            Md(repo, "alpha.md", 1),   // oldest
+            Md(repo, "beta.md", 3),    // newest
+            Md(repo, "gamma.md", 2),
+        };
+
+        var vm = new DocLibraryViewModel(repo, null, _ => { }, lister: lister);
+        var repoSection = vm.Roots.Single(r => r.Name == "repo");
+        repoSection.IsExpanded = true;
+        await WaitUntil(() => repoSection.Children.Count == 3);
+
+        Assert.Equal("alpha.md,beta.md,gamma.md", string.Join(",", repoSection.Children.Select(c => c.Name)));
+
+        vm.SelectedSort = vm.SortModes.Single(s => s.Mode == DocSortMode.DateNewest);
+        Assert.Equal("beta.md,gamma.md,alpha.md", string.Join(",", repoSection.Children.Select(c => c.Name)));
+
+        vm.SelectedSort = vm.SortModes.Single(s => s.Mode == DocSortMode.NameDesc);
+        Assert.Equal("gamma.md,beta.md,alpha.md", string.Join(",", repoSection.Children.Select(c => c.Name)));
+    }
+
+    [Fact]
+    public async Task Search_finds_files_by_name_across_the_whole_library_including_unexpanded_folders()
+    {
+        const string repo = "/fake/repo";
+        var sub = Path.Combine(repo, "sub");
+        var lister = new FakeLister();
+        lister.Dirs[repo] = new() { Md(repo, "readme.md", 1), Md(repo, "design.md", 2), Folder(repo, "sub", 3) };
+        lister.Dirs[sub] = new() { Md(sub, "readme-sub.md", 1) };
+
+        var vm = new DocLibraryViewModel(repo, null, _ => { }, lister: lister);
+
+        vm.SearchText = "readme";
+        Assert.True(vm.ShowSearchResults);
+        await WaitUntil(() => vm.SearchResults.Count >= 2);   // background name index → results
+
+        Assert.Contains(vm.SearchResults, e => e.Title == "readme.md");
+        Assert.Contains(vm.SearchResults, e => e.Title == "readme-sub.md");   // in an unexpanded subfolder
+        Assert.DoesNotContain(vm.SearchResults, e => e.Title == "design.md");
+
+        vm.SearchText = "";
+        Assert.False(vm.ShowSearchResults);
+        Assert.Empty(vm.SearchResults);
+    }
+
+    [Fact]
+    public async Task OpenDoc_InvokesCallback_WithTheBuiltDocument()
     {
         MarkdownDocumentViewModel? received = null;
         var vm = new DocLibraryViewModel(_repoRoot, _channelRoot, docVm => received = docVm);
-        await vm.RefreshAsync();
 
-        var repoGroup = vm.Groups[0];
-        Assert.True(repoGroup.Entries.Count > 0);
-
-        var entry = repoGroup.Entries[0];
-        await vm.OpenDocAsync(entry);   // open reads the file OFF the UI thread, then marshals back
+        var entry = new DocEntry("readme.md", Path.Combine(_repoRoot, "readme.md"), DocSource.Repo, "readme.md");
+        await vm.OpenDocAsync(entry);   // reads the file OFF the UI thread, marshals the VM back to open it
 
         Assert.NotNull(received);
-        Assert.Equal(entry.Title, received.Title);
+        Assert.Equal("readme.md", received!.Title);
         Assert.Equal(RepoMd1Content, received.Markdown);
     }
+
+    // ── MarkdownDocumentViewModel (unchanged; the doc a leaf opens into) ──
 
     [Fact]
     public void MarkdownDocumentViewModel_LoadsFileText()
     {
         var path = Path.Combine(_repoRoot, "readme.md");
         var docVm = new MarkdownDocumentViewModel("readme.md", path);
-
         Assert.Equal(RepoMd1Content, docVm.Markdown);
         Assert.Equal("readme.md", docVm.Title);
         Assert.Equal(_repoRoot, docVm.SourcePath);
@@ -88,14 +157,11 @@ public class DocLibraryViewModelTests : IDisposable
     {
         var path = Path.Combine(_repoRoot, "readme.md");
         var docVm = new MarkdownDocumentViewModel("readme.md", path);
-
         Assert.Equal(RepoMd1Content, docVm.Markdown);
 
         const string updated = "# Updated\n\nNew content.";
         File.WriteAllText(path, updated);
-
         docVm.Refresh();
-
         Assert.Equal(updated, docVm.Markdown);
     }
 
@@ -104,20 +170,5 @@ public class DocLibraryViewModelTests : IDisposable
     {
         var docVm = new MarkdownDocumentViewModel("missing.md", "/nonexistent/path/missing.md");
         Assert.Equal(string.Empty, docVm.Markdown);
-    }
-
-    [Fact]
-    public async Task Refresh_RebuildsGroups()
-    {
-        var vm = new DocLibraryViewModel(_repoRoot, _channelRoot, _ => { });
-        await vm.RefreshAsync();
-        var initialCount = vm.Groups[0].Entries.Count;
-
-        File.WriteAllText(Path.Combine(_repoRoot, "extra.md"), "# Extra");
-
-        await vm.RefreshAsync();
-
-        var afterCount = vm.Groups[0].Entries.Count;
-        Assert.Equal(initialCount + 1, afterCount);
     }
 }

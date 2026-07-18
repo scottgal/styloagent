@@ -409,6 +409,77 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Timeline.Add(DateTimeOffset.Now, pane.DisplayName, "removed", pane.BorderColorHex);
     }
 
+    // ── Graceful shut down (top-bar): checkpoint every active agent, then close ───────────────────
+
+    /// <summary>Wired by the shell to a modal confirm (message → true to proceed). Null → proceed without asking.</summary>
+    public Func<string, Task<bool>>? ConfirmShutdownAsync { get; set; }
+
+    /// <summary>Wired by the shell to the app's graceful shutdown (<c>desktop.Shutdown()</c> → the
+    /// ShutdownRequested handler that disposes the VM/watchers). Never <c>Environment.Exit</c>.</summary>
+    public Action? RequestShutdown { get; set; }
+
+    /// <summary>Per-agent bound on the shutdown checkpoint so one stuck agent can't hang the whole close.</summary>
+    private static readonly TimeSpan ShutdownCheckpointTimeout = TimeSpan.FromSeconds(20);
+
+    /// <summary>An agent that should be checkpointed at shutdown: Live with a live PTY (skip already
+    /// dehydrated / exited / unspawned).</summary>
+    private static bool IsActiveForShutdown(AgentPaneViewModel p) => p.State == SessionState.Live && p.CurrentPty is not null;
+
+    /// <summary>
+    /// Checkpoint every ACTIVE agent (dehydrate = checkpoint context + graceful PTY dispose), then request
+    /// the app's graceful close. A per-agent timeout means a stuck agent can't hang shutdown; agents that
+    /// fail to checkpoint (or have no saved-context path → in-place checkpoint fallback) are FLAGGED, never
+    /// silently dropped. The bus/channel + saved-context docs persist so a relaunch can rehydrate.
+    /// </summary>
+    [RelayCommand]
+    private async Task Shutdown()
+    {
+        var active = Panes.Where(IsActiveForShutdown).ToList();
+
+        if (ConfirmShutdownAsync is not null)
+        {
+            var msg = active.Count == 0
+                ? "Shut down the cockpit?"
+                : $"Checkpoint & shut down {active.Count} active agent{(active.Count == 1 ? "" : "s")}?";
+            if (!await ConfirmShutdownAsync(msg)) return;   // operator cancelled — nothing touched
+        }
+
+        var flags = new List<string>();
+        foreach (var pane in active)
+        {
+            Timeline.Add(DateTimeOffset.Now, pane.DisplayName, "checkpointing for shutdown…", pane.BorderColorHex);
+            var note = await CheckpointForShutdownAsync(pane);
+            if (note is not null) flags.Add(note);
+        }
+        if (flags.Count > 0)
+            Timeline.Add(DateTimeOffset.Now, "workspace", "shutdown — " + string.Join("; ", flags), "#E5A05A");
+
+        RequestShutdown?.Invoke();
+    }
+
+    /// <summary>Checkpoint one agent for shutdown; returns a flag note on any problem, or null on a clean
+    /// dehydrate. Bounded by <see cref="ShutdownCheckpointTimeout"/> so a hang can't stall the close.</summary>
+    private async Task<string?> CheckpointForShutdownAsync(AgentPaneViewModel pane)
+    {
+        try
+        {
+            // CanDehydrate (Live + has a saved-context path) → full dehydrate (checkpoint + graceful dispose).
+            if (pane.DehydrateCommand.CanExecute(null))
+            {
+                await pane.DehydrateAsync(CancellationToken.None).WaitAsync(ShutdownCheckpointTimeout);
+                return pane.State == SessionState.Dehydrated
+                    ? null
+                    : $"{pane.Prefix} closed without checkpoint — dehydrate did not complete";
+            }
+
+            // No saved-context path → best-effort in-place checkpoint, and flag it.
+            await WriteInPlaceCheckpointAsync(pane).WaitAsync(ShutdownCheckpointTimeout);
+            return $"{pane.Prefix} closed without a full checkpoint — no saved-context path";
+        }
+        catch (TimeoutException) { return $"{pane.Prefix} checkpoint timed out"; }
+        catch (Exception ex) { return $"{pane.Prefix} checkpoint failed ({ex.GetType().Name})"; }
+    }
+
     /// <summary>
     /// "Close empty docks": collapses any leftover NESTED empty document areas (split/tile regions with no
     /// documents) so the layout reflows into the freed space. The sole centre surface is preserved (you

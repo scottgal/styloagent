@@ -122,6 +122,16 @@
                         ToolTip.Tip="Collapse side panel">
             <ic:SymbolIcon Symbol="PanelRight" FontSize="15" />
           </ToggleButton>
+          <!-- Graceful shut down: checkpoints every active agent, then closes the cockpit. -->
+          <Button x:Name="ShutdownButton" Padding="6,3" Margin="4,0,0,0"
+                  Foreground="#E5736B"
+                  Command="{Binding ShutdownCommand}"
+                  ToolTip.Tip="Checkpoint every active agent and shut down gracefully">
+            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+              <ic:SymbolIcon Symbol="Power" FontSize="15" />
+              <TextBlock Text="Shut down" FontSize="12" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
           <Button x:Name="SettingsButton" Padding="6,3" ToolTip.Tip="Settings">
             <ic:SymbolIcon Symbol="Settings" FontSize="15" />
             <Button.Flyout>

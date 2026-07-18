@@ -1,5 +1,7 @@
 using System.IO;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Platform.Storage;
 using Styloagent.App.Services;
@@ -26,8 +28,19 @@ public partial class MainWindow : Window
         // Give the shell VM a real folder picker over this window for the open-repo gesture.
         DataContextChanged += (_, _) =>
         {
-            if (DataContext is MainWindowViewModel vm)
-                vm.RepoFolderPicker = new StorageFolderPicker(this);
+            if (DataContext is not MainWindowViewModel vm) return;
+            vm.RepoFolderPicker = new StorageFolderPicker(this);
+
+            // Graceful shut down: confirm over this window, then trigger the app's graceful close (the
+            // ShutdownRequested handler disposes the VM/watchers) — never Environment.Exit.
+            vm.ConfirmShutdownAsync = message => new ConfirmDialog(message).ShowDialog<bool>(this);
+            vm.RequestShutdown = () =>
+            {
+                if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+                    desktop.Shutdown();
+                else
+                    Close();
+            };
         };
     }
 

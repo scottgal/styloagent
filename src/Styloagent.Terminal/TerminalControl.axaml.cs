@@ -26,7 +26,9 @@ namespace Styloagent.Terminal;
 /// </summary>
 public sealed partial class TerminalControl : UserControl
 {
-    private readonly XTerm.Terminal _terminal;
+    // Not readonly: re-created on each Attach so a re-attach replays the backlog into a CLEAN engine
+    // (see ResetEngine / Attach). Every reader touches this field, so the swap is picked up everywhere.
+    private XTerm.Terminal _terminal;
     private readonly AvaloniaList<string> _rows = new();
     private IPtySession? _session;
 
@@ -253,15 +255,7 @@ public sealed partial class TerminalControl : UserControl
         // A terminal must be focusable to receive keyboard input at all.
         Focusable = true;
 
-        _terminal = new XTerm.Terminal(new TerminalOptions
-        {
-            Cols = 80,
-            Rows = 24,
-            Scrollback = 1000,
-        });
-
-        // When XTerm produces data (e.g. terminal query responses), forward it to the PTY.
-        _terminal.DataReceived += OnTerminalDataReceived;
+        _terminal = BuildEngine(80, 24);
 
         // Initialize rows to match the terminal's initial size.
         RebuildRows();
@@ -290,6 +284,37 @@ public sealed partial class TerminalControl : UserControl
         AddHandler(PointerWheelChangedEvent, OnWheel, RoutingStrategies.Tunnel);
     }
 
+    /// <summary>Scrollback depth (rows) the VT engine retains — the source-of-truth for a fresh engine.</summary>
+    private const int ScrollbackLines = 1000;
+
+    /// <summary>Builds a fresh XTerm VT engine of the given grid size, wired to forward device replies to the PTY.</summary>
+    private XTerm.Terminal BuildEngine(int cols, int rows)
+    {
+        var engine = new XTerm.Terminal(new TerminalOptions
+        {
+            Cols = cols,
+            Rows = rows,
+            Scrollback = ScrollbackLines,
+        });
+        // When XTerm produces data (e.g. terminal query responses), forward it to the PTY.
+        engine.DataReceived += OnTerminalDataReceived;
+        return engine;
+    }
+
+    /// <summary>
+    /// Replaces the VT engine with a fresh one of the SAME grid size so the next <see cref="Attach"/> replay
+    /// reconstructs the CURRENT screen from an EMPTY buffer. A recycled control (dock tab switched away then
+    /// back) keeps its old engine buffer; without this, Attach's full-backlog replay would write ON TOP of
+    /// that surviving buffer and double every line. A fresh engine — not <c>Terminal.Reset()</c>, which
+    /// clears cells but LEAVES the scrollback accumulator (YBase), so replay would append below stale blank
+    /// rows — is what makes Attach idempotent w.r.t. whatever the engine held before.
+    /// </summary>
+    private void ResetEngine()
+    {
+        _terminal.DataReceived -= OnTerminalDataReceived;   // stop the discarded engine forwarding to the PTY
+        _terminal = BuildEngine(_terminal.Cols, _terminal.Rows);
+    }
+
     /// <summary>
     /// Attach an <see cref="IPtySession"/>. Call once per session.
     /// Output and Exited callbacks fire on a background thread; this method marshals them to the UI thread.
@@ -300,6 +325,10 @@ public sealed partial class TerminalControl : UserControl
             throw new InvalidOperationException("A session is already attached. Detach it first.");
 
         _session = session;
+        // Re-attach safety: start from a CLEAN engine so the backlog replay below reconstructs the current
+        // screen instead of doubling a recycled control's surviving buffer (see ResetEngine). Harmless on a
+        // first attach — the engine is already empty, this just swaps in an equivalent one of the same size.
+        ResetEngine();
         // Subscribing REPLAYS the session backlog synchronously (see PortaPtySession.Output.add) so this fresh
         // VT engine rebuilds the CURRENT screen from history. That replay re-parses every device-status query
         // the child ever emitted (ESC[6n / ESC[?6n / ESC[c), and XTerm dutifully re-answers each — but those

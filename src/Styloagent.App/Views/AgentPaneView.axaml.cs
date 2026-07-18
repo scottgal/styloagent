@@ -30,8 +30,53 @@ public partial class AgentPaneView : UserControl
 
         _vm = DataContext as AgentPaneViewModel;
 
+        // (Re)wire the new VM: subscribe to its signals and attach any already-live PTY.
+        WireVm();
+    }
+
+    /// <summary>
+    /// BUG 4B fix: re-wire the terminal when this pane RE-ENTERS the logical tree. The centre dock
+    /// recycles ONE view instance per agent (Dock ControlRecycling), keeping only the ACTIVE
+    /// document's content in the tree; switching away runs <see cref="OnDetachedFromLogicalTree"/>
+    /// (which <see cref="UnsubscribeVm"/>'s the PtyStarted subscription and detaches the terminal),
+    /// so a federated pane whose PTY started while it was a background tab shows "just a cursor". The
+    /// DataContext is unchanged across a tab-switch, so <see cref="OnDataContextChanged"/> does NOT
+    /// fire again — this hook is what re-subscribes and re-attaches <c>CurrentPty</c>. Idempotent:
+    /// <see cref="WireVm"/> unhooks before it subscribes and <see cref="AttachTerminal"/> detaches
+    /// before it attaches, so the first attach and every re-attach both land exactly once.
+    /// </summary>
+    protected override void OnAttachedToLogicalTree(LogicalTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToLogicalTree(e);
+        WireVm();
+    }
+
+    /// <summary>
+    /// Fix 4: unsubscribe + detach when the view is removed from the logical tree
+    /// (window closed / pane removed) without a DataContext change, preventing handler leaks.
+    /// </summary>
+    protected override void OnDetachedFromLogicalTree(LogicalTreeAttachmentEventArgs e)
+    {
+        UnsubscribeVm();
+        Terminal.Detach();
+        base.OnDetachedFromLogicalTree(e);
+    }
+
+    /// <summary>
+    /// Idempotent VM wiring shared by the DataContext-change and logical-tree-attach paths: subscribe
+    /// to PtyStarted + property changes + terminal interaction (unhooking first so a re-wire can't
+    /// double-subscribe), apply the border/theme, and attach any already-live PTY. Called both when
+    /// the DataContext is set and whenever a recycled pane re-enters the tree.
+    /// </summary>
+    private void WireVm()
+    {
         if (_vm is null)
             return;
+
+        // Unhook first — a re-wire (tab switched back to a recycled pane) must not stack handlers.
+        _vm.PtyStarted -= OnPtyStarted;
+        _vm.PropertyChanged -= OnVmPropertyChanged;
+        Terminal.UserInteracted -= OnTerminalUserInteracted;
 
         // Subscribe to future PTY sessions.
         _vm.PtyStarted += OnPtyStarted;
@@ -47,21 +92,10 @@ public partial class AgentPaneView : UserControl
         _vm.PropertyChanged += OnVmPropertyChanged;
         Terminal.ApplyTheme(_vm.SelectedTerminalTheme);
 
-        // If a session is already live (e.g. VM was created before this view),
-        // attach immediately.
+        // If a session is already live (VM created before this view, or a PTY that started while this
+        // recycled pane was a detached background tab), attach immediately so it paints on show.
         if (_vm.CurrentPty is { } existing)
             AttachTerminal(existing);
-    }
-
-    /// <summary>
-    /// Fix 4: unsubscribe + detach when the view is removed from the logical tree
-    /// (window closed / pane removed) without a DataContext change, preventing handler leaks.
-    /// </summary>
-    protected override void OnDetachedFromLogicalTree(LogicalTreeAttachmentEventArgs e)
-    {
-        UnsubscribeVm();
-        Terminal.Detach();
-        base.OnDetachedFromLogicalTree(e);
     }
 
     /// <summary>

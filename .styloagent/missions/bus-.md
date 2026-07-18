@@ -1,51 +1,37 @@
-# bus- — URGENT: Core for bus-viewer Seen-state + open a 2nd federated instance
+# bus- (fresh) — Bug A ONLY: per-repo messaging Core to open a 2nd federated instance
 
-You own Coordination & Fleet: Core/Channel state model + multi-repo messaging/federation, MCP verbs,
-delivery. You run on your own `agent/bus` worktree — commit there, `wrap_up` when green. For full
-domain context also read
-/Users/scottgalloway/RiderProjects/styloagent/.styloagent/launch-prompts/bus-mission.md. Coordinate
-over the bus per .styloagent/PROTOCOL.md. TDD with fakes; provide Core **seams + diffs**, hold live
-MainWindowViewModel wiring for cockpit-.
+You are a FRESH bus- — the prior instance stranded itself on `wrap_up` (worktree removed, agent not
+exited) and was reaped by the operator. Issue `wrap-up-strands-a-still-live-agent` is filed.
 
-overview- has root-caused two live operator bugs. You own the Core; cockpit- owns the App surface;
-overview- relays the seams between you.
+You have NO worktree by design. Work on the SHARED main tree, commit straight to main staging ONLY your
+own Core/Channel files (targeted `git add <paths>`, never -A/-am). **Do NOT call wrap_up** — that's what
+stranded the last instance. Commit-to-main is your handoff.
 
-## P0 — Bus viewer classifies EVERY message as "needs attention"; no seen/archived transition
-Operator: "ALL the messages in the bus say 'needs attention' — IT DOES NOT WORK AT ALL. It needs to
-reflect the actual state and be updated when they're seen / archived."
+Scope: ONE thing — **Bug A: repo-qualified messaging Core (Model A)** so a second repo
+(stylobot-commercial) opens as an INDEPENDENT federated instance (its own .styloagent/channel/, fleet,
+router). Stay OUT of BusViewModel / MainWindowViewModel (cockpit-'s) — you provide Core seams + a diff only.
 
-Root cause (Core): `Styloagent.Core/Channel/BusThreadClassifier.Classify` puts a thread in `Attention`
-whenever ANY `Inbox` message has `State == New`, and it only leaves `Attention` on `Replied`/`Archived`.
-`BusMessageState` today = New / Replied / Archived — there is **no Seen/read state**, so anything the
-operator has merely READ (but not replied to) sits in Attention forever. That is the "everything is
-needs-attention" bug.
+LOCKED design decisions from overview-:
+- Repo identity KEY = canonical repoRoot (from repo-'s `IGitService.ResolveRepoRootAsync`; subpaths
+  collapse to the same root). A workspace display name may ride alongside for UI, but the routing/dedupe
+  key is repoRoot.
+- Surfacing = each instance gets its OWN bus pane over its OWN channel (NOT a merged repo-dimension feed).
+- Model A: per-repo ChannelDeliveryCoordinator; prefix-only routing WITHIN a channel; (repo,prefix) =
+  (which-channel, prefix); RecipientsFor stays prefix-only. `all-@*` = N physical copies (one per repo
+  channel); degrade-never-destroy per repo. `repo` param on `send_message` defaults to sender's repo
+  (back-compat free).
 
-Your Core work (TDD):
-1. Extend the message-state model with a **SEEN/read** transition (`BusMessageState` + `BusMessage`),
-   and make `BusThreadClassifier` treat seen-but-unreplied threads as **Recent**, not Attention — so
-   Attention means "genuinely unhandled inbound" only.
-2. `ChannelProjection` must detect + persist **seen / replied / archived** from the channel files —
-   define the on-disk representation of "seen" (e.g. a marker/frontmatter/sidecar) and make reload
-   reflect it. Verify Replied/Archived detection actually fires today (confirm it isn't silently
-   never-set — that alone could cause the stuck-Attention symptom).
-3. Expose a **mark-seen / archive** Core API (+ MCP verb if cockpit- needs it) so the App can mark a
-   thread/message seen when the operator views it and archive on demand.
+BUILD (TDD in isolation with fakes) — cockpit- landed P1 slice-1 (1183b2c) and needs EXACTLY these to
+swap its `StubRepoInstanceOpener` 1:1 (its port: `interface IRepoInstanceOpener { Task OpenAsync(string
+repoRoot, CancellationToken ct); }`):
+  1. **repo→channel RESOLVER**: given a canonical repoRoot, return its channelRoot
+     (repoRoot/.styloagent/channel) + the channel's agent prefixes — a blessed Core helper
+     (WorkspaceConfig.SingleRepo(repoRoot)-style projection) so cockpit-'s keying matches your routing.
+  2. **per-repo DELIVERY COORDINATOR**: a ChannelDeliveryCoordinator/MessageDeliveryService bound to THAT
+     repo's channel + its own PendingInbox/hooksDir, so the 2nd instance delivers independently.
+  3. **From-Repo header + `BusMessage.FromRepo` + `ChannelProjection` parse**; confirm routing keyed by
+     (repoRoot, prefix). If you edit ChannelProjection.cs, give cockpit- a heads-up first (it reads it).
+HOLD live N-coordinator wiring in MainWindowViewModel — provide the Core seam + a diff for cockpit-.
 
-Hand overview- + cockpit- the SEAM: the new state value, the mark-seen/archive API signature, and the
-on-disk representation. cockpit- builds against a fake until your Core lands.
-
-## P1 — Open stylobot-commercial as a second, INDEPENDENT federated instance
-Operator: "I can't spawn a second instance — I need a new instance for stylobot."
-
-Root cause: multi-repo is startup-only + shared-bus — `MainWindowViewModel.AddRepoOverview` adds ONE
-overview pane on styloagent's shared bus from `workspace.yaml`. Per fork B, stylobot-commercial
-(which has its OWN full `.styloagent/` fleet + channel) must open as an **independent per-repo
-instance** (its own `.styloagent/channel/`, its own fleet/router) via a LIVE "open instance" action —
-not an extra pane on styloagent's bus.
-
-Your Core work: the per-repo instance/channel model + the repo→channelRoot resolver so a second
-instance can be opened live with its own coordinator. This is the live-federation wiring you had
-staged behind AttachProject — **overview- is greenlighting it now** (the operator needs it). Hand
-cockpit- the seam it wires to its open-instance gesture.
-
-Report BOTH seams on the bus to overview- for relay to cockpit-. P0 first (it's the loudest).
+Report the resolver signature + coordinator seam + repo-key semantic on the bus to overview- for relay
+to cockpit-. P0 (bus-viewer Seen) is DONE and App-owned — do NOT build any Core Seen-state.

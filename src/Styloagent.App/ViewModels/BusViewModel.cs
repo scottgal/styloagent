@@ -92,7 +92,11 @@ public sealed partial class BusThreadItem : ObservableObject
     public string Subject { get; init; } = "";
     public string ParticipantsDisplay { get; init; } = "";
     public string ColorHex { get; init; } = "#888888";
-    public string RelativeTime { get; init; } = "–";
+
+    /// <summary>The "Nm ago" display. Observable + settable so an in-place reconcile (BUG 5) can refresh
+    /// it on a REUSED row without churning the row's container.</summary>
+    [ObservableProperty]
+    private string _relativeTime = "–";
 
     /// <summary>The thread's newest-activity timestamp (the seen-watermark reference).</summary>
     public DateTimeOffset? LastActivity { get; init; }
@@ -345,21 +349,16 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                     void UpdateMessages()
                     {
                         // Preserve which threads the operator had expanded — a reload must not snap them
-                        // shut. Keyed by thread slug so the rebuilt row re-opens.
+                        // shut. Keyed by thread slug so a REPLACED row re-opens (a reused row keeps its own).
                         var expandedKeys = AttentionThreads
                             .Concat(RecentThreads).Concat(ArchivedThreads)
                             .Where(t => t.IsExpanded)
                             .Select(t => t.Key)
                             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-                        Messages.Clear();
-                        foreach (var item in items)
-                        {
-                            Messages.Add(item);
-                        }
-                        AttentionThreads.Clear();
-                        RecentThreads.Clear();
-                        ArchivedThreads.Clear();
+                        var attention = new List<BusThreadItem>();
+                        var recent = new List<BusThreadItem>();
+                        var archived = new List<BusThreadItem>();
                         foreach (var ti in threadItems)
                         {
                             if (ti.Key.Length > 0 && expandedKeys.Contains(ti.Key))
@@ -367,18 +366,23 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
 
                             // An explicit operator-archive tucks the thread into the Archive drawer even
                             // if its content still reads as an unreplied inbound (classifier: Attention).
-                            if (ti.IsOperatorArchived)
-                            {
-                                ArchivedThreads.Add(ti);
-                                continue;
-                            }
+                            if (ti.IsOperatorArchived) { archived.Add(ti); continue; }
                             switch (ti.Section)
                             {
-                                case BusThreadSection.Attention: AttentionThreads.Add(ti); break;
-                                case BusThreadSection.Archive:    ArchivedThreads.Add(ti);  break;
-                                default:                          RecentThreads.Add(ti);    break;
+                                case BusThreadSection.Attention: attention.Add(ti); break;
+                                case BusThreadSection.Archive:    archived.Add(ti);  break;
+                                default:                          recent.Add(ti);    break;
                             }
                         }
+
+                        // Reconcile IN PLACE (BUG 5): reuse unchanged row instances so the non-virtualizing
+                        // ItemsControls keep their containers instead of Clear()+rebuilding every one on
+                        // every FSW/pickup/view-state reload — the churn that rooted ~131K controls via
+                        // DynamicResource/style/collection subscriptions.
+                        ReconcileMessages(Messages, items);
+                        ReconcileThreads(AttentionThreads, attention);
+                        ReconcileThreads(RecentThreads, recent);
+                        ReconcileThreads(ArchivedThreads, archived);
                         IsLoading = false;
                     }
 
@@ -502,6 +506,78 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
         var prefix = m.From is { Length: > 0 } f ? $"{f} → " : "";
         return $"{prefix}{m.Slug}";
     }
+
+    // ── In-place collection reconcile (BUG 5) ────────────────────────────────────────────────────
+    // Reuse an existing row instance when its rendered content is unchanged, so the non-virtualizing
+    // ItemsControls keep that row's container (and its nested Messages containers + expand state) across
+    // reloads instead of destroying+recreating every one. Genuinely-changed rows fall through to the
+    // freshly-built instance (their container churns — bounded by the real change rate, not every reload).
+    // The content signatures deliberately EXCLUDE RelativeTime (would churn as "2m"→"3m" ticks; refreshed
+    // in place on reuse instead) and IsExpanded (operator state, carried by reusing the instance).
+
+    private static void ReconcileThreads(ObservableCollection<BusThreadItem> target, List<BusThreadItem> desired)
+    {
+        var existing = new Dictionary<string, BusThreadItem>(StringComparer.Ordinal);
+        foreach (var t in target)
+            if (t.Key.Length > 0) existing[t.Key] = t;
+
+        var final = new List<BusThreadItem>(desired.Count);
+        foreach (var d in desired)
+        {
+            if (d.Key.Length > 0 && existing.TryGetValue(d.Key, out var e) && ThreadSig(e) == ThreadSig(d))
+            {
+                e.RelativeTime = d.RelativeTime;   // keep "Nm ago" fresh WITHOUT churning the container
+                final.Add(e);
+            }
+            else final.Add(d);
+        }
+        Reconcile(target, final);
+    }
+
+    private static void ReconcileMessages(ObservableCollection<BusMessageItem> target, List<BusMessageItem> desired)
+    {
+        var existing = new Dictionary<string, BusMessageItem>(StringComparer.Ordinal);
+        foreach (var m in target)
+            if (m.FilePath.Length > 0) existing[m.FilePath] = m;
+
+        var final = new List<BusMessageItem>(desired.Count);
+        foreach (var d in desired)
+            final.Add(d.FilePath.Length > 0
+                      && existing.TryGetValue(d.FilePath, out var e)
+                      && MsgSig(e) == MsgSig(d)
+                ? e : d);
+        Reconcile(target, final);
+    }
+
+    /// <summary>Reconcile <paramref name="target"/> to <paramref name="final"/> BY REFERENCE with the
+    /// minimum add/remove/move, so instances present in both keep their ItemsControl container.</summary>
+    private static void Reconcile<T>(ObservableCollection<T> target, List<T> final) where T : class
+    {
+        var keep = new HashSet<T>(final, ReferenceEqualityComparer.Instance);
+        for (int i = target.Count - 1; i >= 0; i--)
+            if (!keep.Contains(target[i])) target.RemoveAt(i);
+
+        for (int i = 0; i < final.Count; i++)
+        {
+            if (i >= target.Count) { target.Add(final[i]); continue; }
+            if (ReferenceEquals(target[i], final[i])) continue;
+
+            int idx = -1;
+            for (int j = i + 1; j < target.Count; j++)
+                if (ReferenceEquals(target[j], final[i])) { idx = j; break; }
+
+            if (idx >= 0) target.Move(idx, i);
+            else target.Insert(i, final[i]);
+        }
+    }
+
+    private static string ThreadSig(BusThreadItem t) => string.Join('\u0001',
+        t.Key, t.Glyph, t.Subject, t.ParticipantsDisplay, t.ColorHex, ((int)t.Section).ToString(),
+        t.NeedsReply ? "1" : "0", t.IsPickedUp ? "1" : "0", t.IsOperatorArchived ? "1" : "0",
+        string.Join('\u0002', t.Messages.Select(MsgSig)));
+
+    private static string MsgSig(BusMessageItem m) => string.Join('\u0003',
+        m.FilePath, m.State, m.IsPickedUp ? "1" : "0", m.IsOperatorArchived ? "1" : "0", m.DisplayLine);
 
     private void StartWatcher()
     {

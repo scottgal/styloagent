@@ -385,6 +385,75 @@ public class BusViewModelTests : IDisposable
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
     }
 
+    // ── In-place reconcile (BUG 5): a reload must reuse UNCHANGED row instances so the non-virtualizing
+    // ItemsControls keep their containers instead of Clear()+rebuilding every one on every reload. ──
+
+    [Fact]
+    public async Task Reload_WithIdenticalData_ReusesEveryThreadInstance()
+    {
+        var root = AttentionRoot();
+        try
+        {
+            var vm = new BusViewModel(root, Prefixes3, new ChannelProjection());
+            await vm.LoadAsync();
+            await WaitUntil(() => vm.AttentionThreads.Count > 0);
+            var before = vm.AttentionThreads.ToList();
+            before[0].IsExpanded = true;                     // operator expands the row
+
+            await vm.LoadAsync();                            // reload, identical data
+            await WaitUntil(() => vm.AttentionThreads.Count > 0);
+
+            // No churn: every row instance is REUSED (same reference) and its expand state survives.
+            Assert.Equal(before.Count, vm.AttentionThreads.Count);
+            for (int i = 0; i < before.Count; i++)
+                Assert.Same(before[i], vm.AttentionThreads[i]);
+            Assert.True(vm.AttentionThreads[0].IsExpanded);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task Reload_ReusesUnchangedRow_ButReplacesTheChangedOne()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "busreconcile-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "inbox"));
+        Directory.CreateDirectory(Path.Combine(root, "outbox"));
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "inbox", "alpha-q1.md"),
+                "**From:** ops\n**Timestamp:** 2024-01-10T10:00:00Z\n\nQ1?");
+            File.WriteAllText(Path.Combine(root, "inbox", "beta-q2.md"),
+                "**From:** ops\n**Timestamp:** 2024-01-10T11:00:00Z\n\nQ2?");
+
+            // Only beta's note gets picked up on the 2nd load; alpha's never changes.
+            bool betaPicked = false;
+            var vm = new BusViewModel(root, Prefixes3, new ChannelProjection(),
+                isPickedUp: (_, prefix) => betaPicked && prefix == "beta-");
+            await vm.LoadAsync();
+            await WaitUntil(() => vm.AttentionThreads.Count == 2);
+
+            var alphaBefore = vm.AttentionThreads.First(t => t.Key.Contains("q1"));
+            var betaBefore = vm.AttentionThreads.First(t => t.Key.Contains("q2"));
+            alphaBefore.IsExpanded = true;
+            Assert.Equal("WAITING", betaBefore.StatusPillText);
+
+            betaPicked = true;   // beta flips WAITING→WORKING; alpha is untouched
+            await vm.LoadAsync();
+            await WaitUntil(() => vm.AttentionThreads.Any(t => t.Key.Contains("q2") && t.StatusPillText == "WORKING"));
+
+            // alpha unchanged → SAME instance reused (container not churned), expand preserved.
+            var alphaAfter = vm.AttentionThreads.First(t => t.Key.Contains("q1"));
+            Assert.Same(alphaBefore, alphaAfter);
+            Assert.True(alphaAfter.IsExpanded);
+
+            // beta changed → REPLACED with a fresh instance now showing WORKING.
+            var betaAfter = vm.AttentionThreads.First(t => t.Key.Contains("q2"));
+            Assert.NotSame(betaBefore, betaAfter);
+            Assert.Equal("WORKING", betaAfter.StatusPillText);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
     [Fact]
     public async Task LoadAsync_BucketsThreads_IntoAttentionRecentArchive()
     {

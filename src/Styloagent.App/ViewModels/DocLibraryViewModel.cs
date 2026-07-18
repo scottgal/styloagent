@@ -119,14 +119,16 @@ public sealed partial class DocLibraryViewModel : ObservableObject
         string? logsRoot = null)
     {
         _openDocument = openDocument;
-        _lister = lister ?? new LocalDocDirLister();
+        _lister = lister ?? new CoreDocDirLister();
         _buildDoc = buildDoc ?? (entry => new MarkdownDocumentViewModel(entry.Title, entry.FullPath));
         _uiContext = SynchronizationContext.Current;
         _selectedSort = SortModes[0];
 
         AddSection(repoRoot, DocSource.Repo, "repo");
         AddSection(channelRoot, DocSource.Channel, "channel");
-        AddSection(logsRoot ?? ResolveLogsRoot(channelRoot), DocSource.Log, "logs");
+        // repo-'s public logs-root resolution (logs/ sibling of the channel), so the logs section resolves
+        // identically to DocLibraryReader.Read.
+        AddSection(logsRoot ?? DocLibraryReader.ResolveLogsRoot(channelRoot), DocSource.Log, "logs");
 
         BuildTopLevel();
         _ = BuildFileIndexAsync();   // background filename walk (no content) → powers the name search
@@ -136,15 +138,6 @@ public sealed partial class DocLibraryViewModel : ObservableObject
     {
         if (!string.IsNullOrWhiteSpace(root))
             _sections.Add((root!, source, label));
-    }
-
-    /// <summary>The per-agent log dir: the <c>logs/</c> sibling of the channel root (both under
-    /// <c>.styloagent/</c>). Mirrors DocLibraryReader; App-side so the ctor needs no Core call.</summary>
-    private static string? ResolveLogsRoot(string? channelRoot)
-    {
-        if (string.IsNullOrWhiteSpace(channelRoot)) return null;
-        var parent = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(channelRoot));
-        return string.IsNullOrEmpty(parent) ? null : Path.Combine(parent, "logs");
     }
 
     private void BuildTopLevel()

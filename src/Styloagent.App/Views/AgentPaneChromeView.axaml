@@ -1,98 +1,13 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
-             xmlns:terminal="clr-namespace:Styloagent.Terminal;assembly=Styloagent.Terminal"
              x:Class="Styloagent.App.Views.AgentPaneChromeView"
-             x:DataType="vm:AgentPaneViewModel">
-
-  <!-- Consolidated pane header (0b): the agent name, a single ⋯ actions menu that replaces the row of
-       per-terminal buttons (Spawn/Dehydrate/Rehydrate/Rename + fleet actions) the operator asked to
-       de-clutter, and a compact terminal-zoom slider bound to the VM ZoomLevel relay. The theme picker
-       lives INSIDE the ⋯ menu (the operator asked to compress this header — it was way too tall — and
-       move the theme selector into the menu). This control is cockpit-owned, so item-1's "Log (this
-       agent)" entry lands in the menu below with no cross-owner edit. session- hosts it in
-       AgentPaneView.axaml and binds TerminalControl.ZoomLevel two-way to the same VM.ZoomLevel relay. -->
-  <Border Background="{DynamicResource PanelHeaderBgBrush}" Padding="4,1">
-    <!-- Rationalised header: a little ⋯ icon opens the actions menu, the agent name takes the freed
-         width, and the compact zoom sits on the right. The name also captions the dock tab. -->
-    <Grid ColumnDefinitions="Auto,*,Auto">
-
-      <!-- Little ⋯ icon-only menu button: every per-pane action tucked into one dropdown. VM commands
-           bind directly (the flyout inherits this control's AgentPaneViewModel DataContext); fleet-level
-           commands go via Host (they live on MainWindowViewModel) — same split as the roster ⋯ menu. -->
-      <Button Grid.Column="0" Content="⋯" FontSize="14" FontWeight="Bold" Padding="6,0" MinHeight="0"
-              MinWidth="0" VerticalAlignment="Center" ToolTip.Tip="Agent actions">
-        <Button.Flyout>
-          <MenuFlyout>
-            <MenuItem Header="Spawn" Command="{Binding SpawnCommand}" />
-            <MenuItem Header="Dehydrate (checkpoint + park)" Command="{Binding DehydrateCommand}" />
-            <MenuItem Header="Rehydrate" Command="{Binding RehydrateCommand}" />
-            <MenuItem Header="Rename" Command="{Binding RenameCommand}" CommandParameter="New Name" />
-            <Separator />
-            <!-- Agent-log design slice 3: open this agent's durable .styloagent/logs/<prefix>.md as
-                 rendered markdown. Lands here (cockpit-owned chrome) with no cross-owner edit. -->
-            <MenuItem Header="Log (this agent)" Command="{Binding OpenLogCommand}" />
-            <Separator />
-            <!-- Terminal theme picker, moved off the header into the menu to keep the header short.
-                 The flyout inherits this control's AgentPaneViewModel DataContext, so the theme
-                 bindings resolve exactly as they did on the header. StaysOpenOnClick keeps the menu
-                 up while the operator opens the theme dropdown. -->
-            <MenuItem StaysOpenOnClick="True" ToolTip.Tip="Terminal theme">
-              <MenuItem.Header>
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                  <TextBlock Text="Theme" VerticalAlignment="Center" />
-                  <ComboBox Name="ThemePicker"
-                            ItemsSource="{Binding TerminalThemes}"
-                            SelectedItem="{Binding SelectedTerminalTheme}"
-                            MinWidth="120" FontSize="11" VerticalAlignment="Center">
-                    <ComboBox.ItemTemplate>
-                      <DataTemplate x:DataType="terminal:TerminalTheme">
-                        <TextBlock Text="{Binding Name}" />
-                      </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                  </ComboBox>
-                </StackPanel>
-              </MenuItem.Header>
-            </MenuItem>
-            <Separator />
-            <MenuItem Header="Approve prompt" IsEnabled="{Binding NeedsYou}"
-                      Command="{Binding Host.ApprovePermissionCommand}" CommandParameter="{Binding}" />
-            <MenuItem Header="Hide pane" IsVisible="{Binding !IsHidden}"
-                      Command="{Binding Host.HideAgentCommand}" CommandParameter="{Binding}" />
-            <MenuItem Header="Show pane" IsVisible="{Binding IsHidden}"
-                      Command="{Binding Host.ShowAgentCommand}" CommandParameter="{Binding}" />
-            <Separator />
-            <MenuItem Header="Kill" Command="{Binding Host.KillAgentCommand}" CommandParameter="{Binding}" />
-            <MenuItem Header="Force-kill (SIGKILL)" Command="{Binding Host.ForceKillAgentCommand}"
-                      CommandParameter="{Binding}" />
-            <MenuItem Header="Remove from roster" Command="{Binding Host.RemoveAgentCommand}"
-                      CommandParameter="{Binding}" />
-          </MenuFlyout>
-        </Button.Flyout>
-      </Button>
-
-      <!-- Agent identity (its terminal accent colour), stretched into the space the collapsed menu freed.
-           Also captions the dock tab, so it can trim if the pane is narrow. -->
-      <TextBlock Grid.Column="1" Name="AgentDisplayName"
-                 Text="{Binding DisplayName}"
-                 VerticalAlignment="Center" Margin="8,0"
-                 FontWeight="SemiBold" Foreground="{Binding BorderColorHex}"
-                 TextTrimming="CharacterEllipsis" />
-
-      <!-- Terminal zoom: the slider drives the VM ZoomLevel relay; session- binds TerminalControl.ZoomLevel
-           two-way to the same property, so the slider zooms the terminal and Ctrl+MouseWheel moves it back.
-           Compact (short slider) so the header stays short. -->
-      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="8,0">
-        <TextBlock Text="zoom" FontSize="10" VerticalAlignment="Center"
-                   Foreground="{DynamicResource MutedTextBrush}" />
-        <Slider Name="ZoomSlider" Width="110" Height="18" MinHeight="0" VerticalAlignment="Center"
-                Minimum="0.5" Maximum="3.0" SmallChange="0.1" LargeChange="0.5" TickFrequency="0.1"
-                Value="{Binding ZoomLevel, Mode=TwoWay}"
-                ToolTip.Tip="Terminal zoom" />
-        <TextBlock Text="{Binding ZoomLevel, StringFormat={}{0:P0}}" FontSize="10" MinWidth="34"
-                   VerticalAlignment="Center" Foreground="{DynamicResource MutedTextBrush}" />
-      </StackPanel>
-
-    </Grid>
-  </Border>
+             x:DataType="vm:AgentPaneViewModel"
+             IsVisible="False" Height="0">
+  <!-- Gutted (operator fix): the agent name, the ⋯ actions menu, the terminal zoom and the theme picker
+       moved ONTO the dock tab header (DockTabStyles.axaml → StyloagentTabHeaderTemplate) so the pane no
+       longer needs a duplicate header row — the tab already shows the name + close. This control now
+       renders nothing and collapses to zero height; session- removes its Grid.Row=0 host in
+       AgentPaneView.axaml so the terminal reclaims the space. Kept as an (empty) type only so that file
+       keeps compiling until session- lands the host removal. -->
 </UserControl>

@@ -63,7 +63,10 @@
           <AutoCompleteBox.ItemTemplate>
             <DataTemplate x:DataType="docs:DocSearchHit">
               <StackPanel Margin="2,1">
-                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="12" />
+                <!-- Grey, not white (operator): the suggestion title matches the muted text token; the
+                     SemiBold weight keeps it above the (also-muted, lighter-weight) path line. -->
+                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="12"
+                           Foreground="{DynamicResource MutedTextBrush}" />
                 <TextBlock Text="{Binding RelativePath}" FontSize="10"
                            Foreground="{DynamicResource MutedTextBrush}" />
               </StackPanel>

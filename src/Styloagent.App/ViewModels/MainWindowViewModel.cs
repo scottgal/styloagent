@@ -723,6 +723,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // unsubscribe (no leaked closure pinning a dead pane's session).
     private readonly Dictionary<AgentPaneViewModel, (Styloagent.Core.Sessions.ApiThrottleDetector Detector, Action<string> Feed)> _throttle = new();
 
+    // One fleet-wide retry scheduler (session-'s ThrottleRetryScheduler): a throttled agent that doesn't
+    // self-clear gets escalating "retry" bus messages (backoff-bounded); resuming cancels its pending retries.
+    private Styloagent.Core.Sessions.ThrottleRetryScheduler? _throttleScheduler;
+
     private void WireThrottle(AgentPaneViewModel pane)
     {
         if (_throttle.ContainsKey(pane)) return;
@@ -730,13 +734,32 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         detector.Changed += e =>
         {
             // Changed fires on the PTY output thread — marshal the flag update to the UI thread.
-            void Apply() => ApplyThrottleEvent(pane, e);
+            void Apply()
+            {
+                ApplyThrottleEvent(pane, e);
+                // Drive the retry scheduler: throttled → start escalating retries; resumed → cancel them.
+                if (e.IsThrottled) _throttleScheduler?.OnThrottled(e.AgentId);
+                else _throttleScheduler?.OnResumed(e.AgentId);
+            }
             try { if (Dispatcher.UIThread.CheckAccess()) Apply(); else Dispatcher.UIThread.Post(Apply); }
             catch { Apply(); }   // no UI thread (headless test) → apply inline
         };
         Action<string> feed = chunk => detector.Feed(chunk, DateTimeOffset.UtcNow);
         pane.Output += feed;
         _throttle[pane] = (detector, feed);
+    }
+
+    /// <summary>The scheduler's post-retry hook: a visible "retry — rate-limited" bus message to the
+    /// throttled agent, riding the EXISTING delivery→injector path (so ce42d82 compose-defer protects the
+    /// operator). No new Core/Channel seam — reuses the bus send + coordinator this VM already owns.
+    /// <paramref name="attempt"/> is the scheduler's 1-based retry number (it passes attempt+1) — used as-is.</summary>
+    internal async Task PostThrottleRetryAsync(string agentId, int attempt)
+    {
+        var sig = Panes.FirstOrDefault(p => p.Prefix == agentId)?.LastThrottleSignature ?? "rate-limited";
+        await SendBusMessage(new MessageRequest(
+            "watchdog-", agentId, $"retry {attempt}: rate-limited",
+            $"You appear rate-limited ({sig}) — retry your last request when able.", "normal"));
+        if (_deliveryCoordinator is not null) await _deliveryCoordinator.PumpAsync();
     }
 
     private void UnwireThrottle(AgentPaneViewModel pane)
@@ -1064,6 +1087,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             channelRoot, channelPrefixes, vm._deliveryService, vm.SnapshotLiveAgents);
         await vm._deliveryCoordinator.SeedAsync();
         vm._busViewModel.Reloaded += () => _ = vm._deliveryCoordinator.PumpAsync();
+
+        // One fleet retry scheduler (session-'s ThrottleRetryScheduler): a throttled agent that doesn't
+        // self-clear gets escalating "retry" bus messages riding the delivery→injector path PostThrottleRetryAsync
+        // owns. delay:null → prod Task.Delay backoff (20s/60s/180s); the detector transitions drive it.
+        vm._throttleScheduler = new Styloagent.Core.Sessions.ThrottleRetryScheduler(vm.PostThrottleRetryAsync);
 
         // Compaction resilience: when an agent's context climbs past 0.80, nudge it to write its resume doc.
         vm._checkpointMonitor.CheckpointNeeded += vm.SendCheckpointNudge;

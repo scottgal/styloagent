@@ -1,3 +1,4 @@
+using System.Linq;
 using Styloagent.App.ViewModels;
 using Styloagent.Core.Model;
 using Styloagent.Core.Sessions;
@@ -55,5 +56,37 @@ public class ThrottleTests
         Assert.True(pane.IsThrottled);
         Assert.False(string.IsNullOrEmpty(pane.LastThrottleSignature));
         Assert.NotNull(pane.ThrottledSince);
+    }
+
+    // Throttle Part 2: session-'s ThrottleRetryScheduler's postRetry hook. When a throttled agent doesn't
+    // self-clear, the scheduler calls PostThrottleRetryAsync — which must post a VISIBLE, escalating retry
+    // bus message to that agent (the detected signature in the body), riding the delivery→injector path.
+    [Fact]
+    public async Task PostThrottleRetryAsync_posts_an_escalating_retry_bus_message_to_the_throttled_agent()
+    {
+        var root = MainWindowViewModelTests.MakeTwoAgentChannel();
+        try
+        {
+            var launcher = new FakeLauncher();
+            var vm = await MainWindowViewModel.InitializeAsync(root, launcher, new FakeWatcher());
+
+            var entry = new AgentManifestEntry("rl-", "/repo", "/repo/wt", "", "", "/ctx.md", AgentTransport.Local);
+            var pane = new AgentPaneViewModel(new AgentSession(entry, launcher, new FakeWatcher()), entry, "rl", "#888888");
+            await pane.SpawnAsync();               // Live → SendBusMessage won't try to rehydrate it
+            pane.LastThrottleSignature = "429";    // the scheduler surfaces the detected signature
+            vm.Panes.Add(pane);
+
+            // attempt: 1 mirrors the scheduler's FIRST call (it passes loop-index+1 = 1-based).
+            await vm.PostThrottleRetryAsync("rl-", attempt: 1);
+
+            var inbox = Path.Combine(root, "inbox");
+            var file = Directory.GetFiles(inbox, "rl-*.md").OrderBy(f => f).LastOrDefault();
+            Assert.NotNull(file);
+            var text = File.ReadAllText(file!);
+            Assert.Contains("retry 1: rate-limited", text);   // the scheduler's 1-based attempt, used as-is
+            Assert.Contains("429", text);                     // the detected signature rides in the body
+            Assert.Contains("watchdog-", text);               // posted as the watchdog, not as an agent
+        }
+        finally { Directory.Delete(root, recursive: true); }
     }
 }

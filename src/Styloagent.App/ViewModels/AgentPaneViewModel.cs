@@ -400,6 +400,47 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     /// </summary>
     public IPtySession? CurrentPty => _session.CurrentPty;
 
+    /// <summary>The agent's PTY output stream (raw chunks). The shell subscribes an ApiThrottleDetector to
+    /// spot API-error / rate-limit episodes — Claude Code fires no hook when throttled, so the output is the
+    /// only signal.</summary>
+    public event Action<string>? Output
+    {
+        add    => _session.Output += value;
+        remove => _session.Output -= value;
+    }
+
+    // ── API throttle / rate-limit (transient; NOT a hook state) ──────────────────────────────────
+
+    /// <summary>True while this agent is in a detected API-error / rate-limit episode — it looks alive but is
+    /// stalled. Drives the amber ⏳ roster badge so the operator reads it as throttled, not "working".</summary>
+    [ObservableProperty]
+    private bool _isThrottled;
+
+    /// <summary>The signature that opened the current throttle episode (e.g. "429", "overloaded").</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ThrottleTooltip))]
+    private string? _lastThrottleSignature;
+
+    /// <summary>When the current throttle episode began (null when not throttled).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ThrottleTooltip))]
+    private DateTimeOffset? _throttledSince;
+
+    /// <summary>Tooltip for the throttle badge — the matched signature + how long it's been throttled.</summary>
+    public string ThrottleTooltip
+    {
+        get
+        {
+            var sig = string.IsNullOrWhiteSpace(LastThrottleSignature) ? "rate-limited" : LastThrottleSignature;
+            if (ThrottledSince is { } since)
+            {
+                var mins = (int)Math.Max(0, (DateTimeOffset.UtcNow - since).TotalMinutes);
+                return $"throttled / rate-limited — {sig} (for {mins}m)";
+            }
+            return $"throttled / rate-limited — {sig}";
+        }
+    }
+
     /// <summary>The agent's prefix (e.g. "foss-"), read from the manifest entry.</summary>
     public string Prefix => _manifest.Prefix;
 

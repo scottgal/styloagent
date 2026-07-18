@@ -12,6 +12,10 @@ internal sealed class FakePty : IPtySession
     public event Action<string>? Output;
     public event Action? Exited;
 #pragma warning restore CS0067
+
+    /// <summary>Raises Output synchronously, so a test can drive the agent's output stream (e.g. a
+    /// rate-limit banner) through the session → throttle detector.</summary>
+    public void FireOutput(string chunk) => Output?.Invoke(chunk);
     public bool IsIdle => true;
     public void Resize(int cols, int rows) { }
     public ValueTask WriteAsync(string text, CancellationToken ct = default) { Writes.Add(text); return ValueTask.CompletedTask; }

@@ -709,8 +709,48 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 {
                     _paneState[p] = p.State;
                     p.PropertyChanged += OnPaneLifecycleChanged;
+                    WireThrottle(p);   // watch its output for API-error / rate-limit episodes
                 }
+            if (e.OldItems is not null)
+                foreach (AgentPaneViewModel p in e.OldItems)
+                    UnwireThrottle(p);
         };
+    }
+
+    // ── API throttle / rate-limit badge (session- detects; cockpit- renders) ─────────────────────
+
+    // One detector per pane, subscribed to its PTY output; kept with its feed handler so removal can
+    // unsubscribe (no leaked closure pinning a dead pane's session).
+    private readonly Dictionary<AgentPaneViewModel, (Styloagent.Core.Sessions.ApiThrottleDetector Detector, Action<string> Feed)> _throttle = new();
+
+    private void WireThrottle(AgentPaneViewModel pane)
+    {
+        if (_throttle.ContainsKey(pane)) return;
+        var detector = new Styloagent.Core.Sessions.ApiThrottleDetector(pane.Prefix);
+        detector.Changed += e =>
+        {
+            // Changed fires on the PTY output thread — marshal the flag update to the UI thread.
+            void Apply() => ApplyThrottleEvent(pane, e);
+            try { if (Dispatcher.UIThread.CheckAccess()) Apply(); else Dispatcher.UIThread.Post(Apply); }
+            catch { Apply(); }   // no UI thread (headless test) → apply inline
+        };
+        Action<string> feed = chunk => detector.Feed(chunk, DateTimeOffset.UtcNow);
+        pane.Output += feed;
+        _throttle[pane] = (detector, feed);
+    }
+
+    private void UnwireThrottle(AgentPaneViewModel pane)
+    {
+        if (_throttle.Remove(pane, out var t))
+            pane.Output -= t.Feed;
+    }
+
+    /// <summary>Apply a throttle transition to its pane (throttled → set signature/since; resumed → clear).</summary>
+    internal static void ApplyThrottleEvent(AgentPaneViewModel pane, Styloagent.Core.Sessions.ThrottleEvent e)
+    {
+        pane.IsThrottled = e.IsThrottled;
+        pane.LastThrottleSignature = e.Signature;
+        pane.ThrottledSince = e.IsThrottled ? e.Timestamp : null;
     }
 
     /// <summary>Rebuild <see cref="RosterGroups"/> from the current panes + known repos so each repo's
@@ -2444,6 +2484,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             }
 
             pane.ApplyHookEvent(e);
+            // A throttled agent fires no hooks; ANY hook event means it made forward progress → clear the
+            // throttle even if no fresh output arrived (the detector no-ops if it wasn't throttled).
+            if (_throttle.TryGetValue(pane, out var t)) t.Detector.NoteResumed(DateTimeOffset.UtcNow);
             pane.WaitingSince = pane.NeedsYou ? (pane.WaitingSince ?? DateTimeOffset.UtcNow) : null;
             RecordTimelineFromHook(pane, e);   // add the timeline entry BEFORE the instrument refresh
             RefreshAttention();                 // (which reads TimelineCount)

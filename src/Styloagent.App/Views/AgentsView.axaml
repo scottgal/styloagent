@@ -50,6 +50,16 @@
                     <TextBlock Text="asked you" FontSize="9" Foreground="#8FD8E2" VerticalAlignment="Center" />
                   </StackPanel>
                 </Border>
+                <!-- Throttled / rate-limited: Claude Code fires no hook when rate-limited, so the agent looks
+                     alive but is stalled — amber ⏳ so it reads as throttled, not "working". Transient (not a
+                     HookState); cleared when it makes forward progress. Tooltip = signature + since-time. -->
+                <Border Background="#3A2E00" CornerRadius="3" Padding="4,0" VerticalAlignment="Center"
+                        IsVisible="{Binding IsThrottled}" ToolTip.Tip="{Binding ThrottleTooltip}">
+                  <StackPanel Orientation="Horizontal" Spacing="3">
+                    <TextBlock Text="⏳" FontSize="9" VerticalAlignment="Center" />
+                    <TextBlock Text="throttled" FontSize="9" Foreground="#E5A05A" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Border>
               </StackPanel>
               <!-- Live hook state (§4.4): glyph + activity headline ("indexing repo"), coloured by state.
                    Hover shows the pending question when the agent needs you. -->

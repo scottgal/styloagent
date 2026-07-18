@@ -943,7 +943,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 vm.AddRepoOverview(ov);
 
         var docRepoRoot = repoRoot ?? Environment.GetEnvironmentVariable("STYLOAGENT_REPO") ?? Directory.GetCurrentDirectory();
-        vm.DocLibrary = new DocLibraryViewModel(docRepoRoot, channelRoot, vm.OpenMarkdownDocument)
+        vm.DocLibrary = new DocLibraryViewModel(docRepoRoot, channelRoot, vm.OpenMarkdownDocument,
+            nameSearch: term => vm._searchIndex.SearchByName(term, 200))
         {
             ShowSystemMapCommand = vm.ShowSystemMapCommand,
             ShowBusSequenceCommand = vm.ShowBusSequenceCommand,
@@ -1469,13 +1470,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         });
     }
 
-    /// <summary>(Re)builds the document search index from the library files (title + content).</summary>
+    /// <summary>(Re)builds the document search index. Names+titles first (no file reads) so the doc
+    /// library's in-pane by-name box answers almost immediately, then the full-text content streams in.</summary>
     private void BuildSearchIndex(string? repoRoot, string? channelRoot)
     {
         try
         {
             var entries = Styloagent.Core.Docs.DocLibraryReader.Read(repoRoot, channelRoot);
-            _searchIndex.Build(entries.Select(e => (e, SafeReadFile(e.FullPath))));
+            _searchIndex.BuildNames(entries);   // filename+title field live first — powers SearchByName
+            _searchIndex.Build(entries.Select(e => (e, SafeReadFile(e.FullPath))));   // full-text streams in
         }
         catch (Exception ex)
         {

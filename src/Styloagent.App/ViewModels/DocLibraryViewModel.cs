@@ -73,9 +73,10 @@ public sealed partial class DocLibraryViewModel : ObservableObject
     // mutations back onto the UI thread; null in a plain unit-test context (→ run inline).
     private readonly SynchronizationContext? _uiContext;
 
-    // A background filename index (names only, NO content reads) so the search box finds files by name
-    // across the whole library without a content-index build. Swaps to repo-'s filename index when ready.
-    private IReadOnlyList<DocEntry> _fileIndex = Array.Empty<DocEntry>();
+    // The in-pane name search delegates to repo-'s filename index (DocumentSearchIndex.SearchByName —
+    // filename+title field, no content, richer matching). Its BuildNames pass (no file reads) makes it
+    // answer almost instantly, so there is NO second full-tree walk here. Null → the box stays empty.
+    private readonly Func<string, IReadOnlyList<DocSearchHit>>? _nameSearch;
 
     /// <summary>The lazy file/folder tree (bound by the TreeView) — three collapsed sections at the top.</summary>
     public ObservableCollection<DocNode> Roots { get; } = new();
@@ -116,11 +117,13 @@ public sealed partial class DocLibraryViewModel : ObservableObject
         Action<MarkdownDocumentViewModel> openDocument,
         IDocDirLister? lister = null,
         Func<DocEntry, MarkdownDocumentViewModel>? buildDoc = null,
-        string? logsRoot = null)
+        string? logsRoot = null,
+        Func<string, IReadOnlyList<DocSearchHit>>? nameSearch = null)
     {
         _openDocument = openDocument;
         _lister = lister ?? new CoreDocDirLister();
         _buildDoc = buildDoc ?? (entry => new MarkdownDocumentViewModel(entry.Title, entry.FullPath));
+        _nameSearch = nameSearch;
         _uiContext = SynchronizationContext.Current;
         _selectedSort = SortModes[0];
 
@@ -131,7 +134,6 @@ public sealed partial class DocLibraryViewModel : ObservableObject
         AddSection(logsRoot ?? DocLibraryReader.ResolveLogsRoot(channelRoot), DocSource.Log, "logs");
 
         BuildTopLevel();
-        _ = BuildFileIndexAsync();   // background filename walk (no content) → powers the name search
     }
 
     private void AddSection(string? root, DocSource source, string label)
@@ -229,38 +231,7 @@ public sealed partial class DocLibraryViewModel : ObservableObject
         foreach (var c in ordered) { node.Children.Add(c); ResortNode(c); }
     }
 
-    // ── Filename search ──────────────────────────────────────────────────────────────────────────
-
-    private async Task BuildFileIndexAsync()
-    {
-        IReadOnlyList<DocEntry> index;
-        try { index = await Task.Run(BuildFileIndex); }
-        catch { index = Array.Empty<DocEntry>(); }
-        _fileIndex = index;
-        await RunOnUiAsync(ApplySearch);   // refresh results if a query was already typed
-    }
-
-    /// <summary>A cheap, bounded, names-only walk of every section (via the lister) — NO file content is
-    /// read, so it stays off the load critical path and powers the by-name search.</summary>
-    private IReadOnlyList<DocEntry> BuildFileIndex()
-    {
-        var files = new List<DocEntry>();
-        foreach (var (root, source, _) in _sections)
-        {
-            var stack = new Stack<string>();
-            stack.Push(root);
-            int visited = 0;
-            while (stack.Count > 0 && visited++ < 20_000)
-            {
-                foreach (var item in _lister.List(stack.Pop()))
-                {
-                    if (item.IsFolder) stack.Push(item.FullPath);
-                    else files.Add(ToEntry(item, root, source));
-                }
-            }
-        }
-        return files;
-    }
+    // ── Filename search (backed by repo-'s DocumentSearchIndex.SearchByName) ─────────────────────
 
     partial void OnSearchTextChanged(string value) => ApplySearch();
 
@@ -268,14 +239,12 @@ public sealed partial class DocLibraryViewModel : ObservableObject
     {
         SearchResults.Clear();
         var q = SearchText?.Trim() ?? string.Empty;
-        if (q.Length == 0) return;
+        if (q.Length == 0 || _nameSearch is null) return;
 
-        var hits = _fileIndex
-            .Where(e => e.Title.Contains(q, StringComparison.OrdinalIgnoreCase)
-                     || e.RelativePath.Contains(q, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(e => e.Title, StringComparer.OrdinalIgnoreCase)
-            .Take(200);
-        foreach (var h in hits) SearchResults.Add(h);
+        // Global filename hits from the shared index (empty until BuildNames runs — no crash). Mapped to
+        // DocEntry so the results list + OpenDocCommand bind exactly as the tree leaves do.
+        foreach (var h in _nameSearch(q))
+            SearchResults.Add(new DocEntry(h.Title, h.FullPath, h.Source, h.RelativePath));
     }
 
     // ── Open ─────────────────────────────────────────────────────────────────────────────────────

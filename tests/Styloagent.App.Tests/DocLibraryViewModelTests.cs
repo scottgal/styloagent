@@ -103,22 +103,27 @@ public class DocLibraryViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task Search_finds_files_by_name_across_the_whole_library_including_unexpanded_folders()
+    public void Search_delegates_to_the_name_index_and_maps_hits_globally()
     {
-        const string repo = "/fake/repo";
-        var sub = Path.Combine(repo, "sub");
-        var lister = new FakeLister();
-        lister.Dirs[repo] = new() { Md(repo, "readme.md", 1), Md(repo, "design.md", 2), Folder(repo, "sub", 3) };
-        lister.Dirs[sub] = new() { Md(sub, "readme-sub.md", 1) };
+        // The in-pane box delegates to repo-'s filename index (SearchByName) — global, so it finds files
+        // in unexpanded folders too. Injected here as a simple name-contains over a fixed hit set.
+        var hits = new List<DocSearchHit>
+        {
+            new("readme.md", "/repo/readme.md", DocSource.Repo, "readme.md"),
+            new("readme-sub.md", "/repo/sub/readme-sub.md", DocSource.Repo, "sub/readme-sub.md"),
+            new("design.md", "/repo/design.md", DocSource.Repo, "design.md"),
+        };
+        Func<string, IReadOnlyList<DocSearchHit>> nameSearch = q =>
+            hits.Where(h => h.Title.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
 
-        var vm = new DocLibraryViewModel(repo, null, _ => { }, lister: lister);
+        var vm = new DocLibraryViewModel("/fake/repo", null, _ => { }, nameSearch: nameSearch);
 
+        Assert.False(vm.ShowSearchResults);
         vm.SearchText = "readme";
         Assert.True(vm.ShowSearchResults);
-        await WaitUntil(() => vm.SearchResults.Count >= 2);   // background name index → results
-
+        Assert.Equal(2, vm.SearchResults.Count);
         Assert.Contains(vm.SearchResults, e => e.Title == "readme.md");
-        Assert.Contains(vm.SearchResults, e => e.Title == "readme-sub.md");   // in an unexpanded subfolder
+        Assert.Contains(vm.SearchResults, e => e.Title == "readme-sub.md");   // from an unexpanded subfolder
         Assert.DoesNotContain(vm.SearchResults, e => e.Title == "design.md");
 
         vm.SearchText = "";

@@ -300,8 +300,22 @@ public sealed partial class TerminalControl : UserControl
         });
         // When XTerm produces data (e.g. terminal query responses), forward it to the PTY.
         engine.DataReceived += OnTerminalDataReceived;
+        // Track scrollback EVICTIONS so a scrolled-up view can compensate its offset (see RebuildRows).
+        // Subscribed at construction while the NORMAL buffer is active — the only buffer that has scrollback
+        // and thus the only one that trims. Fires on the background PTY thread during Write.
+        engine.Buffer.Trimmed += OnBufferTrimmed;
         return engine;
     }
+
+    // Oldest scrollback lines evicted since the last rebuild (buffer at the scrollback cap). Touched on the
+    // background PTY thread (Trimmed fires inside Write) and the UI thread (rebuild), so via Interlocked.
+    private int _pendingTrimmedLines;
+
+    /// <summary>
+    /// The engine evicted <paramref name="count"/> oldest scrollback lines. Just accumulate here (background
+    /// thread); the UI-thread rebuild applies the scroll-anchor compensation. See RebuildRows.
+    /// </summary>
+    private void OnBufferTrimmed(int count) => System.Threading.Interlocked.Add(ref _pendingTrimmedLines, count);
 
     /// <summary>
     /// Replaces the VT engine with a fresh one of the SAME grid size so the next <see cref="Attach"/> replay
@@ -314,6 +328,7 @@ public sealed partial class TerminalControl : UserControl
     private void ResetEngine()
     {
         _terminal.DataReceived -= OnTerminalDataReceived;   // stop the discarded engine forwarding to the PTY
+        System.Threading.Interlocked.Exchange(ref _pendingTrimmedLines, 0);   // fresh engine → no carried-over trims
         _terminal = BuildEngine(_terminal.Cols, _terminal.Rows);
     }
 
@@ -880,6 +895,21 @@ public sealed partial class TerminalControl : UserControl
         // bottom-anchor top-pad has room and the last row can sit on the bottom edge).
         Surface.Height = Math.Max(contentH + _topPad, vpH);
         Surface.Width  = Math.Max(_terminal.Cols * _cellW + PadX, ScrollArea.Viewport.Width);
+
+        // SCROLL ANCHOR: once scrollback hits its cap, each new line EVICTS the oldest, so every remaining
+        // line's absolute row index — and thus its pixel offset in the surface — shifts UP by the evicted
+        // count. A tail-following view wants the newest lines (ScrollToTail handles that). But a scrolled-up
+        // operator reading history would see the text JUMP forward by the evicted count on every output
+        // batch — the "scroll is preserved but scrolling up shows garbled/shifting text" report. Pull the
+        // offset up by the trimmed height so the SAME content stays under them. Only when not following tail.
+        int trimmed = System.Threading.Interlocked.Exchange(ref _pendingTrimmedLines, 0);
+        if (trimmed > 0 && !_followTail && _cellH > 0)
+        {
+            double anchoredY = Math.Max(0, ScrollArea.Offset.Y - trimmed * _cellH);
+            if (anchoredY != ScrollArea.Offset.Y)
+                ScrollArea.Offset = ScrollArea.Offset.WithY(anchoredY);
+        }
+
         RenderVisibleSlice(forceRebuild: true);
     }
 

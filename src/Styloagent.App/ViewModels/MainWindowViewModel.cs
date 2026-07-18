@@ -1984,6 +1984,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         SelectedPane = paneVm;
         _panesByHookId[hookId] = paneVm;
 
+        // Federated (BUG 4): a spawned child belongs to the SAME repo instance as its parent, so it must
+        // carry the parent's repo tag — otherwise ResolvePtyForRepo / SnapshotLiveAgentsForRepo can't see
+        // it and that instance's delivery coordinator never routes to it (only the federated OVERVIEW was
+        // tagged, at :1097). An untagged parent is the primary fleet (the default), so its children stay
+        // untagged too.
+        if (parentPrefix is not null
+            && Panes.FirstOrDefault(p => p.Prefix == parentPrefix) is { } parentPane
+            && _paneRepoRoot.TryGetValue(parentPane, out var parentRepo))
+            _paneRepoRoot[paneVm] = parentRepo;
+
         // The pane IS a Dock Document — add it directly (Id/Title/CanFloat set in its ctor).
         _dockFactory.AddDockable(documentDock, paneVm);
         _dockFactory.SetActiveDockable(paneVm);
@@ -2373,6 +2383,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>Resolves an agent id to its live PTY WITHIN one federated repo instance. Under the
     /// <c>(repoRoot, prefix)</c> model the same prefix can exist in two repos, so an instance's injector must
     /// scope to its own panes — otherwise a nudge could type into the primary's same-named agent.</summary>
+    /// <summary>Test seam: the repo-instance root a pane is tagged with (federated PTY/delivery routing),
+    /// or null when untagged (the primary fleet). Mirrors what ResolvePtyForRepo / SnapshotLiveAgentsForRepo
+    /// key off, so a test can assert a spawned federated child inherited its parent's repo tag (BUG 4).</summary>
+    internal string? RepoRootForPaneForTest(string prefix)
+        => Panes.FirstOrDefault(p => p.Prefix == prefix) is { } pane
+           && _paneRepoRoot.TryGetValue(pane, out var root) ? root : null;
+
     private IPtySession? ResolvePtyForRepo(string repoRoot, string agentId)
     {
         try

@@ -2,10 +2,10 @@ namespace Styloagent.Core.Docs;
 
 /// <summary>
 /// One immediate child of a directory listed by <see cref="DocLibraryReader.ListChildren"/>: a subfolder
-/// or a <c>*.md</c> file, distinguished by <see cref="IsDirectory"/>. Carries the cheap-to-obtain name and
+/// or a <c>*.md</c> file, distinguished by <see cref="IsFolder"/>. Carries the cheap-to-obtain name and
 /// last-write time so the tree can sort by name or modified date without a second I/O pass.
 /// </summary>
-public sealed record DocDirectoryEntry(string Name, string FullPath, bool IsDirectory, DateTime LastWriteUtc);
+public sealed record DocDirectoryEntry(string Name, string FullPath, bool IsFolder, DateTimeOffset LastWriteUtc);
 
 /// <summary>Order for <see cref="DocLibraryReader.ListChildren"/> — folders always group before files.</summary>
 public enum DocSortOrder
@@ -88,7 +88,7 @@ public static class DocLibraryReader
             foreach (var sub in dir.EnumerateDirectories())
             {
                 if (ExcludedDirs.Contains(sub.Name)) continue;
-                children.Add(new DocDirectoryEntry(sub.Name, sub.FullName, IsDirectory: true, SafeWriteUtc(sub)));
+                children.Add(new DocDirectoryEntry(sub.Name, sub.FullName, IsFolder: true, SafeWriteUtc(sub)));
             }
         }
         catch { /* unreadable dir — yield what we have, never throw */ }
@@ -97,7 +97,7 @@ public static class DocLibraryReader
         try
         {
             foreach (var file in dir.EnumerateFiles("*.md"))
-                children.Add(new DocDirectoryEntry(file.Name, file.FullName, IsDirectory: false, SafeWriteUtc(file)));
+                children.Add(new DocDirectoryEntry(file.Name, file.FullName, IsFolder: false, SafeWriteUtc(file)));
         }
         catch { /* unreadable dir — yield what we have, never throw */ }
 
@@ -107,7 +107,7 @@ public static class DocLibraryReader
     /// <summary>Folders first, then the chosen key within each group; a name tiebreak keeps it deterministic.</summary>
     private static IReadOnlyList<DocDirectoryEntry> SortChildren(List<DocDirectoryEntry> children, DocSortOrder order)
     {
-        var foldersFirst = children.OrderByDescending(e => e.IsDirectory);
+        var foldersFirst = children.OrderByDescending(e => e.IsFolder);
         return order switch
         {
             DocSortOrder.NameDesc => foldersFirst
@@ -121,19 +121,20 @@ public static class DocLibraryReader
         };
     }
 
-    private static DateTime SafeWriteUtc(FileSystemInfo info)
+    private static DateTimeOffset SafeWriteUtc(FileSystemInfo info)
     {
         try { return info.LastWriteTimeUtc; }
-        catch { return DateTime.MinValue; }
+        catch { return DateTimeOffset.MinValue; }
     }
 
     /// <summary>
     /// The per-agent log directory. An explicit <paramref name="logsRoot"/> wins; otherwise it is the
     /// <c>logs/</c> sibling of <paramref name="channelRoot"/> — both live under <c>.styloagent/</c>, so the
     /// logs are indexed wherever the channel lives, including the snapshot case where the channel is copied
-    /// out of the repo tree. Null when neither is available.
+    /// out of the repo tree. Null when neither is available. Public so the lazy tree resolves its <c>logs</c>
+    /// section root identically to <see cref="Read"/> — one source of truth, no App-side re-derivation drift.
     /// </summary>
-    private static string? ResolveLogsRoot(string? channelRoot, string? logsRoot)
+    public static string? ResolveLogsRoot(string? channelRoot, string? logsRoot = null)
     {
         if (!string.IsNullOrWhiteSpace(logsRoot)) return logsRoot;
         if (string.IsNullOrWhiteSpace(channelRoot)) return null;

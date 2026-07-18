@@ -106,9 +106,43 @@ public sealed class DocumentSearchIndex : IDisposable
             outer.Add(per, Occur.MUST);
         }
 
+        return RunQuery(outer, max);
+    }
+
+    /// <summary>
+    /// Top <paramref name="max"/> hits for a FILENAME search — per-term prefix over the <c>filename</c>
+    /// field only (full name, stem, run-together form, and <c>-_./</c>/camelCase fragments), with NO
+    /// content matching. Backs the in-pane "find a file by name" box: it surfaces name matches and nothing
+    /// else, and is global (finds files anywhere in the library, not just the expanded folders). All terms
+    /// must match; empty before <see cref="Build"/> or on a blank query.
+    /// </summary>
+    public IReadOnlyList<DocSearchHit> SearchByName(string query, int max = 8)
+    {
+        if (_reader is null || string.IsNullOrWhiteSpace(query)) return Array.Empty<DocSearchHit>();
+
+        var terms = query.ToLowerInvariant()
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .Take(8)
+            .ToList();
+        if (terms.Count == 0) return Array.Empty<DocSearchHit>();
+
+        // Each term must prefix-match the filename field only — no title/content, so a body mention of
+        // the term never surfaces a file whose name doesn't contain it.
+        var outer = new BooleanQuery();
+        foreach (var term in terms)
+            outer.Add(new PrefixQuery(new Term("filename", term)), Occur.MUST);
+
+        return RunQuery(outer, max);
+    }
+
+    /// <summary>Runs <paramref name="query"/> and maps the top <paramref name="max"/> scoring docs to hits.</summary>
+    private IReadOnlyList<DocSearchHit> RunQuery(Query query, int max)
+    {
+        if (_reader is null) return Array.Empty<DocSearchHit>();
+
         var searcher = new IndexSearcher(_reader);
         var results = new List<DocSearchHit>();
-        foreach (var h in searcher.Search(outer, max).ScoreDocs)
+        foreach (var h in searcher.Search(query, max).ScoreDocs)
         {
             var d = searcher.Doc(h.Doc);
             var source = Enum.TryParse<DocSource>(d.Get("source"), out var s) ? s : DocSource.Repo;

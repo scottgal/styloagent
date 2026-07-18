@@ -109,6 +109,46 @@ public class DocumentSearchIndexTests
     }
 
     [Fact]
+    public void SearchByName_finds_a_file_by_a_hyphen_name_fragment()
+    {
+        using var idx = new DocumentSearchIndex();
+        idx.Build(new[]
+        {
+            Doc("activity-timeline.md", "activity-timeline.md", "unrelated body"),
+            Doc("readme.md", "readme.md", "nothing to see"),
+        });
+
+        Assert.Contains(idx.SearchByName("timeline"), h => h.Title == "activity-timeline.md");
+        Assert.Contains(idx.SearchByName("activity-timeline"), h => h.Title == "activity-timeline.md");
+    }
+
+    [Fact]
+    public void SearchByName_ignores_content_only_matches()
+    {
+        using var idx = new DocumentSearchIndex();
+        idx.Build(new[]
+        {
+            // "runtime" appears only in the BODY here — a name search must NOT surface it.
+            Doc("notes.md", "notes.md", "this body mentions runtime repeatedly runtime runtime"),
+            Doc("runtime.md", "runtime.md", "unrelated body"),
+        });
+
+        var hits = idx.SearchByName("runtime");
+        Assert.Contains(hits, h => h.Title == "runtime.md");
+        Assert.DoesNotContain(hits, h => h.Title == "notes.md");
+    }
+
+    [Fact]
+    public void SearchByName_before_build_or_on_blank_is_empty()
+    {
+        using var idx = new DocumentSearchIndex();
+        Assert.Empty(idx.SearchByName("anything"));   // before Build
+        idx.Build(new[] { Doc("a.md", "a.md", "x") });
+        Assert.Empty(idx.SearchByName(""));
+        Assert.Empty(idx.SearchByName("   "));
+    }
+
+    [Fact]
     public void Empty_or_whitespace_query_returns_nothing()
     {
         using var idx = new DocumentSearchIndex();

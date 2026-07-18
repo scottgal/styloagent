@@ -122,6 +122,18 @@ public class DocLibraryReaderTests : IDisposable
     }
 
     [Fact]
+    public void ResolveLogsRoot_is_the_logs_sibling_of_the_channel_or_the_explicit_root()
+    {
+        // Exposed so the lazy tree's logs section resolves its root identically to Read.
+        var channel = Path.Combine("x", "y", ".styloagent", "channel");
+        var expectedSibling = Path.Combine("x", "y", ".styloagent", "logs");
+
+        Assert.Equal(expectedSibling, DocLibraryReader.ResolveLogsRoot(channel));
+        Assert.Equal("/explicit/logs", DocLibraryReader.ResolveLogsRoot(channel, "/explicit/logs")); // explicit wins
+        Assert.Null(DocLibraryReader.ResolveLogsRoot(null));
+    }
+
+    [Fact]
     public void Read_accepts_an_explicit_logs_root()
     {
         var logs = Path.Combine(Path.GetTempPath(), "doclib-logsx-" + Guid.NewGuid().ToString("N"));

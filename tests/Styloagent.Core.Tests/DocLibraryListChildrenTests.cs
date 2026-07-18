@@ -41,16 +41,16 @@ public class DocLibraryListChildrenTests : IDisposable
     private static readonly string[] ExpectedZToA = { "zeta.md", "middle.md", "aardvark.md" };
 
     private static List<string> FileNames(IEnumerable<DocDirectoryEntry> kids)
-        => kids.Where(e => !e.IsDirectory).Select(e => e.Name).ToList();
+        => kids.Where(e => !e.IsFolder).Select(e => e.Name).ToList();
 
     [Fact]
     public void Lists_immediate_subfolders_and_markdown_files_only()
     {
         var kids = DocLibraryReader.ListChildren(_root);
 
-        Assert.Contains(kids, e => e.IsDirectory && e.Name == "alpha");
-        Assert.Contains(kids, e => e.IsDirectory && e.Name == "beta");
-        Assert.Contains(kids, e => !e.IsDirectory && e.Name == "zeta.md");
+        Assert.Contains(kids, e => e.IsFolder && e.Name == "alpha");
+        Assert.Contains(kids, e => e.IsFolder && e.Name == "beta");
+        Assert.Contains(kids, e => !e.IsFolder && e.Name == "zeta.md");
         Assert.DoesNotContain(kids, e => e.Name == "bin");        // excluded build dir
         Assert.DoesNotContain(kids, e => e.Name == "notes.txt");  // non-markdown
         Assert.DoesNotContain(kids, e => e.Name == "deep.md");    // nested — not an immediate child
@@ -61,7 +61,7 @@ public class DocLibraryListChildrenTests : IDisposable
     {
         var kids = DocLibraryReader.ListChildren(Path.Combine(_root, "alpha"));
 
-        Assert.Contains(kids, e => !e.IsDirectory && e.Name == "deep.md");
+        Assert.Contains(kids, e => !e.IsFolder && e.Name == "deep.md");
         Assert.DoesNotContain(kids, e => e.Name == "zeta.md");   // that's the parent's file
     }
 
@@ -70,8 +70,8 @@ public class DocLibraryListChildrenTests : IDisposable
     {
         var kids = DocLibraryReader.ListChildren(_root);
 
-        int lastFolder = kids.ToList().FindLastIndex(e => e.IsDirectory);
-        int firstFile = kids.ToList().FindIndex(e => !e.IsDirectory);
+        int lastFolder = kids.ToList().FindLastIndex(e => e.IsFolder);
+        int firstFile = kids.ToList().FindIndex(e => !e.IsFolder);
         Assert.True(lastFolder < firstFile, "all folders should precede all files");
     }
 
@@ -108,7 +108,7 @@ public class DocLibraryListChildrenTests : IDisposable
     {
         var kids = DocLibraryReader.ListChildren(_root);
         var zeta = kids.Single(e => e.Name == "zeta.md");
-        Assert.Equal(new DateTime(2022, 1, 1, 0, 0, 0, DateTimeKind.Utc), zeta.LastWriteUtc);
+        Assert.Equal(new DateTimeOffset(new DateTime(2022, 1, 1, 0, 0, 0, DateTimeKind.Utc)), zeta.LastWriteUtc);
     }
 
     [Fact]

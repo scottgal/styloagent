@@ -51,6 +51,64 @@ public class DocumentSearchIndexTests
     }
 
     [Fact]
+    public void Finds_file_by_hyphenated_name_fragment_typed_with_the_hyphen()
+    {
+        using var idx = new DocumentSearchIndex();
+        idx.Build(new[]
+        {
+            Doc("activity-timeline.md", "activity-timeline.md", "no relevant words in the body"),
+            Doc("readme.md", "readme.md", "unrelated content here"),
+        });
+
+        // The user types the hyphenated name — StandardAnalyzer tokenizes the title to
+        // ["activity","timeline.md"], so a whole-name prefix never matched before.
+        Assert.Contains(idx.Search("activity-timeline"), h => h.Title == "activity-timeline.md");
+    }
+
+    [Fact]
+    public void Finds_file_when_name_typed_as_one_word_without_separators()
+    {
+        using var idx = new DocumentSearchIndex();
+        idx.Build(new[]
+        {
+            Doc("signal-bus.md", "signal-bus.md", "unrelated body"),
+            Doc("readme.md", "readme.md", "nothing to see"),
+        });
+
+        // "signalbus" — the name run together, no hyphen. A very common way to search by name.
+        Assert.Contains(idx.Search("signalbus"), h => h.Title == "signal-bus.md");
+    }
+
+    [Fact]
+    public void Finds_file_by_underscore_separated_mid_name_fragment()
+    {
+        using var idx = new DocumentSearchIndex();
+        idx.Build(new[]
+        {
+            Doc("my_deploy_guide.md", "my_deploy_guide.md", "unrelated body"),
+            Doc("readme.md", "readme.md", "nothing to see"),
+        });
+
+        // A middle segment of an underscore-separated name.
+        Assert.Contains(idx.Search("guide"), h => h.Title == "my_deploy_guide.md");
+    }
+
+    [Fact]
+    public void Filename_match_outranks_a_content_only_match()
+    {
+        using var idx = new DocumentSearchIndex();
+        idx.Build(new[]
+        {
+            Doc("other.md", "other.md", "the body says signalbus and signalbus again"),
+            Doc("signal-bus.md", "signal-bus.md", "no relevant words in the body"),
+        });
+
+        // Finding a file by its name is the primary use — a name hit must beat a body-only mention.
+        var hits = idx.Search("signalbus");
+        Assert.Equal("signal-bus.md", hits[0].Title);
+    }
+
+    [Fact]
     public void Empty_or_whitespace_query_returns_nothing()
     {
         using var idx = new DocumentSearchIndex();

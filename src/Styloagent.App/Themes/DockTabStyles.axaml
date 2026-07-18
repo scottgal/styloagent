@@ -47,7 +47,14 @@
          IsAgentPaneConverter and its command bindings simply no-op on non-agent tabs (and its flyout is
          never built there). Fleet-level commands go via Host (MainWindowViewModel), same split as before. -->
     <DataTemplate x:Key="StyloagentTabHeaderTemplate">
-      <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+      <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Stretch">
+        <!-- Repo-identity band: a left-edge stripe coloured by the agent's repo (its overview hue, matching
+             the roster grouping colour) so mixed-repo tabs are distinguishable. Shown only in a multi-repo
+             workspace (RepoBandColorHex is null otherwise). Non-agent tabs never set it. -->
+        <Border Width="3" CornerRadius="1.5" Margin="0,3,5,3" VerticalAlignment="Stretch"
+                Background="{Binding RepoBandColorHex}"
+                ToolTip.Tip="{Binding RepoBandTooltip}"
+                IsVisible="{Binding RepoBandColorHex, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         <TextBlock Text="{Binding Title}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
         <Button Content="⋯" FontSize="13" FontWeight="Bold" Padding="5,0" MinWidth="0" MinHeight="0"
                 Margin="4,0,0,0" Background="Transparent" BorderThickness="0" VerticalAlignment="Center"

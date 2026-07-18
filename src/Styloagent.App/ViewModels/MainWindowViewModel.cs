@@ -721,6 +721,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var groups = RosterGrouping.Build(Panes.ToList(), _repos, p => RepoNameForPrefix(p.Prefix));
         RosterGroups.Clear();
         foreach (var g in groups) RosterGroups.Add(g);
+
+        // Colour each agent's DOCK TAB by its repo (same hue as the roster group) so mixed-repo tabs are
+        // distinguishable; only in a multi-repo workspace (single-repo → no band, like the roster header).
+        foreach (var g in groups)
+            foreach (var pane in g.Agents)
+            {
+                pane.RepoBandColorHex = g.ShowHeader ? g.ColorHex : null;
+                pane.RepoBandTooltip = g.ShowHeader ? $"repo: {g.RepoName}" : null;
+            }
     }
 
     // ── Roster reparent (drag-drop v2a): edit the authority hierarchy WITHIN a repo ──────────────

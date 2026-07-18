@@ -426,6 +426,16 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     [ObservableProperty]
     private string _gitBadgeText = "";
 
+    /// <summary>The repo-identifying colour band on this agent's DOCK TAB (the repo overview's hue, matching
+    /// the roster's per-repo grouping colour) so mixed-repo tabs are distinguishable at a glance. Null/empty
+    /// in a single-repo workspace → no band. Set by the shell's roster rebuild.</summary>
+    [ObservableProperty]
+    private string? _repoBandColorHex;
+
+    /// <summary>Tooltip for the tab repo band — the repo's name.</summary>
+    [ObservableProperty]
+    private string? _repoBandTooltip;
+
     /// <summary>
     /// True when the operator has HIDDEN this agent — its pane is removed from the visible dock surface to
     /// free screen space, but the session/PTY keeps running (it still shows as working in the roster).

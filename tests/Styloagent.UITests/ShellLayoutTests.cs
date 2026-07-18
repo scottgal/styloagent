@@ -194,10 +194,9 @@ public class ShellLayoutTests
     // ── AgentPaneView ─────────────────────────────────────────────────────────
 
     /// <summary>
-    /// AgentPaneView hosts its own named controls (PaneBorder + Terminal) plus the cockpit-owned
-    /// AgentPaneChromeView header. The pane's action buttons (Spawn/Dehydrate/Rehydrate/Rename) moved
-    /// into that chrome control's ⋯ menu when the header was extracted, so they're covered by
-    /// AgentPaneChromeViewTests now — here we just pin the seam: the chrome is hosted and the terminal wired.
+    /// AgentPaneView hosts its own named controls (PaneBorder + Terminal). The pane header chrome
+    /// (name + ⋯ actions menu + zoom + theme) moved ONTO the dock tab header (cockpit-, DockTabStyles),
+    /// so the pane no longer hosts an AgentPaneChromeView row — the terminal fills the whole pane.
     /// </summary>
     [Fact]
     public Task AgentPaneView_Has_Expected_Named_Controls()
@@ -214,8 +213,8 @@ public class ShellLayoutTests
 
             Assert.NotNull(view.FindControl<Border>("PaneBorder"));
             Assert.NotNull(view.FindControl<Styloagent.Terminal.TerminalControl>("Terminal"));
-            // The extracted cockpit-owned pane header is hosted in the pane's visual tree.
-            Assert.Contains(view.GetVisualDescendants().OfType<AgentPaneChromeView>(), _ => true);
+            // The redundant pane header chrome was removed — the terminal now fills the pane (no header row).
+            Assert.Empty(view.GetVisualDescendants().OfType<AgentPaneChromeView>());
 
             window.Close();
         });

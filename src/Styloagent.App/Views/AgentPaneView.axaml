@@ -2,7 +2,6 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Styloagent.App.ViewModels"
              xmlns:terminal="clr-namespace:Styloagent.Terminal;assembly=Styloagent.Terminal"
-             xmlns:views="clr-namespace:Styloagent.App.Views"
              x:Class="Styloagent.App.Views.AgentPaneView"
              x:DataType="vm:AgentPaneViewModel">
 
@@ -19,17 +18,11 @@
               Background="{Binding BorderColorHex}"
               CornerRadius="4,0,0,4" />
 
-      <Grid Grid.Column="1" RowDefinitions="Auto,*">
-
-        <!-- Pane header chrome (cockpit-owned: ⋯ actions menu + zoom slider + theme picker) -->
-        <views:AgentPaneChromeView Grid.Row="0" />
-
-        <!-- Terminal area -->
-        <terminal:TerminalControl Name="Terminal"
-                                  Grid.Row="1"
-                                  ZoomLevel="{Binding ZoomLevel, Mode=TwoWay}" />
-
-      </Grid>
+      <!-- The pane header chrome (name + ⋯ actions + zoom + theme) moved ONTO the dock tab header
+           (cockpit-, DockTabStyles.axaml), so the terminal now fills the whole pane — no header row. -->
+      <terminal:TerminalControl Name="Terminal"
+                                Grid.Column="1"
+                                ZoomLevel="{Binding ZoomLevel, Mode=TwoWay}" />
     </Grid>
   </Border>
 

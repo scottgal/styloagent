@@ -374,7 +374,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private void ApprovePermission(AgentPaneViewModel? pane)
     {
         if (pane?.CurrentPty is not { } pty) return;
-        _ = pty.WriteAsync("1\r");
+        _ = pty.WriteAsync(pane.Runtime == AgentRuntimeKind.Codex ? "\r" : "1\r");
+        if (pane.NoteTerminalInteraction()) RefreshAttention();
         Timeline.Add(DateTimeOffset.Now, pane.DisplayName, "approved prompt", pane.BorderColorHex);
     }
 

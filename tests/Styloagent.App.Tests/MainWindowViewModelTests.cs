@@ -60,6 +60,32 @@ public class MainWindowViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task ApprovePermission_uses_runtime_specific_confirmation_input()
+    {
+        var codexLauncher = new FakeLauncher();
+        var codex = await MainWindowViewModel.InitializeAsync(
+            _channelRoot, codexLauncher, new FakeWatcher(), defaultAgentRuntime: AgentRuntimeKind.Codex);
+        codex.Pane!.ApplyHookEvent(new Styloagent.Core.Hooks.HookEvent(
+            "foss-", "PermissionRequest", null, "Approve?", "session", "/repo"));
+        codex.ApprovePermissionCommand.Execute(codex.Pane);
+        Assert.Contains("\r", codexLauncher.Spawned.Single().Writes);
+        Assert.DoesNotContain("1\r", codexLauncher.Spawned.Single().Writes);
+        Assert.Equal(Styloagent.Core.Hooks.AgentHookState.Working, codex.Pane.HookState);
+
+        var claudeRoot = MakeTwoAgentChannel();
+        try
+        {
+            var claudeLauncher = new FakeLauncher();
+            var claude = await MainWindowViewModel.InitializeAsync(claudeRoot, claudeLauncher, new FakeWatcher());
+            claude.Pane!.ApplyHookEvent(new Styloagent.Core.Hooks.HookEvent(
+                "foss-", "PermissionRequest", null, "Approve?", "session", "/repo"));
+            claude.ApprovePermissionCommand.Execute(claude.Pane);
+            Assert.Contains("1\r", claudeLauncher.Spawned.Single().Writes);
+        }
+        finally { Directory.Delete(claudeRoot, recursive: true); }
+    }
+
+    [Fact]
     public async Task Initialize_WithStoredPresentation_UsesStoredDisplayName()
     {
         // Write a presentation sidecar with a custom name for foss-.

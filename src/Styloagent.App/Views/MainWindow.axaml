@@ -42,20 +42,15 @@
               <TextBlock Text="Add agent" VerticalAlignment="Center" />
             </StackPanel>
           </Button>
-          <Button Command="{Binding NewConsoleCommand}" Padding="10,4" FontSize="13"
-                  ToolTip.Tip="Open a plain shell terminal (not an agent)">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="›_" FontFamily="Menlo, Consolas, monospace" FontWeight="Bold"
-                         VerticalAlignment="Center" />
-              <TextBlock Text="New console" VerticalAlignment="Center" />
-            </StackPanel>
+          <Button x:Name="NewConsoleButton" Command="{Binding NewConsoleCommand}" Padding="7,4"
+                  ToolTip.Tip="Open a plain shell terminal (not an agent)"
+                  AutomationProperties.Name="Open a new console">
+            <ic:SymbolIcon Symbol="WindowConsole" FontSize="16" />
           </Button>
-          <Button Command="{Binding OpenRepoInstanceCommand}" Padding="10,4" FontSize="13"
-                  ToolTip.Tip="Open another repo (with its own .styloagent/) as a federated instance">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <ic:SymbolIcon Symbol="FolderAdd" FontSize="16" />
-              <TextBlock Text="Open repo" VerticalAlignment="Center" />
-            </StackPanel>
+          <Button x:Name="OpenRepoButton" Command="{Binding OpenRepoInstanceCommand}" Padding="7,4"
+                  ToolTip.Tip="Open another repo (with its own .styloagent/) as a federated instance"
+                  AutomationProperties.Name="Open another repository">
+            <ic:SymbolIcon Symbol="FolderAdd" FontSize="16" />
           </Button>
         </StackPanel>
 
@@ -102,24 +97,28 @@
                         ToolTip.Tip="Auto-tile: starter on top, agents tiled below"
                         Content="Auto-tile" />
           <!-- Close leftover empty document areas and reflow the layout -->
-          <Button Content="Tidy" FontSize="12" Padding="8,3" Margin="8,0,0,0" VerticalAlignment="Center"
+          <Button x:Name="TidyLayoutButton" FontSize="12" Padding="7,3" Margin="8,0,0,0" VerticalAlignment="Center"
                   Command="{Binding TidyEmptyDocksCommand}"
-                  ToolTip.Tip="Close empty document areas and reflow the layout" />
+                  ToolTip.Tip="Close empty document areas and reflow the layout"
+                  AutomationProperties.Name="Tidy the document layout">
+            <ic:SymbolIcon Symbol="Broom" FontSize="15" />
+          </Button>
         </StackPanel>
 
         <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
           <!-- Screenshot button — only shown when UI automation is enabled in Settings -->
           <Button Padding="6,3" ToolTip.Tip="Capture a cockpit screenshot"
                   IsVisible="{Binding UiAutomationEnabled}"
+                  AutomationProperties.Name="Capture a cockpit screenshot"
                   Command="{Binding CaptureScreenshotCommand}">
             <ic:SymbolIcon Symbol="Camera" FontSize="15" />
           </Button>
           <ToggleButton x:Name="RosterToggleButton" IsChecked="{Binding IsRosterCollapsed}" Padding="6,3"
-                        ToolTip.Tip="Collapse roster">
+                        ToolTip.Tip="Collapse roster" AutomationProperties.Name="Collapse roster">
             <ic:SymbolIcon Symbol="PanelLeft" FontSize="15" />
           </ToggleButton>
           <ToggleButton x:Name="SidePanelToggleButton" IsChecked="{Binding IsSidePanelCollapsed}" Padding="6,3"
-                        ToolTip.Tip="Collapse side panel">
+                        ToolTip.Tip="Collapse side panel" AutomationProperties.Name="Collapse side panel">
             <ic:SymbolIcon Symbol="PanelRight" FontSize="15" />
           </ToggleButton>
           <!-- Graceful shut down: checkpoints every active agent, then closes the cockpit. -->
@@ -132,7 +131,8 @@
               <TextBlock Text="Shut down" FontSize="12" VerticalAlignment="Center" />
             </StackPanel>
           </Button>
-          <Button x:Name="SettingsButton" Padding="6,3" ToolTip.Tip="Settings">
+          <Button x:Name="SettingsButton" Padding="6,3" ToolTip.Tip="Settings"
+                  AutomationProperties.Name="Settings">
             <ic:SymbolIcon Symbol="Settings" FontSize="15" />
             <Button.Flyout>
               <Flyout>

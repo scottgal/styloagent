@@ -321,21 +321,28 @@
               <TextBlock Text="Git" VerticalAlignment="Center" />
             </StackPanel>
           </TabItem.Header>
-          <TabControl Background="{DynamicResource PanelBgBrush}">
-            <TabControl.Styles>
-              <Style Selector="TabItem">
-                <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="FontSize" Value="12" />
-                <Setter Property="Foreground" Value="#9D7FE0" />
-              </Style>
-            </TabControl.Styles>
-            <TabItem Header="History">
-              <views:GitGraphView DataContext="{Binding GitGraph}" />
-            </TabItem>
-            <TabItem Header="Changes">
-              <views:ChangesView DataContext="{Binding Changes}" />
-            </TabItem>
-          </TabControl>
+          <Grid RowDefinitions="Auto,*">
+            <TextBlock Grid.Row="0" Margin="12,8,12,4" FontSize="11"
+                       Foreground="{DynamicResource MutedTextBrush}"
+                       Text="{Binding GitSidebarRepositoryName}"
+                       ToolTip.Tip="Repository shown in this Git panel"
+                       IsVisible="{Binding GitSidebarRepositoryName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <TabControl Grid.Row="1" Background="{DynamicResource PanelBgBrush}">
+              <TabControl.Styles>
+                <Style Selector="TabItem">
+                  <Setter Property="FontWeight" Value="SemiBold" />
+                  <Setter Property="FontSize" Value="12" />
+                  <Setter Property="Foreground" Value="#9D7FE0" />
+                </Style>
+              </TabControl.Styles>
+              <TabItem Header="History">
+                <views:GitGraphView DataContext="{Binding GitGraph}" />
+              </TabItem>
+              <TabItem Header="Changes">
+                <views:ChangesView DataContext="{Binding Changes}" />
+              </TabItem>
+            </TabControl>
+          </Grid>
         </TabItem>
         <TabItem>
           <TabItem.Header>

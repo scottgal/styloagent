@@ -44,4 +44,23 @@ public class ManifestStoreTests
         Assert.Equal("staging.example.net", e.Transport.SshHost);
         Assert.Equal("deploy-cred-ref", e.Transport.CredentialRef);
     }
+
+    [Fact]
+    public async Task Save_then_Load_roundtrips_codex_runtime()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"manifest-{Guid.NewGuid():N}.yaml");
+        var entries = new List<AgentManifestEntry>
+        {
+            new("codex-", "/repo", "/repo/wt-codex", "/ch/lp/codex.md",
+                "/ch/lp/codex-restart.md", "/ch/sc/codex-context.md",
+                AgentTransport.Local, AgentRuntimeKind.Codex),
+        };
+        var store = new ManifestStore();
+
+        await store.SaveAsync(path, entries);
+        var loaded = await store.LoadAsync(path);
+
+        var e = Assert.Single(loaded);
+        Assert.Equal(AgentRuntimeKind.Codex, e.Runtime);
+    }
 }

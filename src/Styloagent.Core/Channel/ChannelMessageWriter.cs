@@ -39,6 +39,25 @@ public static class ChannelMessageWriter
         return path;
     }
 
+    /// <summary>
+    /// Writes the immutable completion report for an existing bus thread. A reply is deliberately a
+    /// separate outbox record rather than an edit of the inbound message; the projection recognizes it
+    /// and moves the whole thread from the live queue into Archive.
+    /// </summary>
+    public static string Reply(
+        string channelRoot, string from, string thread, string body, DateTimeOffset timestamp)
+    {
+        var outbox = Path.Combine(channelRoot, "outbox");
+        Directory.CreateDirectory(outbox);
+        var slug = Slug(thread);
+        var path = Path.Combine(outbox, slug + ".reply.md");
+        if (File.Exists(path))
+            throw new InvalidOperationException($"thread '{slug}' already has an immutable completion report");
+
+        File.WriteAllText(path, Format(from, thread, body, "normal", timestamp));
+        return path;
+    }
+
     // Bug A: <paramref name="fromRepo"/> stamps an optional **From-Repo:** header so a cross-repo reply can
     // route home; blank/null omits the header entirely (single-repo back-compat — the trace is byte-identical
     // to the pre-Bug-A format).

@@ -24,6 +24,7 @@ internal partial class ManifestRow
     public string RestartPrompt { get; set; } = "";
     public string SavedContext { get; set; } = "";
     public string Transport { get; set; } = "local";
+    public string Runtime { get; set; } = "claude";
     public string? SshHost { get; set; }
     public string? CredentialRef { get; set; }
 }
@@ -43,6 +44,7 @@ public sealed class ManifestStore
                 RestartPrompt = e.RestartPromptPath,
                 SavedContext = e.SavedContextPath,
                 Transport = e.Transport.Kind == TransportKind.Ssh ? "ssh" : "local",
+                Runtime = e.Runtime == AgentRuntimeKind.Codex ? "codex" : "claude",
                 SshHost = e.Transport.SshHost,
                 CredentialRef = e.Transport.CredentialRef,
             }).ToList(),
@@ -64,6 +66,9 @@ public sealed class ManifestStore
             r.SavedContext,
             r.Transport == "ssh"
                 ? new AgentTransport(TransportKind.Ssh, r.SshHost, r.CredentialRef)
-                : AgentTransport.Local)).ToList();
+                : AgentTransport.Local,
+            string.Equals(r.Runtime, "codex", StringComparison.OrdinalIgnoreCase)
+                ? AgentRuntimeKind.Codex
+                : AgentRuntimeKind.Claude)).ToList();
     }
 }

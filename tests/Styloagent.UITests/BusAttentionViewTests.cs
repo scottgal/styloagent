@@ -49,8 +49,8 @@ public class BusAttentionViewTests
 
                 var texts = window.GetVisualDescendants().OfType<TextBlock>()
                     .Select(t => t.Text ?? string.Empty).ToList();
-                Assert.Contains(texts, s => s.Contains("NEEDS ATTENTION"));
-                Assert.Contains(texts, s => s.Contains("RECENT"));
+                Assert.Contains(texts, s => s.Contains("ACTIVE"));
+                Assert.Contains(texts, s => s.Contains("QUEUED"));
                 Assert.Contains(texts, s => s.Contains("ARCHIVE"));
                 Assert.Contains(texts, s => s.Contains("open"));   // alpha subject row materialized
 

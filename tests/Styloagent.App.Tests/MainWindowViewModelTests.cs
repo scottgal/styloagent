@@ -1,12 +1,22 @@
 using Dock.Model.Mvvm.Controls;
 using Styloagent.App.ViewModels;
+using Styloagent.Core.Mcp;
+using Styloagent.Core.Model;
 using Styloagent.Core.Projects;
+using Styloagent.Core.Sessions;
+using Styloagent.Core.Config;
 
 namespace Styloagent.App.Tests;
 
 public class MainWindowViewModelTests : IDisposable
 {
     private readonly string _channelRoot;
+
+    private static async Task WaitUntil(Func<bool> condition, int timeoutMs = 5000)
+    {
+        for (int waited = 0; waited < timeoutMs && !condition(); waited += 10)
+            await Task.Delay(10);
+    }
 
     public MainWindowViewModelTests()
     {
@@ -180,6 +190,131 @@ public class MainWindowViewModelTests : IDisposable
             Assert.IsType<AgentPaneViewModel>(secondDoc);
         }
         finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task AddCodexCommand_AddsPaneAndLaunchesCodex()
+    {
+        var root = MakeTwoAgentChannel();
+        try
+        {
+            var launcher = new FakeLauncher();
+            var vm = await MainWindowViewModel.InitializeAsync(
+                root, launcher, new FakeWatcher());
+
+            vm.AddCodexCommand.Execute(null);
+            await WaitUntil(() => launcher.Options.Count >= 2);
+
+            Assert.Equal(2, vm.Panes.Count);
+            Assert.Equal(AgentRuntimeKind.Codex, vm.Panes[1].Runtime);
+            Assert.Equal("codex", launcher.Options[1].Command);
+            Assert.Contains("--config", launcher.Options[1].Args);
+            Assert.Contains(launcher.Options[1].Args, a => a.Contains("hooks.SessionStart", StringComparison.Ordinal));
+            Assert.DoesNotContain(launcher.Options[1].Args, a => a == "--settings");
+            Assert.DoesNotContain(launcher.Options[1].Args, a => a == "--mcp-config");
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task DefaultRuntimeCodex_AddAgentCommandAndSpawnChildLaunchCodex()
+    {
+        var root = MakeTwoAgentChannel();
+        try
+        {
+            var launcher = new FakeLauncher();
+            var vm = await MainWindowViewModel.InitializeAsync(
+                root, launcher, new FakeWatcher(), defaultAgentRuntime: AgentRuntimeKind.Codex);
+
+            await WaitUntil(() => launcher.Options.Count >= 1);
+            Assert.Equal("codex", launcher.Options[0].Command);
+
+            vm.AddAgentCommand.Execute(null);
+            await WaitUntil(() => launcher.Options.Count >= 2);
+            Assert.Equal(AgentRuntimeKind.Codex, vm.Panes[1].Runtime);
+            Assert.Equal("codex", launcher.Options[1].Command);
+
+            var outcome = await vm.SpawnChildAsync(new SpawnRequest(
+                vm.Panes[0].Prefix, "child-", "r", ".", "p", Worktree: false));
+            await WaitUntil(() => launcher.Options.Count >= 3);
+
+            Assert.True(outcome.Spawned);
+            Assert.Equal(AgentRuntimeKind.Codex, vm.Panes[2].Runtime);
+            Assert.Equal("codex", launcher.Options[2].Command);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task OverviewRevival_PreservesPersistedRuntimeForParkedAgent()
+    {
+        var repoRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(repoRoot);
+        var promptPath = Path.Combine(repoRoot, "system-prompt.md");
+        await File.WriteAllTextAsync(promptPath, "overview instructions");
+        try
+        {
+            var saved = Path.Combine(_channelRoot, "saved-context", "foss-context.md");
+            await new ManifestStore().SaveAsync(Path.Combine(_channelRoot, "agents.yaml"),
+            [
+                new AgentManifestEntry("foss-", repoRoot, repoRoot, "", "", saved,
+                    AgentTransport.Local, AgentRuntimeKind.Codex),
+            ]);
+            var launcher = new FakeLauncher();
+
+            var vm = await MainWindowViewModel.InitializeAsync(
+                _channelRoot, launcher, new FakeWatcher(), repoRoot: repoRoot,
+                overviewSystemPromptPath: promptPath, defaultAgentRuntime: AgentRuntimeKind.Claude);
+            await WaitUntil(() => launcher.Options.Count >= 1);
+
+            vm.AddAgentCommand.Execute(null);
+            await WaitUntil(() => launcher.Options.Count >= 2);
+
+            Assert.Equal(AgentRuntimeKind.Codex, vm.Panes[1].Runtime);
+            Assert.Equal("codex", launcher.Options[1].Command);
+        }
+        finally { Directory.Delete(repoRoot, recursive: true); }
+    }
+
+    [Fact]
+    public async Task SpawnChild_RuntimeRequestCanOverrideDefaultForMixedFleet()
+    {
+        var root = MakeTwoAgentChannel();
+        try
+        {
+            var launcher = new FakeLauncher();
+            var vm = await MainWindowViewModel.InitializeAsync(
+                root, launcher, new FakeWatcher(), defaultAgentRuntime: AgentRuntimeKind.Codex);
+            await WaitUntil(() => launcher.Options.Count >= 1);
+
+            var outcome = await vm.SpawnChildAsync(new SpawnRequest(
+                vm.Panes[0].Prefix, "claude-child-", "r", ".", "p", Worktree: false, Runtime: "claude"));
+            await WaitUntil(() => launcher.Options.Count >= 2);
+
+            Assert.True(outcome.Spawned);
+            Assert.Equal(AgentRuntimeKind.Claude, vm.Panes[1].Runtime);
+            Assert.Equal("claude", launcher.Options[1].Command);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void CodexPane_StopHookMarksIdle()
+    {
+        var entry = new AgentManifestEntry(
+            "codex-", "/repo", "/repo", "", "", "", AgentTransport.Local, AgentRuntimeKind.Codex);
+        var pane = new AgentPaneViewModel(
+            new AgentSession(entry, new FakeLauncher(), new FakeWatcher(), Array.Empty<string>()),
+            entry, "codex", "#FF6666");
+
+        pane.ApplyHookEvent(new Styloagent.Core.Hooks.HookEvent(
+            "codex-", "SessionStart", null, null, "s", "/repo"));
+        Assert.Equal(Styloagent.Core.Hooks.AgentHookState.Working, pane.HookState);
+
+        pane.ApplyHookEvent(new Styloagent.Core.Hooks.HookEvent(
+            "codex-", "Stop", null, null, "s", "/repo"));
+
+        Assert.Equal(Styloagent.Core.Hooks.AgentHookState.Idle, pane.HookState);
     }
 
     [Fact]

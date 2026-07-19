@@ -92,25 +92,33 @@ actions:
   - type: Screenshot
     value: 13-doc-protocol-md
 
-  # ── Add a second agent, spawn it (enabled), spawn AGAIN (now Live → disabled no-op) ──
+  # ── Add a second Claude agent, spawn it (enabled), spawn AGAIN (now Live → disabled no-op) ──
   - type: Click
-    target: "type=Button:has-text(Add agent)"
+    target: "name=NewClaudeButton"
   - type: Wait
     value: "3500"
   - type: Screenshot
-    value: 14-agent-added
+    value: 14-claude-agent-added
   - type: Click
     target: "type=Button:has-text(Spawn)"
   - type: Wait
     value: "3500"
   - type: Screenshot
-    value: 15-new-agent-spawned
+    value: 15-new-claude-spawned
   - type: Click
     target: "type=Button:has-text(Spawn)"
   - type: Wait
     value: "2000"
   - type: Screenshot
-    value: 16-new-agent-spawn-again
+    value: 16-new-claude-spawn-again
+
+  # ── Add a Codex agent: validates the top-bar split and Codex pane creation path ──
+  - type: Click
+    target: "name=NewCodexButton"
+  - type: Wait
+    value: "3500"
+  - type: Screenshot
+    value: 17-codex-agent-added
 
   # ── Spawn all (PROPOSED) + Pause ──────────────────────────────────────────
   - type: Click
@@ -118,13 +126,13 @@ actions:
   - type: Wait
     value: "2500"
   - type: Screenshot
-    value: 17-spawn-all
+    value: 18-spawn-all
   - type: Click
     target: "type=Button:has-text(Pause)"
   - type: Wait
     value: "1000"
   - type: Screenshot
-    value: 18-paused
+    value: 19-paused
 
   # ── Panel collapse toggles ────────────────────────────────────────────────
   - type: Click
@@ -132,7 +140,7 @@ actions:
   - type: Wait
     value: "800"
   - type: Screenshot
-    value: 19-roster-collapsed
+    value: 20-roster-collapsed
   - type: Click
     target: "name=RosterToggleButton"
   - type: Click
@@ -140,7 +148,7 @@ actions:
   - type: Wait
     value: "800"
   - type: Screenshot
-    value: 20-side-panel-collapsed
+    value: 21-side-panel-collapsed
   - type: Click
     target: "name=SidePanelToggleButton"
 
@@ -150,10 +158,10 @@ actions:
   - type: Wait
     value: "1000"
   - type: Screenshot
-    value: 21-settings-flyout
+    value: 22-settings-flyout
   - type: Click
     target: "type=ToggleSwitch:has-text(Light theme)"
   - type: Wait
     value: "1800"
   - type: Screenshot
-    value: 22-light-theme-on
+    value: 23-light-theme-on

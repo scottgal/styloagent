@@ -14,6 +14,7 @@ public interface IFleetController
     Task<IssueOutcome> ReportIssueAsync(IssueRequest req);
     Task<WrapUpOutcome> WrapUpAsync(string callerPrefix);
     Task<MessageOutcome> SendMessageAsync(MessageRequest req);
+    Task<MessageOutcome> ReplyToThreadAsync(string callerPrefix, string thread, string body);
     Task<string> CaptureScreenshotAsync(string? target);
 
     // Fleet-control surface for an orchestrator agent.

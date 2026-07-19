@@ -26,7 +26,7 @@ public static class HookEventParser
                 AgentId: agentId,
                 EventName: Str(root, "hook_event_name") ?? string.Empty,
                 NotificationType: Str(root, "notification_type"),
-                Message: Str(root, "message"),
+                Message: Str(root, "message") ?? ToolInput(root, "description"),
                 SessionId: Str(root, "session_id"),
                 Cwd: Str(root, "cwd"),
                 ToolName: Str(root, "tool_name"),

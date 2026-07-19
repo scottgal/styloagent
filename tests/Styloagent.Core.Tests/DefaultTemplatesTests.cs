@@ -11,4 +11,15 @@ public class DefaultTemplatesTests
     [Fact]
     public void SystemPrompt_proposal_schema_teaches_the_worktree_field()
         => Assert.Contains("worktree: false", DefaultTemplates.SystemPrompt);
+
+    [Theory]
+    [InlineData("## Execution discipline")]
+    [InlineData("## Credentials and environments")]
+    [InlineData("## Completion gate")]
+    [InlineData("Production is forbidden unless the operator explicitly says `prod`")]
+    public void Agent_contract_includes_the_non_negotiable_operating_rules(string text)
+    {
+        Assert.Contains(text, DefaultTemplates.SystemPrompt);
+        Assert.Contains(text, DefaultTemplates.Protocol);
+    }
 }

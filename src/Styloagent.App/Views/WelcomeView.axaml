@@ -4,8 +4,9 @@
              xmlns:conv="clr-namespace:Styloagent.App.Converters"
              x:Class="Styloagent.App.Views.WelcomeView"
              x:DataType="vm:WelcomeViewModel">
-  <Border Background="{DynamicResource CockpitBgBrush}" Padding="40">
-    <StackPanel Spacing="14" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="440">
+  <Border Background="{DynamicResource CockpitBgBrush}" Padding="28">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Spacing="14" VerticalAlignment="Top" HorizontalAlignment="Center" MaxWidth="440">
       <TextBlock FontSize="24">
         <Run Text="stylo" FontWeight="Bold" FontStyle="Italic" Foreground="#DDDDDD" /><Run Text="agent" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
       </TextBlock>
@@ -18,6 +19,19 @@
                AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64" />
       <Button Content="Create new system →" Command="{Binding NewSystemCommand}"
               Padding="14,8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+
+      <Border Background="#151528" BorderBrush="#2B2B45" BorderThickness="1" CornerRadius="6" Padding="4">
+        <Grid ColumnDefinitions="*,*">
+          <ToggleButton x:Name="ClaudeFirstToggle" Grid.Column="0" Content="Claude first"
+                        IsChecked="{Binding IsClaudeFirst, Mode=OneWay}"
+                        Command="{Binding SetRuntimeModeCommand}" CommandParameter="Claude"
+                        Padding="10,6" HorizontalContentAlignment="Center" />
+          <ToggleButton x:Name="CodexFirstToggle" Grid.Column="1" Content="Codex first"
+                        IsChecked="{Binding IsCodexFirst, Mode=OneWay}"
+                        Command="{Binding SetRuntimeModeCommand}" CommandParameter="Codex"
+                        Padding="10,6" HorizontalContentAlignment="Center" />
+        </Grid>
+      </Border>
 
       <Border Height="1" Background="#222226" Margin="0,10" />
 
@@ -40,6 +54,7 @@
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
-    </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
   </Border>
 </UserControl>

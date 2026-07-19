@@ -36,10 +36,20 @@
                      IsVisible="{Binding ProjectName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
           <Border Width="1" Margin="0,2,8,2" Background="{DynamicResource MutedTextBrush}"
                   IsVisible="{Binding ProjectName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-          <Button Command="{Binding AddAgentCommand}" Padding="10,4" FontSize="13">
+          <Button x:Name="NewClaudeButton"
+                  Command="{Binding AddClaudeCommand}" Padding="10,4" FontSize="13"
+                  ToolTip.Tip="Open a new Claude agent">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <ic:SymbolIcon Symbol="Add" FontSize="16" />
-              <TextBlock Text="Add agent" VerticalAlignment="Center" />
+              <TextBlock Text="New Claude" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button x:Name="NewCodexButton"
+                  Command="{Binding AddCodexCommand}" Padding="10,4" FontSize="13"
+                  ToolTip.Tip="Open a new Codex agent">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ic:SymbolIcon Symbol="Bot" FontSize="16" />
+              <TextBlock Text="New Codex" VerticalAlignment="Center" />
             </StackPanel>
           </Button>
           <Button x:Name="NewConsoleButton" Command="{Binding NewConsoleCommand}" Padding="7,4"
@@ -318,7 +328,7 @@
           <TabItem.Header>
             <StackPanel Orientation="Horizontal" Spacing="6">
               <ic:SymbolIcon Symbol="Flowchart" FontSize="15" VerticalAlignment="Center" />
-              <TextBlock Text="Git" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding GitSidebarTitle}" VerticalAlignment="Center" />
             </StackPanel>
           </TabItem.Header>
           <TabControl Background="{DynamicResource PanelBgBrush}">

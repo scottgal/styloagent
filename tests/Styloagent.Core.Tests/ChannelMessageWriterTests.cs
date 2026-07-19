@@ -77,4 +77,22 @@ public class ChannelMessageWriterTests
         }
         finally { Directory.Delete(root, recursive: true); }
     }
+
+    [Fact]
+    public async Task Reply_marks_the_matching_thread_done_without_mutating_the_original_message()
+    {
+        var root = TempChannel();
+        try
+        {
+            var inbound = ChannelMessageWriter.Write(root, "foss-", "router-", "Need a review", "Please review.", "normal", DateTimeOffset.Now);
+            var reply = ChannelMessageWriter.Reply(root, "router-", "Need a review", "Reviewed. Next: merge.", DateTimeOffset.Now);
+
+            Assert.True(File.Exists(inbound));
+            Assert.EndsWith("need-a-review.reply.md", reply);
+            var thread = (await new ChannelProjection().ReadAsync(root, Prefixes)).Single();
+            Assert.Contains(thread.Messages, m => m.Kind == BusMessageKind.Inbox && m.State == BusMessageState.Replied);
+            Assert.Contains(thread.Messages, m => m.Kind == BusMessageKind.Reply);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
 }

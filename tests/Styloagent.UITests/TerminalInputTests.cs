@@ -68,6 +68,40 @@ public class TerminalInputTests
         });
     }
 
+    [Fact]
+    public async Task Dropped_image_path_is_inserted_as_a_quoted_parameter_without_submit()
+    {
+        await _fx.DispatchAsync(() =>
+        {
+            var control = new TerminalControl();
+            var fake = new FakePtySession();
+            control.Attach(fake);
+
+            Assert.True(control.InsertDroppedImagePaths(["/tmp/shot with spaces.png"]));
+
+            Assert.Contains(" '/tmp/shot with spaces.png'", fake.Writes);
+            Assert.DoesNotContain("\r", fake.Writes);
+            control.Detach();
+            return Task.CompletedTask;
+        });
+    }
+
+    [Fact]
+    public async Task Dropped_non_image_is_ignored()
+    {
+        await _fx.DispatchAsync(() =>
+        {
+            var control = new TerminalControl();
+            var fake = new FakePtySession();
+            control.Attach(fake);
+
+            Assert.False(control.InsertDroppedImagePaths(["/tmp/readme.md"]));
+            Assert.Empty(fake.Writes);
+            control.Detach();
+            return Task.CompletedTask;
+        });
+    }
+
     // The terminal must PUBLISH the operator's compose window (OperatorInputState) so a message-delivery
     // nudge (PtyMessageInjector) defers instead of typing into the operator's half-finished line.
     [Fact]

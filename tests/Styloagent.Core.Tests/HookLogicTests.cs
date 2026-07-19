@@ -63,6 +63,19 @@ public class HookLogicTests
         Assert.Equal("TODO", grep!.ToolTarget);
     }
 
+    [Fact]
+    public void Parse_uses_permission_request_description_as_message()
+    {
+        const string json = """
+            {"hook_event_name":"PermissionRequest","tool_name":"Bash",
+             "tool_input":{"command":"npm test","description":"Allow test command?"}}
+            """;
+
+        Assert.True(HookEventParser.TryParse(json, "codex-", out var e));
+        Assert.Equal("PermissionRequest", e!.EventName);
+        Assert.Equal("Allow test command?", e.Message);
+    }
+
     [Theory]
     [InlineData("not json at all")]
     [InlineData("")]
@@ -90,6 +103,11 @@ public class HookLogicTests
     public void Permission_notification_sets_waiting_for_human()
         => Assert.Equal(AgentHookState.WaitingForHuman,
             HookStateMachine.Next(AgentHookState.Working, Ev("Notification", "permission_prompt")));
+
+    [Fact]
+    public void PermissionRequest_sets_waiting_for_human()
+        => Assert.Equal(AgentHookState.WaitingForHuman,
+            HookStateMachine.Next(AgentHookState.Working, Ev("PermissionRequest")));
 
     [Theory]
     [InlineData("agent_needs_input")]

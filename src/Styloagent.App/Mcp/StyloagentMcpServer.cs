@@ -83,6 +83,8 @@ public sealed class StyloagentMcpServer : IAsyncDisposable
 
     public IReadOnlyList<string> McpConfigArgs(string prefix) => McpConfig.Args(prefix, BaseUrl, Token);
 
+    public IReadOnlyList<string> CodexMcpConfigArgs(string prefix) => McpConfig.CodexArgs(prefix, BaseUrl, Token);
+
     public async ValueTask DisposeAsync()
     {
         if (!_running) return;

@@ -24,6 +24,12 @@ public class FleetToolsTests
         public Task<IssueOutcome> ReportIssueAsync(IssueRequest req) { LastIssue = req; return Task.FromResult(NextIssue); }
         public Task<WrapUpOutcome> WrapUpAsync(string callerPrefix) { LastWrapUp = callerPrefix; return Task.FromResult(NextWrapUp); }
         public Task<MessageOutcome> SendMessageAsync(MessageRequest req) { LastMessage = req; return Task.FromResult(NextMessage); }
+        public string? LastCompletedThread;
+        public Task<MessageOutcome> ReplyToThreadAsync(string callerPrefix, string thread, string body)
+        {
+            LastCompletedThread = thread;
+            return Task.FromResult(MessageOutcome.Ok("/ch/outbox/" + thread + ".reply.md"));
+        }
         public string? LastShotTarget = "unset";
         public Task<string> CaptureScreenshotAsync(string? target) { LastShotTarget = target; return Task.FromResult("/shots/x.png"); }
         public string? LastDehydrate;
@@ -135,6 +141,18 @@ public class FleetToolsTests
     }
 
     [Fact]
+    public async Task spawn_agent_passes_runtime_through_for_mixed_fleets()
+    {
+        var ctrl = new FakeController();
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), ctrl, new McpAuth("secret"));
+
+        await tools.spawn_agent("codex-", "owns CLI hooks", ".", "You are codex-.", worktree: false,
+            runtime: "codex");
+
+        Assert.Equal("codex", ctrl.LastReq!.Runtime);
+    }
+
+    [Fact]
     public async Task send_message_sends_with_the_caller_as_sender()
     {
         var ctrl = new FakeController();
@@ -167,6 +185,18 @@ public class FleetToolsTests
         await tools.send_message("overview-", "cross", "hi", "normal", "styloissues");
 
         Assert.Equal("styloissues", ctrl.LastMessage!.Repo);   // cross-repo target carried to the controller
+    }
+
+    [Fact]
+    public async Task reply_to_thread_uses_the_completion_path_not_a_new_message()
+    {
+        var ctrl = new FakeController();
+        var tools = new FleetTools(AccessorWith("foss-", "Bearer secret"), ctrl, new McpAuth("secret"));
+
+        var result = await tools.reply_to_thread("need-a-review", "Reviewed: approved. Next: merge.");
+
+        Assert.Equal("need-a-review", ctrl.LastCompletedThread);
+        Assert.Contains("reply.md", result);
     }
 
     [Fact]

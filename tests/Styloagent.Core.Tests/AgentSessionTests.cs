@@ -49,8 +49,37 @@ public class AgentSessionTests
         await s.SpawnAsync("LAUNCH PROMPT");
 
         Assert.Equal(SessionState.Live, s.State);
+        Assert.Equal("claude", launcher.Last!.Command);
         Assert.Equal("/repo/wt-foss", launcher.Last!.WorkingDirectory);
         Assert.Contains(launcher.Spawned[0].Writes, w => w.Contains("LAUNCH PROMPT"));
+    }
+
+    [Fact]
+    public async Task Spawn_uses_codex_command_for_codex_runtime()
+    {
+        var launcher = new FakeLauncher();
+        var entry = Entry() with { Runtime = AgentRuntimeKind.Codex };
+        var s = new AgentSession(entry, launcher, new FakeWatcher());
+
+        await s.SpawnAsync("LAUNCH PROMPT");
+
+        Assert.Equal("codex", launcher.Last!.Command);
+        Assert.Equal("/repo/wt-foss", launcher.Last.WorkingDirectory);
+        Assert.Equal("LAUNCH PROMPT", launcher.Last.Args[^1]);
+        Assert.Empty(launcher.Spawned[0].Writes);
+    }
+
+    [Fact]
+    public async Task Spawn_passes_codex_start_prompt_as_native_cli_argument()
+    {
+        var launcher = new FakeLauncher();
+        var entry = Entry() with { Runtime = AgentRuntimeKind.Codex };
+        var s = new AgentSession(entry, launcher, new FakeWatcher(), ["--sandbox", "workspace-write"]);
+
+        await s.SpawnAsync("START CODEX WORK");
+
+        Assert.Equal(["--sandbox", "workspace-write", "START CODEX WORK"], launcher.Last!.Args);
+        Assert.Empty(launcher.Spawned[0].Writes);
     }
 
     [Fact]
@@ -133,6 +162,21 @@ public class AgentSessionTests
         Assert.Equal(SessionState.Live, s.State);
         Assert.Equal(2, launcher.Spawned.Count);
         Assert.Contains(launcher.Spawned[1].Writes, w => w.Contains("RESTART PROMPT"));
+    }
+
+    [Fact]
+    public async Task Rehydrate_passes_codex_restart_prompt_as_native_cli_argument()
+    {
+        var launcher = new FakeLauncher();
+        var entry = Entry() with { Runtime = AgentRuntimeKind.Codex };
+        var s = new AgentSession(entry, launcher, new FakeWatcher { WillChange = true });
+        await s.SpawnAsync("START");
+        await s.DehydrateAsync(TimeSpan.FromSeconds(1));
+
+        await s.RehydrateAsync("RESUME CODEX WORK");
+
+        Assert.Equal("RESUME CODEX WORK", launcher.Last!.Args[^1]);
+        Assert.Empty(launcher.Spawned[1].Writes);
     }
 
     [Fact]

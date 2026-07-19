@@ -6,6 +6,7 @@ using Styloagent.App.Config;
 using Styloagent.App.Services;
 using Styloagent.App.ViewModels;
 using Styloagent.App.Views;
+using Styloagent.Core.Model;
 using Styloagent.Core.Projects;
 using Styloagent.Core.Sessions;
 using Styloagent.Core.Workspace;
@@ -52,7 +53,8 @@ public partial class App : Application
             ThemeApplier.ApplyThemeVariant(this, prefs.LightTheme);
             ThemeApplier.ApplyAccent(this, AccentPalette.Resolve(prefs.Accent));
 
-            async Task OpenProjectAsync(string root, Window? welcomeWindow, MainWindow? existing = null)
+            async Task OpenProjectAsync(string root, Window? welcomeWindow, MainWindow? existing = null,
+                AgentRuntimeKind defaultRuntime = AgentRuntimeKind.Claude)
             {
                 try
                 {
@@ -87,7 +89,8 @@ public partial class App : Application
                         gitService: gitSvc,
                         gitLog: gitSvc,
                         overviewColorHex: primaryColorHex,
-                        extraOverviews: extraOverviews);
+                        extraOverviews: extraOverviews,
+                        defaultAgentRuntime: defaultRuntime);
                     vm.AttachProject(cfg);
                     vm.SetReposFromOverviews(overviews);   // enumerate repos for list_repos + repo-grouped UI
                     vm.AttachPreferences(prefs, prefsStore, prefsPath);
@@ -159,11 +162,13 @@ public partial class App : Application
                     Title = "Styloagent",
                     Icon = AppIcon(),
                     Width = 520,
-                    Height = 380,
+                    Height = 520,
                 };
-                var welcome = new WelcomeViewModel(recents, recentsPath,
+                WelcomeViewModel? welcome = null;
+                welcome = new WelcomeViewModel(recents, recentsPath,
                     new StorageFolderPicker(welcomeWindow),
-                    root => _ = OpenProjectAsync(root, welcomeWindow));
+                    root => _ = OpenProjectAsync(root, welcomeWindow,
+                        defaultRuntime: welcome?.SelectedRuntime ?? AgentRuntimeKind.Claude));
                 welcomeWindow.Content = new WelcomeView { DataContext = welcome };
                 desktop.MainWindow = welcomeWindow;
                 welcomeWindow.Show();

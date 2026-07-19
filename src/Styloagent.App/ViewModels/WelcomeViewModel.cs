@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Styloagent.App.Config;
 using Styloagent.App.Services;
+using Styloagent.Core.Model;
 using Styloagent.Core.Projects;
 
 namespace Styloagent.App.ViewModels;
@@ -22,6 +23,14 @@ public sealed partial class WelcomeViewModel : ObservableObject
     [ObservableProperty]
     private string _newSystemDescription = string.Empty;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsClaudeFirst))]
+    [NotifyPropertyChangedFor(nameof(IsCodexFirst))]
+    private AgentRuntimeKind _selectedRuntime = AgentRuntimeKind.Claude;
+
+    public bool IsClaudeFirst => SelectedRuntime == AgentRuntimeKind.Claude;
+    public bool IsCodexFirst => SelectedRuntime == AgentRuntimeKind.Codex;
+
     public WelcomeViewModel(RecentProjectsStore recents, string recentsPath, IFolderPicker picker,
         Action<string> onProjectChosen)
     {
@@ -36,6 +45,14 @@ public sealed partial class WelcomeViewModel : ObservableObject
         Recent.Clear();
         foreach (var p in await _recents.LoadAsync(_recentsPath))
             Recent.Add(p);
+    }
+
+    [RelayCommand]
+    private void SetRuntimeMode(string? mode)
+    {
+        SelectedRuntime = string.Equals(mode, "Codex", StringComparison.OrdinalIgnoreCase)
+            ? AgentRuntimeKind.Codex
+            : AgentRuntimeKind.Claude;
     }
 
     [RelayCommand]

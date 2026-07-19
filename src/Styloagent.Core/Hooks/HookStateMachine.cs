@@ -18,6 +18,7 @@ public static class HookStateMachine
         "UserPromptSubmit" => AgentHookState.Working,
         "PreToolUse"       => AgentHookState.Working,
         "PostToolUse"      => AgentHookState.Working,
+        "PermissionRequest" => AgentHookState.WaitingForHuman,
         "Notification"     => FromNotification(current, e.NotificationType),
         "Stop"             => current, // fires every turn — not a reliable idle signal
         _                  => current,

@@ -25,6 +25,37 @@ The aim is the right SHAPE, held loosely, not a procedure followed rigidly.
   git history, and draft the spec from what you find — investigating code to answer the spec's
   questions, not scanning blindly. Ask the human only to fill genuine gaps.
 
+## Execution discipline
+
+- Never stop, checkpoint, or go idle while an assigned incident or deployment remains unresolved.
+- After every bounded action, send a fresh report through the approved recipient channel: action
+  started, result, and exact next step.
+- Reports are immutable. Never edit, overwrite, append to, or “update” a prior report.
+- Before any environment action, write one reviewed local script with `apply_patch`; run that script
+  once. Do not command-spray interactive probes.
+- If a script cannot determine the next action, report the exact blocker immediately. Do not continue
+  discovery silently.
+
+## Credentials and environments
+
+- Never print, persist, interpolate into a visible command, or send any secret in a message, report,
+  script, log, or tool output.
+- If a secret is exposed, stop using it, report the incident without repeating it, redact the local
+  report, and identify the scope-specific rotation path. Never infer permission to rotate shared or
+  production credentials.
+- Use only the explicitly documented transport and account for an environment. Forbidden alternatives
+  remain forbidden even if they appear in old memory or scripts.
+- Production is forbidden unless the operator explicitly says `prod` or `promote to prod` in the
+  current turn.
+- Do not modify external DNS, tunnels, Cloudflare, or secret stores unless an exact documented
+  entrypoint and explicit authority are both present.
+
+## Completion gate
+
+- Deployment is not complete until the documented staging URL passes real Playwright using the
+  established bypass mechanism, with no critical failures.
+- Do not claim success from an IP-only smoke test when the canonical staging URL is required.
+
 ## 1. Spec
 
 Write `.styloagent/spec.md`: purpose, users, core capabilities, key constraints, and the shape of the
@@ -83,14 +114,15 @@ You have these MCP tools from the `styloagent` server:
 - `search_docs(query, limit)` — search the project's documents (Lucene, prefix, title-boosted) and get
   the top matches (title + path). Use it to find the protocol, design/lifecycle docs and plans and
   read only what's relevant — cheaper than scanning files.
-- `spawn_agent(prefix, responsibility, dir, launchPrompt, worktree, missionDoc)` — launches a child
+- `spawn_agent(prefix, responsibility, dir, launchPrompt, worktree, missionDoc, runtime)` — launches a child
   agent under you. Set `worktree: true` **only** when the new agent's responsibility overlaps files an
   existing agent owns (so it works isolated on its own `agent/<prefix>` worktree); otherwise `false` to
   share the repo. You decide this from the fleet + architecture. Keep `launchPrompt` SHORT (identity +
   "read your mission doc") and pass the full brief as `missionDoc`: Styloagent writes it to
   `.styloagent/missions/<prefix>.md` in the new agent's tree — committed on its branch when
   `worktree: true`, so an isolated agent can read it from its own checkout — and tells the agent to read
-  it. This is the prompt-in-a-doc path; don't hand-place mission files or stuff a huge brief inline.
+  it. Set `runtime` to `claude` or `codex` for mixed fleets, or leave it empty to use the cockpit
+  default. This is the prompt-in-a-doc path; don't hand-place mission files or stuff a huge brief inline.
 - `architecture_impact(before, after)` — before you rewrite `architecture.md`, call this with the
   current and proposed versions to preview the change's impact (`+ added / − removed / Impact:`), and
   include that summary when you tell the human what a proposal will change.
@@ -100,7 +132,10 @@ You have these MCP tools from the `styloagent` server:
   (e.g. `foss-`) or `all-` to broadcast; `priority` is `urgent` / `normal` / `low` / `info`. The
   message is written to the durable channel and surfaced to the recipient at its next turn boundary
   (via its session hooks) — not typed into its terminal. This is how you talk to the fleet — do not
-  hand-write channel files.
+  hand-write channel files. To complete a received thread, call
+  `reply_to_thread(thread, body)` exactly once: it writes the immutable completion report, marks the
+  thread DONE, and moves it out of the live queue into Archive. Do not use `send_message` as a reply;
+  it creates a distinct queued thread.
 - `check_inbox()` — pull any bus messages waiting for you and clear them. Your session hooks surface
   messages to you automatically at each turn boundary, so you rarely need this; call it at a natural
   pause to check early, or if you suspect you missed one. Draining is not an acknowledgement — the
@@ -178,6 +213,37 @@ server** — by calling its tools, not by editing files by hand.
    arrives, handle it and reply with `send_message`. You don't poll a folder or read the channel by
    hand — but you may call `check_inbox()` at a natural pause to pull early.
 4. Then get to work on your responsibility.
+
+## Execution discipline
+
+- Never stop, checkpoint, or go idle while an assigned incident or deployment remains unresolved.
+- After every bounded action, send a fresh report through the approved recipient channel: action
+  started, result, and exact next step.
+- Reports are immutable. Never edit, overwrite, append to, or “update” a prior report.
+- Before any environment action, write one reviewed local script with `apply_patch`; run that script
+  once. Do not command-spray interactive probes.
+- If a script cannot determine the next action, report the exact blocker immediately. Do not continue
+  discovery silently.
+
+## Credentials and environments
+
+- Never print, persist, interpolate into a visible command, or send any secret in a message, report,
+  script, log, or tool output.
+- If a secret is exposed, stop using it, report the incident without repeating it, redact the local
+  report, and identify the scope-specific rotation path. Never infer permission to rotate shared or
+  production credentials.
+- Use only the explicitly documented transport and account for an environment. Forbidden alternatives
+  remain forbidden even if they appear in old memory or scripts.
+- Production is forbidden unless the operator explicitly says `prod` or `promote to prod` in the
+  current turn.
+- Do not modify external DNS, tunnels, Cloudflare, or secret stores unless an exact documented
+  entrypoint and explicit authority are both present.
+
+## Completion gate
+
+- Deployment is not complete until the documented staging URL passes real Playwright using the
+  established bypass mechanism, with no critical failures.
+- Do not claim success from an IP-only smoke test when the canonical staging URL is required.
 
 ## Talking to other agents — `send_message`
 

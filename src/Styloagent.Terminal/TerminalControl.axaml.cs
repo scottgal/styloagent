@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
+using Avalonia.Platform.Storage;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -284,6 +285,12 @@ public sealed partial class TerminalControl : UserControl
         // Mouse wheel: scroll our scrollback (Ctrl+wheel zooms). Tunnel so we get it before the inner
         // ScrollViewer and drive the real offset ourselves, marking it Handled to avoid a double-scroll.
         AddHandler(PointerWheelChangedEvent, OnWheel, RoutingStrategies.Tunnel);
+
+        // An image dropped directly on a terminal is input for the active agent, not a document-open
+        // request for the surrounding dock surface.
+        DragDrop.SetAllowDrop(this, true);
+        AddHandler(DragDrop.DragOverEvent, OnDragOver, RoutingStrategies.Tunnel | RoutingStrategies.Bubble);
+        AddHandler(DragDrop.DropEvent, OnDrop, RoutingStrategies.Tunnel | RoutingStrategies.Bubble);
     }
 
     /// <summary>Scrollback depth (rows) the VT engine retains — the source-of-truth for a fresh engine.</summary>
@@ -684,6 +691,50 @@ public sealed partial class TerminalControl : UserControl
         string payload = _terminal.BracketedPasteMode ? "\u001b[200~" + text + "\u001b[201~" : text;
         FireAndForgetWrite(payload);
     }
+
+    private void OnDragOver(object? sender, DragEventArgs e)
+    {
+        if (!TryGetDroppedImagePaths(e.Data, out _)) return;
+        e.DragEffects = DragDropEffects.Copy;
+        e.Handled = true;
+    }
+
+    private void OnDrop(object? sender, DragEventArgs e)
+    {
+        if (!TryGetDroppedImagePaths(e.Data, out var paths)) return;
+        InsertDroppedImagePaths(paths);
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Inserts dropped image paths as shell-safe parameters without submitting the current prompt.
+    /// Internal so the headless terminal tests can verify the exact PTY payload without OS drag plumbing.
+    /// </summary>
+    internal bool InsertDroppedImagePaths(IEnumerable<string> paths)
+    {
+        var args = paths.Where(IsImagePath).Select(path => " " + QuotePath(path)).ToArray();
+        if (args.Length == 0 || _session is null) return false;
+        UserInteracted?.Invoke(this, EventArgs.Empty);
+        Focus();
+        WritePaste(string.Concat(args));
+        return true;
+    }
+
+    private static bool TryGetDroppedImagePaths(IDataObject data, out IReadOnlyList<string> paths)
+    {
+        paths = data.GetFiles()?
+            .Select(item => item.TryGetLocalPath())
+            .Where(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path) && IsImagePath(path!))
+            .Cast<string>()
+            .ToArray() ?? Array.Empty<string>();
+        return paths.Count > 0;
+    }
+
+    private static bool IsImagePath(string path)
+        => Path.GetExtension(path).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".tif" or ".tiff" or ".heic";
+
+    private static string QuotePath(string path)
+        => "'" + path.Replace("'", "'\\''", StringComparison.Ordinal) + "'";
 
     /// <summary>Clicking the terminal focuses it so it receives keyboard input.</summary>
     protected override void OnPointerPressed(PointerPressedEventArgs e)

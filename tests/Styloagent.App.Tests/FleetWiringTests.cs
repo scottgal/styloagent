@@ -1,4 +1,5 @@
 using Styloagent.App.ViewModels;
+using Styloagent.Core.Model;
 using Styloagent.Core.Projects;
 
 namespace Styloagent.App.Tests;
@@ -38,6 +39,38 @@ public class FleetWiringTests
             Assert.Single(launcher.Options);
             var spawnArgs = launcher.Options[0].Args.ToList();
             Assert.Contains("--mcp-config", spawnArgs);
+        }
+        finally
+        {
+            vm?.Dispose();
+            if (Directory.Exists(proj)) Directory.Delete(proj, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Codex_overview_launches_with_codex_mcp_config()
+    {
+        var proj = Path.Combine(Path.GetTempPath(), "wire-codex-" + Guid.NewGuid().ToString("N"));
+        var cfg = ProjectScaffolder.Ensure(proj);
+        var launcher = new CapturingLauncher();
+        MainWindowViewModel? vm = null;
+        try
+        {
+            vm = await MainWindowViewModel.InitializeAsync(
+                cfg.ChannelRoot, launcher, new FakeWatcher(),
+                repoRoot: cfg.Root,
+                overviewSystemPromptPath: cfg.SystemPromptPath,
+                defaultAgentRuntime: AgentRuntimeKind.Codex);
+
+            Assert.True(vm.McpServerRunning);
+            Assert.Single(launcher.Options);
+            var spawnArgs = launcher.Options[0].Args.ToList();
+            Assert.Equal("codex", launcher.Options[0].Command);
+            Assert.DoesNotContain("--mcp-config", spawnArgs);
+            Assert.Contains(spawnArgs, a => a.Contains("mcp_servers.styloagent.url", StringComparison.Ordinal));
+            Assert.Contains(spawnArgs, a => a.Contains("\"X-Styloagent-Agent\"=\"overview-\"", StringComparison.Ordinal));
+            Assert.Contains(spawnArgs, a => a.StartsWith("developer_instructions=", StringComparison.Ordinal)
+                                            && a.Contains("overview / architect", StringComparison.OrdinalIgnoreCase));
         }
         finally
         {

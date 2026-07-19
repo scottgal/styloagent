@@ -206,6 +206,19 @@ public class AgentPaneViewModelTests
     }
 
     [Fact]
+    public void ApplyHookEvent_CodexPermissionRequest_Surfaces_Actionable_Description()
+    {
+        var entry = MakeEntry() with { Runtime = AgentRuntimeKind.Codex };
+        var vm = MakeVm(entry: entry);
+
+        vm.ApplyHookEvent(new HookEvent(
+            "foss-", "PermissionRequest", null, "Write the migration to src/Schema.cs", "session", "/repo"));
+
+        Assert.Equal(AgentHookState.WaitingForHuman, vm.HookState);
+        Assert.Equal("Write the migration to src/Schema.cs", vm.WaitingQuestion);
+    }
+
+    [Fact]
     public void SelectionBrushHex_IsIdentityColorWhenSelected_TransparentOtherwise()
     {
         var vm = MakeVm(borderColor: "#ABCDEF");

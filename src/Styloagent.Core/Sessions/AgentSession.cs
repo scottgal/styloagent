@@ -9,6 +9,7 @@ public sealed class AgentSession
     private readonly IPtyLauncher _launcher;
     private readonly IFileWatcher _watcher;
     private readonly IReadOnlyList<string> _launchArgs;
+    private readonly AgentRuntimeProfile _runtime;
     private IPtySession? _pty;
 
     // Enter in a terminal TUI is carriage-return (0x0D), NOT line-feed (0x0A). Claude Code's input
@@ -47,8 +48,8 @@ public sealed class AgentSession
         IPtyLauncher launcher,
         IFileWatcher watcher,
         IReadOnlyList<string>? launchArgs = null)
-        => (_manifest, _launcher, _watcher, _launchArgs)
-            = (manifest, launcher, watcher, launchArgs ?? Array.Empty<string>());
+        => (_manifest, _launcher, _watcher, _launchArgs, _runtime)
+            = (manifest, launcher, watcher, launchArgs ?? Array.Empty<string>(), AgentRuntimeProfile.For(manifest.Runtime));
 
     public SessionState State { get; private set; } = SessionState.Unspawned;
 
@@ -65,7 +66,7 @@ public sealed class AgentSession
         // Already running — re-spawning would overwrite _pty and orphan the live process (and leak its
         // Output handler). Spawn is only valid from a non-Live state.
         if (State == SessionState.Live) return;
-        SpawnDiag.Log($"AgentSession.SpawnAsync START prefix={_manifest.Prefix} cwd={_manifest.Worktree} cols={_initialCols} rows={_initialRows} argc={_launchArgs.Count}");
+        SpawnDiag.Log($"AgentSession.SpawnAsync START prefix={_manifest.Prefix} runtime={_runtime.Kind} command={_runtime.Command} cwd={_manifest.Worktree} cols={_initialCols} rows={_initialRows} argc={_launchArgs.Count}");
         // Log the actual argv (values truncated) so we can see WHY a child's launch differs from the
         // surviving root's — a broken/empty flag value would make claude exit 1 on startup.
         for (int i = 0; i < _launchArgs.Count; i++)
@@ -74,11 +75,13 @@ public sealed class AgentSession
             SpawnDiag.Log($"  argv[{i}] ({a.Length} chars) = {(a.Length > 100 ? string.Concat(a.AsSpan(0, 100), "…") : a)}");
         }
         _pty = await _launcher.SpawnAsync(new PtySpawnOptions(
-            Command: "claude", Args: _launchArgs,
+            Command: _runtime.Command, Args: ArgsForPrompt(launchPrompt),
             WorkingDirectory: _manifest.Worktree, Env: null, Cols: _initialCols, Rows: _initialRows), ct);
         _pty.Output += OnOutput;
-        SpawnDiag.Log($"AgentSession.SpawnAsync launched prefix={_manifest.Prefix}; injecting prompt ({launchPrompt?.Length ?? 0} chars, settle={InjectSettleDelay.TotalMilliseconds}ms retry={InjectEnterRetryDelay.TotalMilliseconds}ms)");
-        await InjectPromptAsync(_pty, launchPrompt, ct);
+        var promptMode = _runtime.SupportsInitialPromptArgument ? "passing prompt as CLI argument" : "injecting prompt";
+        SpawnDiag.Log($"AgentSession.SpawnAsync launched prefix={_manifest.Prefix}; {promptMode} ({launchPrompt?.Length ?? 0} chars, settle={InjectSettleDelay.TotalMilliseconds}ms retry={InjectEnterRetryDelay.TotalMilliseconds}ms)");
+        if (!_runtime.SupportsInitialPromptArgument)
+            await InjectPromptAsync(_pty, launchPrompt ?? string.Empty, ct);
         CurrentPty = _pty;
         State = SessionState.Live;
         SpawnDiag.Log($"AgentSession.SpawnAsync DONE prefix={_manifest.Prefix} State=Live");
@@ -155,13 +158,19 @@ public sealed class AgentSession
     {
         if (State != SessionState.Dehydrated) return;
         _pty = await _launcher.SpawnAsync(new PtySpawnOptions(
-            "claude", _launchArgs, _manifest.Worktree, null, _initialCols, _initialRows), ct);
+            _runtime.Command, ArgsForPrompt(restartPrompt), _manifest.Worktree, null, _initialCols, _initialRows), ct);
         _pty.Output += OnOutput;
-        await InjectPromptAsync(_pty, restartPrompt, ct);
+        if (!_runtime.SupportsInitialPromptArgument)
+            await InjectPromptAsync(_pty, restartPrompt, ct);
         CurrentPty = _pty;
         State = SessionState.Live;
         PtyStarted?.Invoke(_pty);
     }
 
     private void OnOutput(string chunk) => Output?.Invoke(chunk);
+
+    private IReadOnlyList<string> ArgsForPrompt(string prompt)
+        => _runtime.SupportsInitialPromptArgument
+            ? _launchArgs.Concat(new[] { prompt ?? string.Empty }).ToArray()
+            : _launchArgs;
 }

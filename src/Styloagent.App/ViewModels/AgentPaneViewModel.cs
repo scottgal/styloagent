@@ -296,7 +296,9 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     /// </summary>
     public void ApplyHookEvent(HookEvent e)
     {
-        HookState = HookStateMachine.Next(HookState, e);
+        HookState = Runtime == AgentRuntimeKind.Codex && e.EventName == "Stop"
+            ? AgentHookState.Idle
+            : HookStateMachine.Next(HookState, e);
         LastActivityAt = DateTimeOffset.UtcNow;
         OnPropertyChanged(nameof(LastOutputText));
         OnPropertyChanged(nameof(HasActivityMeta));
@@ -310,8 +312,9 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
             ActivityDetail = ""; // a stale "editing" on an idle agent would mislead
 
         // Capture the question the agent is blocked on (roster tooltip); clear it once it moves on.
-        if (e.EventName == "Notification"
-            && e.NotificationType is "permission_prompt" or "agent_needs_input" or "elicitation_dialog"
+        if ((e.EventName == "PermissionRequest"
+                || (e.EventName == "Notification"
+                    && e.NotificationType is "permission_prompt" or "agent_needs_input" or "elicitation_dialog"))
             && !string.IsNullOrWhiteSpace(e.Message))
             WaitingQuestion = e.Message!.Trim();
         else if (HookState != AgentHookState.WaitingForHuman)
@@ -445,6 +448,9 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
 
     /// <summary>The agent's prefix (e.g. "foss-"), read from the manifest entry.</summary>
     public string Prefix => _manifest.Prefix;
+
+    /// <summary>The CLI/runtime backing this pane.</summary>
+    public AgentRuntimeKind Runtime => _manifest.Runtime;
 
     /// <summary>Prefix of the parent (owner) agent, or null for root-level panes. Settable so a roster
     /// reparent can re-owner the agent (drag-drop v2a).</summary>

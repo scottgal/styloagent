@@ -53,8 +53,9 @@ public sealed class FleetTools
              documentOpen ?? new DocumentOpenHub());
 
 #pragma warning disable CA1707 // Identifiers should not contain underscores — tool names are MCP contract and must match the wire protocol
-    [McpServerTool, Description("Launch a child agent under you. prefix is a short lowercase tag ending in '-'. Set worktree=true when this agent's work overlaps files another agent owns, so it runs isolated on its own git worktree/branch; otherwise false to share the repo. Keep launchPrompt SHORT (identity + 'read your mission doc'); pass the full brief as missionDoc — Styloagent writes it to .styloagent/missions/<prefix>.md in the new agent's tree (committed on its branch when worktree=true, so an isolated agent can read it from its own checkout) and tells the agent to read it. Leave missionDoc empty to inject launchPrompt alone.")]
-    public async Task<string> spawn_agent(string prefix, string responsibility, string dir, string launchPrompt, bool worktree, string missionDoc = "")
+    [McpServerTool, Description("Launch a child agent under you. prefix is a short lowercase tag ending in '-'. Set runtime to 'claude' or 'codex' to make a mixed fleet, or leave it empty to use the cockpit default. Set worktree=true when this agent's work overlaps files another agent owns, so it runs isolated on its own git worktree/branch; otherwise false to share the repo. Keep launchPrompt SHORT (identity + 'read your mission doc'); pass the full brief as missionDoc — Styloagent writes it to .styloagent/missions/<prefix>.md in the new agent's tree (committed on its branch when worktree=true, so an isolated agent can read it from its own checkout) and tells the agent to read it. Leave missionDoc empty to inject launchPrompt alone.")]
+    public async Task<string> spawn_agent(string prefix, string responsibility, string dir, string launchPrompt,
+        bool worktree, string missionDoc = "", string runtime = "")
     {
         var ctx = _http.HttpContext;
         if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
@@ -63,7 +64,8 @@ public sealed class FleetTools
 
         var outcome = await _controller.SpawnAsync(
             new SpawnRequest(parent, prefix, responsibility,
-                string.IsNullOrWhiteSpace(dir) ? "." : dir, launchPrompt, worktree, missionDoc ?? string.Empty));
+                string.IsNullOrWhiteSpace(dir) ? "." : dir, launchPrompt, worktree, missionDoc ?? string.Empty,
+                string.IsNullOrWhiteSpace(runtime) ? null : runtime));
 
         return outcome.Spawned ? outcome.Message : $"rejected: {outcome.Message}";
     }
@@ -124,6 +126,19 @@ public sealed class FleetTools
         var outcome = await _controller.SendMessageAsync(
             new MessageRequest(caller, to, subject, body ?? string.Empty, priority ?? "normal",
                 string.IsNullOrWhiteSpace(repo) ? null : repo.Trim()));
+        return outcome.Sent ? outcome.Message : $"rejected: {outcome.Message}";
+    }
+
+    [McpServerTool, Description("Complete a received bus thread with one immutable report. thread is the subject or thread slug from the received note; body must state the completed action, result, and next step. This writes a matching .reply.md record, marks the thread DONE, and removes it from the live Active/Queued lists into Archive. Do not use send_message to reply: that creates a new queued thread.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> reply_to_thread(string thread, string body)
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        var caller = McpAuth.CallerPrefix(ctx);
+        if (caller is null) return "unauthorized: missing caller identity";
+
+        var outcome = await _controller.ReplyToThreadAsync(caller, thread, body ?? string.Empty);
         return outcome.Sent ? outcome.Message : $"rejected: {outcome.Message}";
     }
 

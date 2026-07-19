@@ -15,8 +15,11 @@ public sealed record FleetSnapshot(IReadOnlyList<FleetMember> Members, int MaxFl
 /// A spawn_agent request, parented by prefix. <paramref name="MissionDoc"/> is an optional larger mission
 /// brief: when non-empty, it's placed at <c>.styloagent/missions/&lt;prefix&gt;.md</c> in the new agent's tree
 /// (committed on its branch when isolated) so a worktree agent can read it from its own checkout.
+/// <paramref name="Runtime"/> optionally selects the spawned CLI ("claude" or "codex"); null/blank means
+/// inherit the cockpit's current default.
 /// </summary>
-public sealed record SpawnRequest(string ParentPrefix, string Prefix, string Responsibility, string Dir, string LaunchPrompt, bool Worktree, string MissionDoc = "");
+public sealed record SpawnRequest(string ParentPrefix, string Prefix, string Responsibility, string Dir,
+    string LaunchPrompt, bool Worktree, string MissionDoc = "", string? Runtime = null);
 
 /// <summary>Result of a spawn attempt (never an exception).</summary>
 public sealed record SpawnOutcome(bool Spawned, string? Prefix, RejectReason? Reason, string Message)

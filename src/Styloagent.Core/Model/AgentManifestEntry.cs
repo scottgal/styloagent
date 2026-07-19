@@ -1,5 +1,7 @@
 namespace Styloagent.Core.Model;
 
+public enum AgentRuntimeKind { Claude, Codex }
+
 public sealed record AgentManifestEntry(
     string Prefix,
     string Repo,
@@ -7,4 +9,5 @@ public sealed record AgentManifestEntry(
     string LaunchPromptPath,
     string RestartPromptPath,
     string SavedContextPath,
-    AgentTransport Transport);
+    AgentTransport Transport,
+    AgentRuntimeKind Runtime = AgentRuntimeKind.Claude);

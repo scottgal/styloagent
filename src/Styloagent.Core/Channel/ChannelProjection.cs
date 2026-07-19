@@ -57,6 +57,20 @@ public sealed class ChannelProjection
             }
         }
 
+        // Historical replies are named either <thread>.reply.md (the documented form) or
+        // <sender>-<thread>.reply.md. Resolve both against the actual inbox slugs before we classify;
+        // otherwise a reply becomes an unrelated thread and its original note remains queued forever.
+        var inboxSlugs = allMessages.Where(m => m.Kind == BusMessageKind.Inbox)
+            .Select(m => m.Slug).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        allMessages = allMessages.Select(m =>
+        {
+            if (m.Kind is not (BusMessageKind.Reply or BusMessageKind.BroadcastReply)) return m;
+            var raw = ReplyBaseName(m.FilePath);
+            var stripped = StripKnownPrefix(raw, knownPrefixes);
+            var resolved = inboxSlugs.Contains(raw) ? raw : inboxSlugs.Contains(stripped) ? stripped : m.Slug;
+            return m with { Slug = resolved };
+        }).ToList();
+
         // Determine Replied state: inbox messages whose slug has a reply anywhere
         var replySlugs = allMessages
             .Where(m => m.Kind is BusMessageKind.Reply or BusMessageKind.BroadcastReply)
@@ -204,6 +218,20 @@ public sealed class ChannelProjection
 
         return new BusMessage(slug, routingPrefix, kind, state, filePath, timestamp, from, body, priority, fromRepo);
     }
+
+    private static string ReplyBaseName(string filePath)
+    {
+        var name = Path.GetFileName(filePath);
+        return name.EndsWith(".reply.md", StringComparison.OrdinalIgnoreCase)
+            ? name[..^".reply.md".Length]
+            : name;
+    }
+
+    private static string StripKnownPrefix(string value, IReadOnlyCollection<string> knownPrefixes)
+        => knownPrefixes.Where(p => value.StartsWith(p, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(p => p.Length)
+            .Select(p => value[p.Length..])
+            .FirstOrDefault() ?? value;
 
     /// <summary>
     /// Maps a <c>**Priority:**</c> header value to a <see cref="MessagePriority"/>. Case-insensitive

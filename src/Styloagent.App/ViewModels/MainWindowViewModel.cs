@@ -13,6 +13,7 @@ using Styloagent.App.Services;
 using Styloagent.Core.Abstractions;
 using Styloagent.Core.Attention;
 using Styloagent.Core.Channel;
+using Styloagent.Core.Config;
 using Styloagent.Core.Git;
 using Styloagent.Core.Hooks;
 using Styloagent.Git;
@@ -569,6 +570,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private IFileWatcher? _watcher;
     private IGitService? _git;
     private int _genericAgentCounter;
+    private AgentRuntimeKind _defaultAgentRuntime = AgentRuntimeKind.Claude;
 
     // Extra args appended to the first pane's session when launched in overview mode.
     private IReadOnlyList<string> _overviewSystemPromptArgs = Array.Empty<string>();
@@ -666,6 +668,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public IReadOnlyList<string> McpArgsFor(string prefix)
         => _mcpServer is { IsRunning: true } s ? s.McpConfigArgs(prefix) : Array.Empty<string>();
 
+    private IReadOnlyList<string> CodexMcpArgsFor(string prefix)
+        => _mcpServer is { IsRunning: true } s ? s.CodexMcpConfigArgs(prefix) : Array.Empty<string>();
+
     /// <summary>Returns the router root directory for the active project, or null when no project is loaded.</summary>
     public string? RouterRootOrNull => _project?.RouterRoot;
 
@@ -701,6 +706,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             OnPropertyChanged(nameof(FleetCount));
             OnPropertyChanged(nameof(FleetHudText));
+            RefreshInstruments();
             ArmDiagramDebounce();
             RebuildRoster();   // keep the repo-grouped roster in sync as agents come and go (BUG 3)
 
@@ -940,9 +946,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         IGitLog? gitLog = null,
         string? overviewColorHex = null,
         IReadOnlyList<Styloagent.Core.Workspace.RepoOverview>? extraOverviews = null,
+        AgentRuntimeKind defaultAgentRuntime = AgentRuntimeKind.Claude,
         CancellationToken ct = default)
     {
         var vm = new MainWindowViewModel();
+        vm._defaultAgentRuntime = defaultAgentRuntime;
         vm._repoRoot = repoRoot;
         vm._launcher = launcher;
         vm._watcher = watcher;
@@ -986,7 +994,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 LaunchPromptPath: string.Empty,
                 RestartPromptPath: string.Empty,
                 SavedContextPath: string.Empty,
-                Transport: AgentTransport.Local);
+                Transport: AgentTransport.Local,
+                Runtime: defaultAgentRuntime);
 
             // Resume the overview from its OWN context doc when the channel carries one — revive YOU, not a
             // blank overseer. Write a restart prompt (identity + re-read your context doc + resume + stay in
@@ -1021,9 +1030,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             // An optional worktrees.yaml maps each prefix to the repo it should revive in (else the default).
             var worktreeMap = Styloagent.Core.Channel.WorktreeMapReader.Read(channelRoot);
             var channelFleet = await new ChannelManifestSeeder().SeedAsync(channelRoot, worktreeMap);
+            var persistedRuntimes = await LoadPersistedRuntimesAsync(channelRoot);
+            channelFleet = channelFleet
+                .Select(e => persistedRuntimes.TryGetValue(e.Prefix, out var runtime) ? e with { Runtime = runtime } : e)
+                .ToList();
             entries = new[] { overviewEntry }
                 .Concat(channelFleet
                     .Where(e => e.Prefix != "overview-")
+                    // Channel-seeded entries come from the persisted manifest. Keep each agent's runtime
+                    // so reopening a mixed parked fleet does not turn Codex agents into Claude (or vice versa).
                     .Select(e => EnsureRevivePrompt(e, channelRoot)))
                 .ToList();
 
@@ -1038,12 +1053,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 ?? Directory.GetCurrentDirectory();
             var worktrees = await gitReader.ListWorktreesAsync(root, ct);
             entries = worktrees.Count > 0
-                ? worktrees.Select(w => WorktreeEntry(w, root)).ToList()
-                : new[] { WorktreeEntry(new GitWorktree(root, Path.GetFileName(root.TrimEnd('/', '\\')), string.Empty), root) };
+                ? worktrees.Select(w => WorktreeEntry(w, root) with { Runtime = defaultAgentRuntime }).ToList()
+                : new[] { WorktreeEntry(new GitWorktree(root, Path.GetFileName(root.TrimEnd('/', '\\')), string.Empty), root) with { Runtime = defaultAgentRuntime } };
         }
         else
         {
-            entries = await new ChannelManifestSeeder().SeedAsync(channelRoot, new Dictionary<string, string>());
+            entries = (await new ChannelManifestSeeder().SeedAsync(channelRoot, new Dictionary<string, string>()))
+                .Select(e => e with { Runtime = defaultAgentRuntime })
+                .ToList();
         }
         vm._seededEntries = entries;
 
@@ -1144,10 +1161,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         string firstHookId = vm.ReserveHookId(first.Prefix);
         var session = new AgentSession(first, launcher, watcher,
-            vm.HookArgs(firstHookId, first)
-              .Concat(vm._overviewSystemPromptArgs)
-              .Concat(vm.McpArgsFor(first.Prefix))
-              .ToArray());
+            vm.LaunchArgsFor(firstHookId, first, vm._overviewSystemPromptArgs));
 
         vm.Pane = new AgentPaneViewModel(
             session,
@@ -1186,8 +1200,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (layout is not null)
             dockFactory.InitLayout(layout);
 
-        // A pane IS a claude terminal: launch the agent immediately so the pane comes
-        // up running claude. The view attaches to CurrentPty when it renders.
+        // A pane owns an agent terminal: launch the selected runtime immediately.
+        // The view attaches to CurrentPty when it renders.
         _ = vm.Pane.SpawnAsync();
 
         // Multi-repo: each additional repo brings its own overview onto the SHARED bus (the primary repo
@@ -1222,7 +1236,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     // TODO: future — detect installed agents and show a dropdown instead of auto-picking.
     [RelayCommand]
-    public void AddAgent()
+    public void AddAgent() => AddAgent(runtimeOverride: null);
+
+    [RelayCommand]
+    public void AddClaude() => AddAgent(AgentRuntimeKind.Claude);
+
+    [RelayCommand]
+    public void AddCodex() => AddAgent(AgentRuntimeKind.Codex);
+
+    private void AddAgent(AgentRuntimeKind? runtimeOverride)
     {
         if (_dockFactory is null || _launcher is null || _watcher is null)
             return;
@@ -1241,7 +1263,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (nextEntry is not null)
         {
             _openedPrefixes.Add(nextEntry.Prefix);
-            entry = nextEntry;
+            entry = runtimeOverride is { } runtime ? nextEntry with { Runtime = runtime } : nextEntry;
             presentation = new AgentPresentation(
                 Prefix: entry.Prefix,
                 DisplayName: entry.Prefix.TrimEnd('-'),
@@ -1258,7 +1280,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 LaunchPromptPath: string.Empty,
                 RestartPromptPath: string.Empty,
                 SavedContextPath: SavedContextPathFor(prefix),   // so it can be dehydrated / parked
-                Transport: AgentTransport.Local);
+                Transport: AgentTransport.Local,
+                Runtime: runtimeOverride ?? _defaultAgentRuntime);
             presentation = new AgentPresentation(
                 Prefix: prefix,
                 DisplayName: prefix.TrimEnd('-'),
@@ -1267,7 +1290,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         entry = WithWorkingDir(entry);
         string hookId = ReserveHookId(entry.Prefix);
-        var session = new AgentSession(entry, _launcher, _watcher, HookArgs(hookId, entry));
+        var session = new AgentSession(entry, _launcher, _watcher, LaunchArgsFor(hookId, entry));
         var owner = OverviewPane();   // the overview owns agents added to its fleet
         var paneVm = new AgentPaneViewModel(
             session,
@@ -1292,14 +1315,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // In a tiled mode, re-tile so the new pane gets its own tile rather than a hidden tab.
         if (LayoutMode != CockpitLayoutMode.Tabs) RebuildCenterLayout();
 
-        // Launch claude in the new pane immediately.
+        // Launch the selected agent runtime in the new pane immediately.
         _ = paneVm.SpawnAsync();
+        PersistRevivalMetadata(entry);
     }
 
     /// <summary>
     /// Opens an additional repo's overview agent as a pane on the shared bus (multi-repo workspaces).
-    /// Mirrors <see cref="AddAgent"/> but launches claude in that repo's root with the repo's own system
-    /// prompt and the fleet MCP, coloured by the repo's hue. The primary repo's overview is opened by
+    /// Mirrors <see cref="AddAgent"/> but launches the selected runtime in that repo's root with the repo's
+    /// own system prompt and the fleet MCP, coloured by the repo's hue. The primary repo's overview is opened by
     /// <see cref="InitializeAsync"/>; this adds every additional repo. Idempotent per prefix.
     /// </summary>
     public void AddRepoOverview(Styloagent.Core.Workspace.RepoOverview overview)
@@ -1332,7 +1356,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             LaunchPromptPath: string.Empty,
             RestartPromptPath: string.Empty,
             SavedContextPath: string.Empty,
-            Transport: AgentTransport.Local));
+            Transport: AgentTransport.Local,
+            Runtime: _defaultAgentRuntime));
 
         // The specialist team travels with the repo: append THIS repo's own system prompt.
         var systemPromptArgs = File.Exists(overview.SystemPromptPath)
@@ -1353,7 +1378,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _paneRepoRoot[paneVm] = instanceRepoRoot;   // tag for the per-instance liveAgents filter
         _dockFactory.AddDockable(documentDock, paneVm);
 
-        // Launch claude in the repo's root immediately (the primary pane stays selected).
+        // Launch the selected runtime in the repo's root immediately (the primary pane stays selected).
         _ = paneVm.SpawnAsync();
     }
 
@@ -1666,6 +1691,24 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>Writes an immutable completion report for a thread, which makes the bus projection mark it DONE.</summary>
+    public Task<MessageOutcome> ReplyToBusThreadAsync(string callerPrefix, string thread, string body)
+    {
+        if (_channelRoot is null) return Task.FromResult(MessageOutcome.Fail("no active channel"));
+        if (string.IsNullOrWhiteSpace(thread)) return Task.FromResult(MessageOutcome.Fail("thread is required"));
+        try
+        {
+            var path = ChannelMessageWriter.Reply(_channelRoot, callerPrefix, thread, body ?? string.Empty, DateTimeOffset.Now);
+            var color = Panes.FirstOrDefault(p => p.Prefix == callerPrefix)?.BorderColorHex ?? "#8888AA";
+            Timeline.Add(DateTimeOffset.Now, callerPrefix, $"completed · {thread}", color);
+            return Task.FromResult(MessageOutcome.Ok(path));
+        }
+        catch (Exception ex)
+        {
+            return Task.FromResult(MessageOutcome.Fail(ex.Message));
+        }
+    }
+
     private int _consoleCount;
 
     /// <summary>
@@ -1781,7 +1824,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var owner = OverviewPane();
         if (owner is not null && owner.Prefix != p.Prefix)
             return await SpawnChildAsync(new SpawnRequest(
-                owner.Prefix, p.Prefix, p.Responsibility, p.Dir, p.LaunchPrompt, p.Worktree));
+                owner.Prefix, p.Prefix, p.Responsibility, p.Dir, p.LaunchPrompt, p.Worktree,
+                Runtime: RuntimeName(_defaultAgentRuntime)));
 
         // Root / no-owner exception: establish the single root directly.
         string? worktreePath = null, worktreeBranch = null;
@@ -1791,7 +1835,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             if (!wt.Ok) return SpawnOutcome.Reject(RejectReason.InvalidPrefix, $"worktree add failed: {wt.Error}");
             (worktreePath, worktreeBranch) = (wt.Path, wt.Branch);
         }
-        var pane = CreatePaneForProposed(p, worktreeOverride: worktreePath, worktreeBranch: worktreeBranch);
+        var pane = CreatePaneForProposed(p, worktreeOverride: worktreePath, worktreeBranch: worktreeBranch,
+            runtime: _defaultAgentRuntime);
         if (worktreePath is not null && _git is not null && pane is not null)
             _ = pane.RefreshGitStatusAsync(_git);
         return pane is null
@@ -1887,10 +1932,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // Fix 2: hand a (worktree-isolated) agent its mission as a committed doc it can read from its own
         // checkout, then point its launch prompt at it. No mission doc → the launch prompt is used as-is.
         string launchPrompt = await PlaceMissionDocAsync(req.Prefix, req.MissionDoc, req.LaunchPrompt, worktreePath);
+        var runtime = RuntimeFromRequest(req.Runtime);
 
         var proposed = new ProposedAgent(req.Prefix, req.Responsibility, req.Dir, launchPrompt);
         var paneVm = CreatePaneForProposed(proposed, parentPrefix: req.ParentPrefix, depth: parentDepth + 1,
-            worktreeOverride: worktreePath, worktreeBranch: worktreeBranch);
+            worktreeOverride: worktreePath, worktreeBranch: worktreeBranch, runtime: runtime);
         if (worktreePath is not null && _git is not null)
             _ = paneVm!.RefreshGitStatusAsync(_git);
         return paneVm is null
@@ -2011,7 +2057,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         string tail = string.Empty;
         if (pane.TranscriptPath is { } tp)
         {
-            try { tail = await Task.Run(() => Styloagent.Core.Transcripts.TranscriptReader.ReadLastAssistantText(tp)); }
+            try { tail = await Task.Run(() => Styloagent.Core.Transcripts.TranscriptReader.ReadLastAssistantText(tp)) ?? string.Empty; }
             catch { /* best-effort: a missing/locked transcript just yields an empty anchor body */ }
         }
         var result = Styloagent.Core.Channel.InPlaceCheckpoint.Write(
@@ -2151,10 +2197,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public string WindowTitle
         => string.IsNullOrWhiteSpace(ProjectName) ? "Styloagent Cockpit" : $"{ProjectName} — Styloagent Cockpit";
 
+    /// <summary>Git sidebar title; includes the active repository only when a workspace has multiple repos.</summary>
+    public string GitSidebarTitle
+        => _repos.Count > 1 && SelectedPane is not null ? $"Git · {RepoNameForPrefix(SelectedPane.Prefix)}" : "Git";
+
     private void RaiseTitleChanged()
     {
         OnPropertyChanged(nameof(ProjectName));
         OnPropertyChanged(nameof(WindowTitle));
+        OnPropertyChanged(nameof(GitSidebarTitle));
     }
 
     /// <summary>
@@ -2164,6 +2215,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void SetReposFromOverviews(IReadOnlyList<Styloagent.Core.Workspace.RepoOverview> overviews)
     {
         _repos = overviews.Select(RepoInfoFor).ToList();
+        var workspace = new Styloagent.Core.Workspace.WorkspaceConfig(
+            "", "", "", _channelRoot ?? "", "",
+            overviews.Select(o => new Styloagent.Core.Workspace.RepoRef(
+                o.RepoRoot, Path.GetFileName(o.RepoRoot.TrimEnd('/', '\\')), o.RepoIndex)).ToList(),
+            overviews.Count <= 1);
+        var roots = Styloagent.Core.Docs.DocumentLibraryRoots.For(workspace);
+        DocLibrary?.SetRepositoryRoots(roots.Repositories, roots.ChannelRoot, roots.LogsRoot);
         RebuildRoster();   // repo set changed → re-attribute + regroup the roster (BUG 3)
         RaiseTitleChanged();   // primary repo now known → refresh the title
     }
@@ -2216,7 +2274,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         string? parentPrefix = null,
         int depth = 0,
         string? worktreeOverride = null,
-        string? worktreeBranch = null)
+        string? worktreeBranch = null,
+        AgentRuntimeKind? runtime = null)
     {
         if (_dockFactory is null || _launcher is null || _watcher is null) return null;
         var documentDock = _dockFactory.DocumentDock;
@@ -2250,11 +2309,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             LaunchPromptPath: launchPromptPath,
             RestartPromptPath: string.Empty,
             SavedContextPath: SavedContextPathFor(p.Prefix),   // so it can be dehydrated / parked
-            Transport: AgentTransport.Local);
+            Transport: AgentTransport.Local,
+            Runtime: runtime ?? _defaultAgentRuntime);
 
         string hookId = ReserveHookId(entry.Prefix);
         var session = new AgentSession(entry, _launcher, _watcher,
-            HookArgs(hookId, entry).Concat(McpArgsFor(p.Prefix)).ToArray());
+            LaunchArgsFor(hookId, entry));
         var paneVm = new AgentPaneViewModel(
             session,
             entry,
@@ -2292,6 +2352,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (LayoutMode != CockpitLayoutMode.Tabs) RebuildCenterLayout();
 
         _ = paneVm.SpawnAsync();
+        PersistRevivalMetadata(entry);
         return paneVm;
     }
 
@@ -2379,6 +2440,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (oldValue is not null) oldValue.IsSelected = false;
         if (newValue is not null) newValue.IsSelected = true;
+        OnPropertyChanged(nameof(GitSidebarTitle));
         RefreshGitPanelFor(newValue);
     }
 
@@ -2448,6 +2510,48 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         catch { return e; }
     }
 
+    // Runtime identity is part of revival metadata. Saved-context files deliberately remain portable and
+    // runtime-neutral, while this sidecar records which CLI owns each parked context in this channel.
+    private static string RevivalManifestPath(string channelRoot) => Path.Combine(channelRoot, "agents.yaml");
+
+    private static async Task<IReadOnlyDictionary<string, AgentRuntimeKind>> LoadPersistedRuntimesAsync(string channelRoot)
+    {
+        var path = RevivalManifestPath(channelRoot);
+        if (!File.Exists(path)) return new Dictionary<string, AgentRuntimeKind>();
+
+        try
+        {
+            var entries = await new ManifestStore().LoadAsync(path);
+            return entries.ToDictionary(e => e.Prefix, e => e.Runtime, StringComparer.Ordinal);
+        }
+        catch
+        {
+            // A damaged optional sidecar must not prevent the channel from reopening; it simply falls back
+            // to the current startup default for entries without persisted runtime metadata.
+            return new Dictionary<string, AgentRuntimeKind>();
+        }
+    }
+
+    private void PersistRevivalMetadata(AgentManifestEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(_channelRoot)) return;
+        var path = RevivalManifestPath(_channelRoot);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var store = new ManifestStore();
+                var existing = File.Exists(path) ? await store.LoadAsync(path) : Array.Empty<AgentManifestEntry>();
+                var entries = existing.Where(e => e.Prefix != entry.Prefix).Append(entry).ToList();
+                await store.SaveAsync(path, entries);
+            }
+            catch
+            {
+                // Persistence is best-effort; a live agent must never be held back by a metadata write.
+            }
+        });
+    }
+
     /// <summary>The <c>--settings</c> hook args for a hook id, or none if the channel is unavailable.</summary>
     private IReadOnlyList<string> HookArgs(string hookId)
         => _hookChannel?.SettingsArgsFor(hookId) ?? Array.Empty<string>();
@@ -2462,6 +2566,53 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     private IReadOnlyList<string> HookArgs(string hookId, AgentManifestEntry entry)
         => HookArgs(hookId, entry, _hookChannel, _channelRoot, _repoRoot, _project?.ProtocolPath);
+
+    /// <summary>
+    /// Runtime-aware launch args. Claude gets today's full settings hook/MCP/system-prompt contract.
+    /// Codex gets Codex-native hook <c>--config</c> args and permission flags, without Claude-only CLI flags.
+    /// </summary>
+    private IReadOnlyList<string> LaunchArgsFor(string hookId, AgentManifestEntry entry,
+        IEnumerable<string>? claudeOnlyArgs = null)
+        => LaunchArgsFor(hookId, entry, _hookChannel, _channelRoot, _repoRoot, _project?.ProtocolPath, claudeOnlyArgs);
+
+    /// <summary>
+    /// As <see cref="LaunchArgsFor(string, AgentManifestEntry, IEnumerable{string}?)"/> but against a
+    /// specific hook channel and repo context for federated repo instances.
+    /// </summary>
+    private IReadOnlyList<string> LaunchArgsFor(
+        string hookId, AgentManifestEntry entry, HookChannel? hooks, string? channelRoot, string? repoRoot,
+        string? protocolPath, IEnumerable<string>? claudeOnlyArgs = null)
+    {
+        var runtime = AgentRuntimeProfile.For(entry.Runtime);
+        if (entry.Runtime == AgentRuntimeKind.Codex)
+        {
+            var args = new List<string>();
+            if (hooks is not null)
+            {
+                var hydration = Styloagent.Core.Hooks.HydrationText.For(
+                    entry.Prefix,
+                    string.IsNullOrWhiteSpace(entry.SavedContextPath) ? null : entry.SavedContextPath,
+                    protocolPath,
+                    channelRoot);
+                var file = hooks.WriteHydrationFile(hookId, hydration);
+                args.AddRange(Styloagent.Core.Hooks.CodexHookSettings.BuildConfigArgs(
+                    hookId, hooks.HooksDirectory, file,
+                    Styloagent.Core.Hooks.HookSettings.DefaultGateInvocation(), repoRoot, entry.Prefix));
+            }
+            args.AddRange(CodexDeveloperInstructionArgs(claudeOnlyArgs));
+            args.AddRange(CodexMcpArgsFor(entry.Prefix));
+            args.AddRange(runtime.PermissionArgs(PermissionMode));
+            return args;
+        }
+
+        if (!runtime.SupportsClaudeSettingsHooks)
+            return runtime.PermissionArgs(PermissionMode);
+
+        return HookArgs(hookId, entry, hooks, channelRoot, repoRoot, protocolPath)
+            .Concat(claudeOnlyArgs ?? Array.Empty<string>())
+            .Concat(McpArgsFor(entry.Prefix))
+            .ToArray();
+    }
 
     /// <summary>
     /// As <see cref="HookArgs(string, AgentManifestEntry)"/> but against a SPECIFIC hook channel + channel/repo
@@ -2488,6 +2639,39 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 Styloagent.Core.Hooks.HookSettings.DefaultGateInvocation(), repoRoot, entry.Prefix)
             .Concat(Styloagent.Core.Hooks.HookSettings.PermissionArgs(PermissionMode))
             .ToList();
+    }
+
+    private AgentRuntimeKind RuntimeFromRequest(string? runtime)
+        => string.Equals(runtime, "codex", StringComparison.OrdinalIgnoreCase)
+            ? AgentRuntimeKind.Codex
+            : string.Equals(runtime, "claude", StringComparison.OrdinalIgnoreCase)
+                ? AgentRuntimeKind.Claude
+                : _defaultAgentRuntime;
+
+    private static string RuntimeName(AgentRuntimeKind runtime)
+        => runtime == AgentRuntimeKind.Codex ? "codex" : "claude";
+
+    private static IReadOnlyList<string> CodexDeveloperInstructionArgs(IEnumerable<string>? claudeOnlyArgs)
+    {
+        if (claudeOnlyArgs is null) return Array.Empty<string>();
+        var args = claudeOnlyArgs.ToList();
+        var prompts = new List<string>();
+        for (int i = 0; i < args.Count - 1; i++)
+        {
+            if (args[i] == "--append-system-prompt" && !string.IsNullOrWhiteSpace(args[i + 1]))
+                prompts.Add(args[i + 1]);
+        }
+        if (prompts.Count == 0) return Array.Empty<string>();
+        return new[] { "--config", $"developer_instructions={TomlString(string.Join("\n\n", prompts))}" };
+    }
+
+    private static string TomlString(string value)
+    {
+        return "\"" + value
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\"", "\\\"", StringComparison.Ordinal)
+            .Replace("\r", "\\r", StringComparison.Ordinal)
+            .Replace("\n", "\\n", StringComparison.Ordinal) + "\"";
     }
 
     /// <summary>Routes a hook event (raised on a background thread) to the owning pane on the UI thread.</summary>

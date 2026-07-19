@@ -374,8 +374,10 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
 
         _ = Task.Run(() =>
         {
-            var path = Styloagent.Core.Transcripts.TranscriptReader.PathFor(cwd, sid);
-            var usage = Styloagent.Core.Transcripts.TranscriptReader.ReadLatest(path);
+            var usage = _manifest.Runtime == AgentRuntimeKind.Codex
+                ? Styloagent.Core.Transcripts.CodexTranscriptReader.ReadLatestForSession(sid)
+                : Styloagent.Core.Transcripts.TranscriptReader.ReadLatest(
+                    Styloagent.Core.Transcripts.TranscriptReader.PathFor(cwd, sid));
             var text = usage is null ? "" : $"{FormatTokens(usage.ContextTokens)} · {usage.ContextFraction * 100:0}%";
             var frac = usage?.ContextFraction ?? 0;
             global::Avalonia.Threading.Dispatcher.UIThread.Post(() => { UsageText = text; ContextFraction = frac; });

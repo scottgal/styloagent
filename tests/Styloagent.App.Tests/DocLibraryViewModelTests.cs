@@ -132,6 +132,31 @@ public class DocLibraryViewModelTests : IDisposable
     }
 
     [Fact]
+    public void Repository_roots_remain_separate_and_ordered_in_a_multi_repo_workspace()
+    {
+        var second = Path.Combine(Path.GetTempPath(), "doclib-second-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(second);
+        try
+        {
+            var vm = new DocLibraryViewModel(_repoRoot, _channelRoot, _ => { });
+            vm.SetRepositoryRoots(new List<RepoDocumentRoot>
+            {
+                new RepoDocumentRoot("second", second, 1),
+                new RepoDocumentRoot("primary", _repoRoot, 0),
+            }, _channelRoot, null);
+
+            Assert.Collection(vm.Roots,
+                root => Assert.Equal("primary", root.Name),
+                root => Assert.Equal("second", root.Name),
+                root => Assert.Equal("channel", root.Name),
+                root => Assert.Equal("logs", root.Name));
+            Assert.Equal(_repoRoot, vm.Roots[0].FullPath);
+            Assert.Equal(second, vm.Roots[1].FullPath);
+        }
+        finally { Directory.Delete(second, recursive: true); }
+    }
+
+    [Fact]
     public async Task OpenDoc_InvokesCallback_WithTheBuiltDocument()
     {
         MarkdownDocumentViewModel? received = null;

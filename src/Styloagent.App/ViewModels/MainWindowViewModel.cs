@@ -1340,10 +1340,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         string hookId = ReserveHookId(entry.Prefix);
         var session = new AgentSession(entry, _launcher, _watcher,
-            HookArgs(hookId, entry, hooks, channelRoot, repoRoot, protocolPath)
-              .Concat(systemPromptArgs)
-              .Concat(McpArgsFor(entry.Prefix))
-              .ToArray());
+            LaunchArgsFor(hookId, entry, hooks, channelRoot, repoRoot, protocolPath, systemPromptArgs));
 
         var paneVm = new AgentPaneViewModel(session, entry, overview.Prefix.TrimEnd('-'), overview.ColorHex)
         {

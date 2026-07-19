@@ -142,6 +142,17 @@ public sealed partial class DocLibraryViewModel : ObservableObject
             _sections.Add((root!, source, label));
     }
 
+    /// <summary>Replaces the repository sections while retaining the workspace-wide channel and logs roots.</summary>
+    public void SetRepositoryRoots(IEnumerable<RepoDocumentRoot> repositories, string? channelRoot, string? logsRoot)
+    {
+        _sections.Clear();
+        foreach (var repo in repositories.OrderBy(r => r.RepoIndex))
+            AddSection(repo.RepoRoot, DocSource.Repo, repo.DisplayName);
+        AddSection(channelRoot, DocSource.Channel, "channel");
+        AddSection(logsRoot ?? DocLibraryReader.ResolveLogsRoot(channelRoot), DocSource.Log, "logs");
+        BuildTopLevel();
+    }
+
     private void BuildTopLevel()
     {
         Roots.Clear();

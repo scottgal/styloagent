@@ -135,7 +135,7 @@ toggle that blocks all governor-checked spawns while it's on (a guardrail for a 
 
 ## 4. Terminals & the session lifecycle
 
-Each agent pane hosts a **real terminal**: a `claude` (or any CLI) process running over a PTY
+Each agent pane hosts a **real terminal**: a Claude or Codex process (or another supported CLI) running over a PTY
 ([Porta.Pty](https://github.com/tomlm/Porta.Pty)), rendered by the XTerm.NET VT engine with full
 per-cell colour — 24-bit truecolor, the 256-colour palette, background highlights, bold and inverse.
 Panes are Dock documents: float them out, tab them, or tile them.
@@ -148,7 +148,7 @@ Above each terminal is a toolbar with the agent's name and its lifecycle control
 
 | Button | What it does |
 | --- | --- |
-| **Spawn** ▶ | Starts the agent's session, launching `claude` with the agent's launch prompt. |
+| **Spawn** ▶ | Starts the selected agent runtime with the agent's launch prompt. |
 | **Dehydrate** ⏸ | Suspends (parks) the agent, freeing its PTY, after checkpointing its context. |
 | **Rehydrate** ▶ | Revives a dehydrated agent from its saved context, resuming where it left off. |
 | **Rename** | Changes the display name (and the dock tab caption). |
@@ -158,7 +158,8 @@ Above each terminal is a toolbar with the agent's name and its lifecycle control
 
 An agent moves through **Unspawned → Live → Dehydrated → Live**:
 
-- **Spawn** reads the agent's launch prompt (or a minimal built-in brief) and starts `claude`. The
+- **Spawn** reads the agent's launch prompt (or a minimal built-in brief) and starts the selected runtime.
+  Claude and Codex both use the same durable checkpoint → rehydrate lifecycle. The
   button is disabled once the agent is already Live, so you can't orphan a running process.
 - **Dehydrate** asks the session to checkpoint and suspend. It's only available when the agent is
   **Live** *and* has a saved-context path to write to. If the checkpoint isn't acknowledged within
@@ -169,6 +170,14 @@ An agent moves through **Unspawned → Live → Dehydrated → Live**:
 Dehydrating is how you keep a large fleet affordable: park the agents you're not actively watching to
 free their PTYs, and revive them on demand. You rarely have to do it by hand — **sending a bus message
 to a parked agent auto-rehydrates it first**, so the message always lands on a live session.
+
+### Permission prompts
+
+When an agent asks for permission, use the cockpit approval control rather than typing into its terminal.
+Styloagent sends the confirmation native to that runtime—Claude receives its numbered confirmation;
+Codex receives Enter on its selected approval action—then refreshes the pane's attention state so the
+agent can continue its turn. A successful approval should clear the waiting-for-permission indication;
+if it does not, inspect the terminal before approving again.
 
 ---
 

@@ -135,6 +135,21 @@ public class AgentPaneViewModelTests
     }
 
     [Fact]
+    public async Task Codex_fallback_prompt_uses_Styloagent_onboarding_instead_of_a_generic_starter()
+    {
+        var entry = MakeEntry(launchPromptPath: "/nonexistent/path.md") with { Runtime = AgentRuntimeKind.Codex };
+        var launcher = new FakeLauncher();
+        var vm = MakeVm(entry: entry, launcher: launcher);
+
+        await vm.SpawnAsync();
+
+        var prompt = launcher.Options.Single().Args[^1];
+        Assert.Contains("Styloagent workspace agent", prompt, StringComparison.Ordinal);
+        Assert.Contains(".styloagent/PROTOCOL.md", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Find and fix a bug", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RenameCommand_Updates_DisplayName()
     {
         var vm = MakeVm(displayName: "original");

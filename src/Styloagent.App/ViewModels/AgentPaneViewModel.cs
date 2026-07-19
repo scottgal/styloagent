@@ -557,7 +557,7 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
         try
         {
             var prompt = await ReadPromptOrDefaultAsync(_manifest.LaunchPromptPath,
-                $"You are agent '{_manifest.Prefix}'. Begin your work.", ct);
+                DefaultLaunchPrompt(), ct);
             await _session.SpawnAsync(prompt, ct);
         }
         catch (OperationCanceledException)
@@ -573,6 +573,10 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
         }
         State = _session.State;
     }
+
+    private string DefaultLaunchPrompt() => _manifest.Runtime == AgentRuntimeKind.Codex
+        ? $"You are the '{_manifest.Prefix}' Styloagent workspace agent. Read .styloagent/PROTOCOL.md and your mission doc if present, check the fleet inbox, then carry out your assigned task."
+        : $"You are agent '{_manifest.Prefix}'. Begin your work.";
 
     /// <summary>
     /// Requests the session to dehydrate.  If the watcher does not ack in time

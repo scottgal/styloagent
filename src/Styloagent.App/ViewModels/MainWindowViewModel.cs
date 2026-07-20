@@ -2001,7 +2001,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             IdleSeconds: p.LastActivityAt is { } t ? (int)Math.Max(0, (DateTimeOffset.UtcNow - t).TotalSeconds) : -1,
             Usage: p.UsageText,
             Worktree: p.WorktreePath is not null,
-            Repo: RepoNameForPrefix(p.Prefix))).ToList();
+            Repo: RepoNameForPrefix(p.Prefix),
+            RemainingTokens: p.RemainingTokens,
+            RemainingFraction: p.RemainingFraction,
+            Pressure: p.ContextPressure,
+            Runtime: p.Runtime.ToString().ToLowerInvariant(),
+            Model: p.SelectedModel,
+            Effort: p.SelectedEffort)).ToList();
         return new FleetStatusReport(agents, WorkingCount, WaitingCount, FleetPaused);
     }
 
@@ -2049,6 +2055,27 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             else if (pane.ContextFraction < DilutionThreshold - 0.10)
             {
                 pane.DilutionNudged = false;   // hysteresis: re-arm once it drops well below the line
+            }
+
+            var pressure = Styloagent.Core.Sessions.ContextPressurePolicy.For(pane.ContextFraction);
+            var pressured = pressure is Styloagent.Core.Sessions.ContextPressure.Elevated
+                or Styloagent.Core.Sessions.ContextPressure.High
+                or Styloagent.Core.Sessions.ContextPressure.Critical;
+            if (pressured && !pane.AdaptiveBudgetNudged)
+            {
+                pane.AdaptiveBudgetNudged = true;
+                _ = SendBusMessage(new MessageRequest(
+                    "cockpit-", pane.Prefix, "reduce context pressure",
+                    Styloagent.Core.Sessions.CheckpointNudge.AdaptiveBudgetFor(
+                        pane.Prefix, pressure, pane.RemainingTokens), "normal"));
+                Timeline.Add(DateTimeOffset.Now, pane.DisplayName,
+                    $"context pressure {pressure.ToString().ToLowerInvariant()} — sent compact-output guidance",
+                    pane.BorderColorHex);
+            }
+            else if (pressure is Styloagent.Core.Sessions.ContextPressure.Unknown
+                or Styloagent.Core.Sessions.ContextPressure.Normal)
+            {
+                pane.AdaptiveBudgetNudged = false;
             }
         }
     }

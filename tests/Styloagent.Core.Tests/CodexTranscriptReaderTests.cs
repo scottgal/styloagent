@@ -21,6 +21,7 @@ public class CodexTranscriptReaderTests
             Assert.Equal(61_440, usage!.ContextTokens);
             Assert.Equal(258_400, usage.WindowTokens);
             Assert.Equal(0.238, usage.ContextFraction, 3);
+            Assert.Equal(196_960, usage.RemainingTokens);
         }
         finally { File.Delete(path); }
     }

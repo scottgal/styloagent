@@ -356,6 +356,15 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     [NotifyPropertyChangedFor(nameof(HasUsage))]
     private string _usageText = "";
 
+    [ObservableProperty]
+    private long _remainingTokens;
+
+    [ObservableProperty]
+    private double _remainingFraction;
+
+    [ObservableProperty]
+    private string _contextPressure = "unknown";
+
     /// <summary>True once a usage readout is available — gates the roster line.</summary>
     public bool HasUsage => !string.IsNullOrEmpty(UsageText);
 
@@ -364,6 +373,9 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
 
     /// <summary>Set once the dilution nudge has fired for this agent, so it isn't repeated every tick.</summary>
     public bool DilutionNudged { get; set; }
+
+    /// <summary>Set once adaptive compact-output guidance has been sent for the current pressure episode.</summary>
+    public bool AdaptiveBudgetNudged { get; set; }
 
     /// <summary>
     /// Reads the agent's transcript (off the UI thread) for the latest context tokens + window fill and
@@ -381,9 +393,19 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
                 ? Styloagent.Core.Transcripts.CodexTranscriptReader.ReadLatestForSession(sid)
                 : Styloagent.Core.Transcripts.TranscriptReader.ReadLatest(
                     Styloagent.Core.Transcripts.TranscriptReader.PathFor(cwd, sid));
-            var text = usage is null ? "" : $"{FormatTokens(usage.ContextTokens)} · {usage.ContextFraction * 100:0}%";
+            var text = usage is null ? "" : $"{FormatTokens(usage.RemainingTokens)} left · {usage.ContextFraction * 100:0}% used";
             var frac = usage?.ContextFraction ?? 0;
-            global::Avalonia.Threading.Dispatcher.UIThread.Post(() => { UsageText = text; ContextFraction = frac; });
+            var remaining = usage?.RemainingTokens ?? 0;
+            var remainingFraction = usage?.RemainingFraction ?? 0;
+            var pressure = Styloagent.Core.Sessions.ContextPressurePolicy.For(frac).ToString().ToLowerInvariant();
+            global::Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                UsageText = text;
+                ContextFraction = frac;
+                RemainingTokens = remaining;
+                RemainingFraction = remainingFraction;
+                ContextPressure = pressure;
+            });
         });
     }
 
@@ -451,6 +473,13 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
 
     /// <summary>The CLI/runtime backing this pane.</summary>
     public AgentRuntimeKind Runtime => _manifest.Runtime;
+
+    /// <summary>The resolved runtime/model/effort selection shown in the agent roster.</summary>
+    public string SelectedModel => string.IsNullOrWhiteSpace(_manifest.Model) ? "default" : _manifest.Model;
+    public string SelectedEffort => string.IsNullOrWhiteSpace(_manifest.Effort) ? "default" : _manifest.Effort;
+
+    public string AgentSelectionText
+        => $"{Runtime.ToString().ToLowerInvariant()} · {SelectedModel} · effort {SelectedEffort}";
 
     /// <summary>Prefix of the parent (owner) agent, or null for root-level panes. Settable so a roster
     /// reparent can re-owner the agent (drag-drop v2a).</summary>

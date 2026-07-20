@@ -8,6 +8,8 @@ public sealed record TranscriptUsage(long ContextTokens, long WindowTokens, stri
 {
     /// <summary>Context-window fill as a fraction 0..1 (0 when the window is unknown).</summary>
     public double ContextFraction => WindowTokens > 0 ? Math.Min(1.0, (double)ContextTokens / WindowTokens) : 0;
+    public long RemainingTokens => WindowTokens > ContextTokens ? WindowTokens - ContextTokens : 0;
+    public double RemainingFraction => WindowTokens > 0 ? Math.Max(0, (double)RemainingTokens / WindowTokens) : 0;
 }
 
 /// <summary>

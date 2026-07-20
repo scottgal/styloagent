@@ -60,10 +60,12 @@ public sealed record MessageOutcome(bool Sent, string? Path, string Message)
 /// <param name="State">Hook state: working | idle | needs-you | exited | unknown.</param>
 /// <param name="Activity">What it's doing right now (e.g. "editing", "running commands", "idle").</param>
 /// <param name="IdleSeconds">Seconds since its last output (-1 if it has produced none yet).</param>
-/// <param name="Usage">Context readout, e.g. "83k · 22%" (empty until known).</param>
+/// <param name="Usage">Context readout showing remaining tokens and used percentage (empty until known).</param>
 public sealed record AgentStatus(
     string Prefix, string Responsibility, string State, string Activity,
-    int IdleSeconds, string Usage, bool Worktree, string Repo = "");
+    int IdleSeconds, string Usage, bool Worktree, string Repo = "",
+    long RemainingTokens = 0, double RemainingFraction = 0, string Pressure = "unknown",
+    string Runtime = "", string Model = "", string Effort = "");
 
 /// <summary>A whole-fleet situational snapshot for the fleet_status tool.</summary>
 public sealed record FleetStatusReport(

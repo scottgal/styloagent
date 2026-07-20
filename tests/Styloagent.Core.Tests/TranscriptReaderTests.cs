@@ -63,6 +63,7 @@ public class TranscriptReaderTests
             Assert.Equal(83000, usage!.ContextTokens);       // 2000 + 80000 + 1000 (last message)
             Assert.Equal(1_000_000, usage.WindowTokens);     // model id contains "1m"
             Assert.Equal(0.083, usage.ContextFraction, 3);
+            Assert.Equal(917_000, usage.RemainingTokens);
         }
         finally { File.Delete(path); }
     }
@@ -83,6 +84,7 @@ public class TranscriptReaderTests
             var usage = TranscriptReader.ReadLatest(path);
             Assert.Equal(1_000_000, usage!.WindowTokens);
             Assert.Equal(0.584, usage.ContextFraction, 3);
+            Assert.Equal(416_000, usage.RemainingTokens);
         }
         finally { File.Delete(path); }
     }

@@ -16,6 +16,14 @@ namespace Styloagent.Core.Sessions;
 /// </summary>
 public static class CheckpointNudge
 {
+    public static string AdaptiveBudgetFor(string prefix, ContextPressure pressure, long remainingTokens)
+    {
+        var remaining = remainingTokens > 0 ? $" Approximately {Format(remainingTokens)} tokens remain." : "";
+        return $"⚠ Adaptive context guidance for {prefix}: {ContextPressurePolicy.Guidance(pressure)}{remaining}";
+    }
+
+    private static string Format(long tokens) => tokens >= 1000 ? $"{tokens / 1000}k" : tokens.ToString();
+
     /// <summary>
     /// The checkpoint-now message for <paramref name="prefix"/>. When <paramref name="contextDocPath"/> is
     /// known it names the exact resume doc to refresh; otherwise it falls back to the saved-context convention.

@@ -122,20 +122,18 @@ public class MultiRepoOverviewTests
             var pane = vm.Panes[0];
             Assert.Equal(SessionState.Live, pane.State);   // FakeLauncher + zero inject-delays spawn synchronously
 
-            int before = vm.Timeline.Entries.Count;
             pane.ContextFraction = 0.92;
             vm.CheckContextDilution();
             vm.CheckContextDilution();                     // must not double-nudge
 
-            Assert.Equal(before + 1, vm.Timeline.Entries.Count);
-            Assert.Contains(vm.Timeline.Entries, e => e.Description.Contains("dehydrating"));
+            Assert.Equal(1, vm.Timeline.Entries.Count(e => e.Description.Contains("dehydrating")));
 
             // Drops well below the line → re-arms, so a later fill nudges again.
             pane.ContextFraction = 0.5;
             vm.CheckContextDilution();
             pane.ContextFraction = 0.92;
             vm.CheckContextDilution();
-            Assert.Equal(before + 2, vm.Timeline.Entries.Count);
+            Assert.Equal(2, vm.Timeline.Entries.Count(e => e.Description.Contains("dehydrating")));
         }
         finally { if (Directory.Exists(channel)) Directory.Delete(channel, recursive: true); }
     }

@@ -1907,6 +1907,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var decision = FleetGovernor.Check(state, req.ParentPrefix, req.Prefix);
         if (!decision.Allowed) return SpawnOutcome.Reject(decision.Reason!.Value, decision.Message);
 
+        var runtime = RuntimeFromRequest(req.Runtime);
+        var runtimeName = RuntimeName(runtime);
+        var capabilities = BuildAgentCapabilities();
+        if (!capabilities.Supports(runtimeName, req.Model, req.Effort))
+            return SpawnOutcome.Reject(RejectReason.InvalidPrefix,
+                $"unsupported agent selection: {runtimeName}/{req.Model ?? "default"}/{req.Effort ?? "default"}; call agent_capabilities");
+
         // Re-spawn recovery: the governor allows re-spawning over a crashed ("exited") ghost. Drop the
         // dead pane so the fresh spawn reclaims its slot instead of duplicating the prefix. Refuse if the
         // ghost still has children — removing it would orphan them and break the single-rooted authority tree.
@@ -1932,11 +1939,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // Fix 2: hand a (worktree-isolated) agent its mission as a committed doc it can read from its own
         // checkout, then point its launch prompt at it. No mission doc → the launch prompt is used as-is.
         string launchPrompt = await PlaceMissionDocAsync(req.Prefix, req.MissionDoc, req.LaunchPrompt, worktreePath);
-        var runtime = RuntimeFromRequest(req.Runtime);
-
         var proposed = new ProposedAgent(req.Prefix, req.Responsibility, req.Dir, launchPrompt);
         var paneVm = CreatePaneForProposed(proposed, parentPrefix: req.ParentPrefix, depth: parentDepth + 1,
-            worktreeOverride: worktreePath, worktreeBranch: worktreeBranch, runtime: runtime);
+            worktreeOverride: worktreePath, worktreeBranch: worktreeBranch, runtime: runtime,
+            model: req.Model, effort: req.Effort);
         if (worktreePath is not null && _git is not null)
             _ = paneVm!.RefreshGitStatusAsync(_git);
         return paneVm is null
@@ -1970,6 +1976,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             p.State == SessionState.Dehydrated ? "dehydrated" : (p.HookStateText ?? "running"))).ToList();
         return new FleetSnapshot(members, FleetPolicy.MaxFleet, FleetPolicy.MaxDepth, FleetPaused);
     }
+
+    /// <summary>Reloads the repo capability catalog so MCP and new agents see edits immediately.</summary>
+    public AgentCapabilities BuildAgentCapabilities()
+        => AgentCapabilities.Load(_project?.Root ?? _repoRoot);
 
     // ── Fleet-control surface (the fleet_status / dehydrate / rehydrate / read_timeline MCP tools) ──
 
@@ -2275,7 +2285,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         int depth = 0,
         string? worktreeOverride = null,
         string? worktreeBranch = null,
-        AgentRuntimeKind? runtime = null)
+        AgentRuntimeKind? runtime = null,
+        string? model = null,
+        string? effort = null)
     {
         if (_dockFactory is null || _launcher is null || _watcher is null) return null;
         var documentDock = _dockFactory.DocumentDock;
@@ -2310,7 +2322,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             RestartPromptPath: string.Empty,
             SavedContextPath: SavedContextPathFor(p.Prefix),   // so it can be dehydrated / parked
             Transport: AgentTransport.Local,
-            Runtime: runtime ?? _defaultAgentRuntime);
+            Runtime: runtime ?? _defaultAgentRuntime,
+            Model: model,
+            Effort: effort);
 
         string hookId = ReserveHookId(entry.Prefix);
         var session = new AgentSession(entry, _launcher, _watcher,
@@ -2584,9 +2598,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         string? protocolPath, IEnumerable<string>? claudeOnlyArgs = null)
     {
         var runtime = AgentRuntimeProfile.For(entry.Runtime);
+        var selectionArgs = ModelEffortArgs(entry);
         if (entry.Runtime == AgentRuntimeKind.Codex)
         {
             var args = new List<string>();
+            args.AddRange(selectionArgs);
             if (hooks is not null)
             {
                 var hydration = Styloagent.Core.Hooks.HydrationText.For(
@@ -2611,7 +2627,33 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         return HookArgs(hookId, entry, hooks, channelRoot, repoRoot, protocolPath)
             .Concat(claudeOnlyArgs ?? Array.Empty<string>())
             .Concat(McpArgsFor(entry.Prefix))
+            .Concat(selectionArgs)
             .ToArray();
+    }
+
+    private static IReadOnlyList<string> ModelEffortArgs(AgentManifestEntry entry)
+    {
+        var args = new List<string>();
+        if (!string.IsNullOrWhiteSpace(entry.Model))
+        {
+            args.Add("--model");
+            args.Add(entry.Model!);
+        }
+        if (!string.IsNullOrWhiteSpace(entry.Effort) &&
+            !entry.Effort.Equals("default", StringComparison.OrdinalIgnoreCase))
+        {
+            if (entry.Runtime == AgentRuntimeKind.Codex)
+            {
+                args.Add("--config");
+                args.Add($"model_reasoning_effort={TomlString(entry.Effort!)}");
+            }
+            else
+            {
+                args.Add("--effort");
+                args.Add(entry.Effort!);
+            }
+        }
+        return args;
     }
 
     /// <summary>
@@ -2779,7 +2821,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     internal static DocViewerKind ViewerKindForPath(string path)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
-        return ext is ".md" or ".markdown" ? DocViewerKind.Markdown : DocViewerKind.Source;
+        if (ext is ".md" or ".markdown") return DocViewerKind.Markdown;
+        return ext is ".png" or ".jpg" or ".jpeg" or ".gif" or ".bmp" or ".webp" or ".tif" or ".tiff"
+            ? DocViewerKind.Image : DocViewerKind.Source;
     }
 
     /// <summary>
@@ -2807,10 +2851,23 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             case DocViewerKind.Markdown:
                 OpenMarkdownDocument(new MarkdownDocumentViewModel(Path.GetFileNameWithoutExtension(path), path));
                 break;
+            case DocViewerKind.Image:
+                OpenImageDocument(new ImageDocumentViewModel(Path.GetFileNameWithoutExtension(path), path));
+                break;
             default:
                 OpenSourceDocument(path);
                 break;
         }
+    }
+
+    private void OpenImageDocument(ImageDocumentViewModel doc)
+    {
+        if (_dockFactory?.DocumentDock is null || _dockFactory.RootDock is null) return;
+        doc.Id = "Img-" + Guid.NewGuid().ToString("N");
+        doc.CanFloat = true;
+        _dockFactory.AddDockable(_dockFactory.DocumentDock, doc);
+        _dockFactory.SetActiveDockable(doc);
+        _dockFactory.SetFocusedDockable(_dockFactory.RootDock, doc);
     }
 
     /// <summary>

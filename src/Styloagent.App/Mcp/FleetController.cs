@@ -20,6 +20,11 @@ public sealed class FleetController : IFleetController
             ? _vm.BuildFleetSnapshot()
             : Dispatcher.UIThread.InvokeAsync(_vm.BuildFleetSnapshot).GetTask().GetAwaiter().GetResult();
 
+    public AgentCapabilities AgentCapabilities()
+        => Dispatcher.UIThread.CheckAccess()
+            ? _vm.BuildAgentCapabilities()
+            : Dispatcher.UIThread.InvokeAsync(_vm.BuildAgentCapabilities).GetTask().GetAwaiter().GetResult();
+
     public Task<IssueOutcome> ReportIssueAsync(IssueRequest req)
         => Dispatcher.UIThread.InvokeAsync(() => _vm.ReportIssue(req)).GetTask();
 

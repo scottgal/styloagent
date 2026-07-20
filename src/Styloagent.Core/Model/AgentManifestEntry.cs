@@ -10,4 +10,6 @@ public sealed record AgentManifestEntry(
     string RestartPromptPath,
     string SavedContextPath,
     AgentTransport Transport,
-    AgentRuntimeKind Runtime = AgentRuntimeKind.Claude);
+    AgentRuntimeKind Runtime = AgentRuntimeKind.Claude,
+    string? Model = null,
+    string? Effort = null);

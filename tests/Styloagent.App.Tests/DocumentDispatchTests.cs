@@ -22,6 +22,13 @@ public class DocumentDispatchTests
             expectMarkdown ? DocViewerKind.Markdown : DocViewerKind.Source,
             MainWindowViewModel.ViewerKindForPath(path));
 
+    [Theory]
+    [InlineData("cockpit.png")]
+    [InlineData("photo.JPG")]
+    [InlineData("diagram.webp")]
+    public void ViewerKindForPath_picks_image_for_supported_raster_files(string path)
+        => Assert.Equal(DocViewerKind.Image, MainWindowViewModel.ViewerKindForPath(path));
+
     [Fact]
     public void AgentLogPathFor_resolves_the_per_agent_log_sidecar()
     {

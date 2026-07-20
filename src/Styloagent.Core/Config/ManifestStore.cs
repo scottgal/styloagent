@@ -25,6 +25,8 @@ internal partial class ManifestRow
     public string SavedContext { get; set; } = "";
     public string Transport { get; set; } = "local";
     public string Runtime { get; set; } = "claude";
+    public string? Model { get; set; }
+    public string? Effort { get; set; }
     public string? SshHost { get; set; }
     public string? CredentialRef { get; set; }
 }
@@ -45,6 +47,8 @@ public sealed class ManifestStore
                 SavedContext = e.SavedContextPath,
                 Transport = e.Transport.Kind == TransportKind.Ssh ? "ssh" : "local",
                 Runtime = e.Runtime == AgentRuntimeKind.Codex ? "codex" : "claude",
+                Model = e.Model,
+                Effort = e.Effort,
                 SshHost = e.Transport.SshHost,
                 CredentialRef = e.Transport.CredentialRef,
             }).ToList(),
@@ -69,6 +73,8 @@ public sealed class ManifestStore
                 : AgentTransport.Local,
             string.Equals(r.Runtime, "codex", StringComparison.OrdinalIgnoreCase)
                 ? AgentRuntimeKind.Codex
-                : AgentRuntimeKind.Claude)).ToList();
+                : AgentRuntimeKind.Claude,
+            r.Model,
+            r.Effort)).ToList();
     }
 }

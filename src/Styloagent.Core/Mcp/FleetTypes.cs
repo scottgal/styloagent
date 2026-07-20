@@ -19,7 +19,8 @@ public sealed record FleetSnapshot(IReadOnlyList<FleetMember> Members, int MaxFl
 /// inherit the cockpit's current default.
 /// </summary>
 public sealed record SpawnRequest(string ParentPrefix, string Prefix, string Responsibility, string Dir,
-    string LaunchPrompt, bool Worktree, string MissionDoc = "", string? Runtime = null);
+    string LaunchPrompt, bool Worktree, string MissionDoc = "", string? Runtime = null,
+    string? Model = null, string? Effort = null);
 
 /// <summary>Result of a spawn attempt (never an exception).</summary>
 public sealed record SpawnOutcome(bool Spawned, string? Prefix, RejectReason? Reason, string Message)

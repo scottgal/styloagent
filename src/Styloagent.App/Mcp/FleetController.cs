@@ -25,6 +25,11 @@ public sealed class FleetController : IFleetController
             ? _vm.BuildAgentCapabilities()
             : Dispatcher.UIThread.InvokeAsync(_vm.BuildAgentCapabilities).GetTask().GetAwaiter().GetResult();
 
+    public Styloagent.Core.Projects.ModelPolicy ModelPolicy()
+        => Dispatcher.UIThread.CheckAccess()
+            ? _vm.BuildModelPolicy()
+            : Dispatcher.UIThread.InvokeAsync(_vm.BuildModelPolicy).GetTask().GetAwaiter().GetResult();
+
     public Task<IssueOutcome> ReportIssueAsync(IssueRequest req)
         => Dispatcher.UIThread.InvokeAsync(() => _vm.ReportIssue(req)).GetTask();
 

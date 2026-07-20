@@ -37,7 +37,10 @@ public class WelcomeAndProposedTests
             var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? "").ToList();
             Assert.Contains(texts, s => s.Contains("Open a project"));
             Assert.Contains(texts, s => s.Contains("/a/recent/project"));
-            Assert.NotNull(window.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault());
+            var recentScroller = window.GetVisualDescendants().OfType<ScrollViewer>()
+                .FirstOrDefault(s => s.GetVisualDescendants().OfType<ItemsControl>().Any());
+            Assert.NotNull(recentScroller);
+            Assert.NotNull(window.GetVisualDescendants().OfType<Image>().FirstOrDefault(i => i.Source is not null));
             Assert.NotNull(Toggle(window, "ClaudeFirstToggle"));
             Assert.NotNull(Toggle(window, "CodexFirstToggle"));
 

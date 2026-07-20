@@ -12,6 +12,7 @@ public interface IFleetController
     Task<SpawnOutcome> SpawnAsync(SpawnRequest req);
     FleetSnapshot Snapshot();
     AgentCapabilities AgentCapabilities();
+    Projects.ModelPolicy ModelPolicy();
     Task<IssueOutcome> ReportIssueAsync(IssueRequest req);
     Task<WrapUpOutcome> WrapUpAsync(string callerPrefix);
     Task<MessageOutcome> SendMessageAsync(MessageRequest req);

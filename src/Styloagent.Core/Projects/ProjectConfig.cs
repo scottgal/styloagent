@@ -17,7 +17,8 @@ public sealed record ProjectConfig(
     string ArchitecturePath,
     string IssuesDir,
     string GitPolicyPath,
-    string RouterRoot)
+    string RouterRoot,
+    string ModelPolicyPath)
 {
     /// <summary>Builds the config paths for a project root. Pure — performs no I/O.</summary>
     public static ProjectConfig For(string root)
@@ -39,6 +40,7 @@ public sealed record ProjectConfig(
             ArchitecturePath: Path.Combine(cfg, "architecture.md"),
             IssuesDir: Path.Combine(cfg, "issues"),
             GitPolicyPath: Path.Combine(cfg, "git-policy.yaml"),
-            RouterRoot: Path.Combine(cfg, "router"));
+            RouterRoot: Path.Combine(cfg, "router"),
+            ModelPolicyPath: Path.Combine(cfg, "model-policy.yaml"));
     }
 }

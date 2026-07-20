@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Styloagent.App.Mcp;
 using Styloagent.Core.Git;
 using Styloagent.Core.Mcp;
+using Styloagent.Core.Projects;
 using Xunit;
 
 namespace Styloagent.App.Tests;
@@ -25,6 +26,9 @@ public class FleetToolsTests
         public AgentCapabilities AgentCapabilities() => new(
             new[] { new AgentRuntimeCapabilities("codex", new[] {
                 new AgentCapability("gpt-test", "Test model", TestEfforts) }) }, "test");
+        public Styloagent.Core.Projects.ModelPolicy ModelPolicy() => new(
+            new ModelPolicySelection(null, null, null, "default reasoning"),
+            new Dictionary<string, ModelPolicySelection> { ["tests"] = new(null, "gpt-test", "high", "careful tests") }, "test");
         public Task<IssueOutcome> ReportIssueAsync(IssueRequest req) { LastIssue = req; return Task.FromResult(NextIssue); }
         public Task<WrapUpOutcome> WrapUpAsync(string callerPrefix) { LastWrapUp = callerPrefix; return Task.FromResult(NextWrapUp); }
         public Task<MessageOutcome> SendMessageAsync(MessageRequest req) { LastMessage = req; return Task.FromResult(NextMessage); }
@@ -176,6 +180,15 @@ public class FleetToolsTests
         var json = tools.agent_capabilities();
         Assert.Contains("gpt-test", json);
         Assert.Contains("high", json);
+    }
+
+    [Fact]
+    public void agent_model_policy_serializes_reasoning()
+    {
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), new FakeController(), new McpAuth("secret"));
+        var json = tools.agent_model_policy();
+        Assert.Contains("careful tests", json);
+        Assert.Contains("gpt-test", json);
     }
 
     [Fact]

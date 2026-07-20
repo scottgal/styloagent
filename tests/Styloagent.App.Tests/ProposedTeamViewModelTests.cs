@@ -12,7 +12,7 @@ public class ProposedTeamViewModelTests
     {
         var path = Path.Combine(Path.GetTempPath(), "pt-" + Guid.NewGuid().ToString("N") + ".yaml");
         File.WriteAllText(path,
-            "agents:\n  - prefix: foss-\n    responsibility: packages\n    dir: .\n    launchPrompt: hi\n");
+            "agents:\n  - prefix: foss-\n    responsibility: packages\n    jobType: implementation\n    dir: .\n    launchPrompt: hi\n");
         try
         {
             ProposedAgent? spawned = null;
@@ -22,6 +22,7 @@ public class ProposedTeamViewModelTests
             Assert.Single(vm.Proposals);
             Assert.Equal("foss-", vm.Proposals[0].Prefix);
             Assert.Equal("packages", vm.Proposals[0].Responsibility);
+            Assert.Equal("implementation", vm.Proposals[0].JobType);
 
             vm.SpawnCommand.Execute(vm.Proposals[0].Agent);
             Assert.NotNull(spawned);

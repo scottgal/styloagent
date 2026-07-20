@@ -17,6 +17,7 @@ internal partial class ProposedAgentRow
     public string Dir { get; set; } = ".";
     public string LaunchPrompt { get; set; } = "";
     public bool Worktree { get; set; }
+    public string? JobType { get; set; }
 }
 
 /// <summary>Reads <c>proposed-agents.yaml</c> into <see cref="ProposedAgent"/>s. Never throws.</summary>
@@ -34,7 +35,7 @@ public static class ProposedAgentsReader
             {
                 if (string.IsNullOrWhiteSpace(r.Prefix)) continue;
                 list.Add(new ProposedAgent(r.Prefix.Trim(), r.Responsibility.Trim(),
-                    string.IsNullOrWhiteSpace(r.Dir) ? "." : r.Dir.Trim(), r.LaunchPrompt, r.Worktree));
+                    string.IsNullOrWhiteSpace(r.Dir) ? "." : r.Dir.Trim(), r.LaunchPrompt, r.Worktree, r.JobType?.Trim()));
             }
             return list;
         }

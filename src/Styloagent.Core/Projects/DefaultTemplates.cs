@@ -3,6 +3,35 @@ namespace Styloagent.Core.Projects;
 /// <summary>Bundled defaults written into a fresh project's .styloagent folder.</summary>
 public static class DefaultTemplates
 {
+    public const string ModelPolicy =
+"""
+# The overview may revise this file as it learns which work benefits from deeper reasoning.
+# Every rule must explain its choice; the explanation is shown to the human and available via MCP.
+default:
+  reasoning: "No specialised policy: use the runtime and model defaults."
+rules:
+  - jobType: architecture
+    runtime: claude
+    model: opus
+    effort: high
+    reasoning: "Architecture and boundary decisions have broad downstream cost, so use the strongest reasoning profile."
+  - jobType: implementation
+    runtime: codex
+    model: gpt-5-codex
+    effort: medium
+    reasoning: "Routine implementation benefits from strong code/tool use without spending the maximum reasoning budget."
+  - jobType: tests
+    runtime: codex
+    model: gpt-5-codex
+    effort: high
+    reasoning: "Test failures require careful reproduction and cross-layer diagnosis."
+  - jobType: docs
+    runtime: claude
+    model: sonnet
+    effort: medium
+    reasoning: "Documentation needs context and clarity, but usually less deep code reasoning."
+""";
+
     public const string SystemPrompt =
 """
 You are the **overview / architect** agent for this project. You hold its shape as a few living
@@ -11,6 +40,7 @@ documents under `.styloagent/`, and you keep them true as the design evolves:
 - **Spec** (`spec.md`) — what this system is.
 - **Shape** (`architecture.md`) — the C4 architecture that realises the spec.
 - **Fleet** (`proposed-agents.yaml`) — the agents that build and own the shape.
+- **Model policy** (`model-policy.yaml`) — the job-type → runtime/model/effort choices, with the reasoning behind each choice.
 
 These are a natural progression, not a checklist: you usually understand a system before you give it
 form, and give it form before you staff it. But move fluidly — revisit earlier layers as you learn,
@@ -85,11 +115,18 @@ spawns them; do not spawn them yourself. Once the team is agreed, promote it to 
     agents:
       - prefix: foss-
         responsibility: owns the FOSS packages
+        jobType: implementation # architecture | implementation | tests | docs, or a project-specific type
         dir: .
         worktree: false   # true only when this agent's work overlaps files another agent owns
         launchPrompt: |
           You are the `foss-` agent. You own the FOSS packages. Coordinate with the fleet via the
           `send_message` MCP tool — read `.styloagent/PROTOCOL.md` first.
+
+For every proposed agent, set `jobType` and choose/update its model policy in
+`.styloagent/model-policy.yaml`. Every policy rule must include `reasoning`; that explanation is part
+of the decision record and is returned by the `agent_model_policy` MCP tool. The human can review it
+before spawning. Revisit the policy when evidence shows a job type needs more or less reasoning; a
+future version may use measured quality to adapt it automatically.
 
 ## Tools & evolving the design
 
@@ -123,6 +160,9 @@ You have these MCP tools from the `styloagent` server:
   `worktree: true`, so an isolated agent can read it from its own checkout — and tells the agent to read
   it. Set `runtime` to `claude` or `codex` for mixed fleets, or leave it empty to use the cockpit
   default. This is the prompt-in-a-doc path; don't hand-place mission files or stuff a huge brief inline.
+- `agent_capabilities()` — the live runtime/model/effort choices that may be selected.
+- `agent_model_policy()` — the current job-type policy and the reasoning behind each choice. Read this
+  before writing `proposed-agents.yaml`; set each proposal's `jobType` so the cockpit applies the rule.
 - `architecture_impact(before, after)` — before you rewrite `architecture.md`, call this with the
   current and proposed versions to preview the change's impact (`+ added / − removed / Impact:`), and
   include that summary when you tell the human what a proposal will change.

@@ -5,13 +5,19 @@
              x:Class="Styloagent.App.Views.WelcomeView"
              x:DataType="vm:WelcomeViewModel">
   <Border Background="{DynamicResource CockpitBgBrush}" Padding="28">
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-      <StackPanel Spacing="14" VerticalAlignment="Top" HorizontalAlignment="Center" MaxWidth="440">
-      <TextBlock FontSize="24">
-        <Run Text="stylo" FontWeight="Bold" FontStyle="Italic" Foreground="#DDDDDD" /><Run Text="agent" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
-      </TextBlock>
+    <!-- Keep the modal itself fixed; only the potentially long Recent folder list scrolls. -->
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*" VerticalAlignment="Top"
+          HorizontalAlignment="Center" Width="440" MaxWidth="440">
+      <StackPanel Grid.Row="0" Spacing="10">
+        <Image Source="avares://Styloagent.App/icon.png" Width="64" Height="64"
+               HorizontalAlignment="Center" Stretch="Uniform" />
+        <TextBlock FontSize="24" HorizontalAlignment="Center">
+          <Run Text="stylo" FontWeight="Bold" FontStyle="Italic" Foreground="#DDDDDD" /><Run Text="agent" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
+        </TextBlock>
+      </StackPanel>
 
       <!-- New system: scope from a one-line goal; the architect agent figures out the shape. -->
+      <StackPanel Grid.Row="1" Spacing="14">
       <TextBlock Text="New system" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}"
                  LetterSpacing="1" Margin="0,6,0,0" />
       <TextBox Watermark="Build a system like X which does Y…"
@@ -19,8 +25,9 @@
                AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64" />
       <Button Content="Create new system →" Command="{Binding NewSystemCommand}"
               Padding="14,8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+      </StackPanel>
 
-      <Border Background="#151528" BorderBrush="#2B2B45" BorderThickness="1" CornerRadius="6" Padding="4">
+      <Border Grid.Row="2" Background="#151528" BorderBrush="#2B2B45" BorderThickness="1" CornerRadius="6" Padding="4" Margin="0,14,0,0">
         <Grid ColumnDefinitions="*,*">
           <ToggleButton x:Name="ClaudeFirstToggle" Grid.Column="0" Content="Claude first"
                         IsChecked="{Binding IsClaudeFirst, Mode=OneWay}"
@@ -33,16 +40,20 @@
         </Grid>
       </Border>
 
-      <Border Height="1" Background="#222226" Margin="0,10" />
+      <Border Grid.Row="3" Height="1" Background="#222226" Margin="0,10" />
 
       <!-- Open existing project. -->
-      <TextBlock Text="Open existing" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}"
-                 LetterSpacing="1" />
-      <Button Content="Open a project folder…" Command="{Binding OpenFolderCommand}"
-              Padding="14,8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
-      <TextBlock Text="Recent" FontSize="11" Foreground="{DynamicResource MutedTextBrush}" Margin="0,4,0,0"
+      <StackPanel Grid.Row="4" Spacing="8">
+        <TextBlock Text="Open existing" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}"
+                   LetterSpacing="1" />
+        <Button Content="Open a project folder…" Command="{Binding OpenFolderCommand}"
+                Padding="14,8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+        <TextBlock Text="Recent" FontSize="11" Foreground="{DynamicResource MutedTextBrush}" Margin="0,4,0,0"
                  IsVisible="{Binding Recent.Count, Converter={x:Static conv:CountToBoolConverter.Instance}}" />
-      <ItemsControl ItemsSource="{Binding Recent}">
+      </StackPanel>
+      <ScrollViewer Grid.Row="5" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                    Margin="0,4,0,0">
+        <ItemsControl ItemsSource="{Binding Recent}">
         <ItemsControl.ItemTemplate>
           <DataTemplate>
             <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Margin="0,1"
@@ -53,8 +64,8 @@
             </Button>
           </DataTemplate>
         </ItemsControl.ItemTemplate>
-      </ItemsControl>
-      </StackPanel>
-    </ScrollViewer>
+        </ItemsControl>
+      </ScrollViewer>
+    </Grid>
   </Border>
 </UserControl>

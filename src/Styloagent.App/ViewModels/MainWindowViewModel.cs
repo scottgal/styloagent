@@ -1821,11 +1821,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     public async Task<SpawnOutcome> SpawnProposedAsync(ProposedAgent p)
     {
+        var policy = BuildModelPolicy().For(p.JobType);
         var owner = OverviewPane();
         if (owner is not null && owner.Prefix != p.Prefix)
             return await SpawnChildAsync(new SpawnRequest(
                 owner.Prefix, p.Prefix, p.Responsibility, p.Dir, p.LaunchPrompt, p.Worktree,
-                Runtime: RuntimeName(_defaultAgentRuntime)));
+                Runtime: policy.Runtime ?? RuntimeName(_defaultAgentRuntime),
+                Model: policy.Model, Effort: policy.Effort));
 
         // Root / no-owner exception: establish the single root directly.
         string? worktreePath = null, worktreeBranch = null;
@@ -1836,7 +1838,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             (worktreePath, worktreeBranch) = (wt.Path, wt.Branch);
         }
         var pane = CreatePaneForProposed(p, worktreeOverride: worktreePath, worktreeBranch: worktreeBranch,
-            runtime: _defaultAgentRuntime);
+            runtime: RuntimeFromRequest(policy.Runtime), model: policy.Model, effort: policy.Effort);
         if (worktreePath is not null && _git is not null && pane is not null)
             _ = pane.RefreshGitStatusAsync(_git);
         return pane is null
@@ -1980,6 +1982,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>Reloads the repo capability catalog so MCP and new agents see edits immediately.</summary>
     public AgentCapabilities BuildAgentCapabilities()
         => AgentCapabilities.Load(_project?.Root ?? _repoRoot);
+
+    /// <summary>Reloads the overview-owned job-type policy so a revised file affects the next spawn.</summary>
+    public Styloagent.Core.Projects.ModelPolicy BuildModelPolicy()
+        => Styloagent.Core.Projects.ModelPolicy.Load(
+            _project?.ModelPolicyPath ?? (_repoRoot is null ? null : Path.Combine(_repoRoot, ".styloagent", "model-policy.yaml")));
 
     // ── Fleet-control surface (the fleet_status / dehydrate / rehydrate / read_timeline MCP tools) ──
 

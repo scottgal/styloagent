@@ -14,6 +14,7 @@ public sealed partial class ProposedAgentItem : ObservableObject
     public ProposedAgent Agent { get; init; } = null!;
     public string Prefix { get; init; } = "";
     public string Responsibility { get; init; } = "";
+    public string JobType { get; init; } = "";
     public string ColorHex { get; init; } = "#888888";
 
     /// <summary>Set when a Spawn is rejected by the governor; shown in red on the card.</summary>
@@ -71,6 +72,7 @@ public sealed partial class ProposedTeamViewModel : ObservableObject, IDisposabl
             Agent = a,
             Prefix = a.Prefix,
             Responsibility = a.Responsibility,
+            JobType = a.JobType ?? "",
             ColorHex = PresentationStore.DefaultColorFor(a.Prefix),
         }).ToList();
 

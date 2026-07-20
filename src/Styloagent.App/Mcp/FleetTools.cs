@@ -82,6 +82,16 @@ public sealed class FleetTools
         return JsonSerializer.Serialize(_controller.AgentCapabilities(), Json);
     }
 
+    [McpServerTool, Description("Return the overview's live job-type model policy, including runtime, model, effort, and the human-readable reasoning for every choice. Reloaded from .styloagent/model-policy.yaml on each call so the overview can adapt it without restarting.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public string agent_model_policy()
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
+        return JsonSerializer.Serialize(_controller.ModelPolicy(), Json);
+    }
+
     [McpServerTool, Description("Return the current fleet: each agent's prefix, responsibility, parent, depth and state.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public string list_fleet()

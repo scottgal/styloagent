@@ -44,6 +44,9 @@
     <DataTemplate DataType="vm:MarkdownDocumentViewModel">
       <views:MarkdownDocumentView />
     </DataTemplate>
+    <DataTemplate DataType="vm:ImageDocumentViewModel">
+      <views:ImageDocumentView />
+    </DataTemplate>
     <DataTemplate DataType="vm:BusThreadDocumentViewModel">
       <views:BusThreadDocumentView />
     </DataTemplate>

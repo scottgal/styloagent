@@ -53,9 +53,9 @@ public sealed class FleetTools
              documentOpen ?? new DocumentOpenHub());
 
 #pragma warning disable CA1707 // Identifiers should not contain underscores — tool names are MCP contract and must match the wire protocol
-    [McpServerTool, Description("Launch a child agent under you. prefix is a short lowercase tag ending in '-'. Set runtime to 'claude' or 'codex' to make a mixed fleet, or leave it empty to use the cockpit default. Set worktree=true when this agent's work overlaps files another agent owns, so it runs isolated on its own git worktree/branch; otherwise false to share the repo. Keep launchPrompt SHORT (identity + 'read your mission doc'); pass the full brief as missionDoc — Styloagent writes it to .styloagent/missions/<prefix>.md in the new agent's tree (committed on its branch when worktree=true, so an isolated agent can read it from its own checkout) and tells the agent to read it. Leave missionDoc empty to inject launchPrompt alone.")]
+    [McpServerTool, Description("Launch a child agent under you. prefix is a short lowercase tag ending in '-'. Set runtime to 'claude' or 'codex' to make a mixed fleet; model and effort select from agent_capabilities (leave blank for defaults). Set worktree=true when this agent's work overlaps files another agent owns, so it runs isolated on its own git worktree/branch; otherwise false to share the repo. Keep launchPrompt SHORT (identity + 'read your mission doc'); pass the full brief as missionDoc — Styloagent writes it to .styloagent/missions/<prefix>.md in the new agent's tree and tells the agent to read it. Leave missionDoc empty to inject launchPrompt alone.")]
     public async Task<string> spawn_agent(string prefix, string responsibility, string dir, string launchPrompt,
-        bool worktree, string missionDoc = "", string runtime = "")
+        bool worktree, string missionDoc = "", string runtime = "", string model = "", string effort = "")
     {
         var ctx = _http.HttpContext;
         if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
@@ -65,9 +65,21 @@ public sealed class FleetTools
         var outcome = await _controller.SpawnAsync(
             new SpawnRequest(parent, prefix, responsibility,
                 string.IsNullOrWhiteSpace(dir) ? "." : dir, launchPrompt, worktree, missionDoc ?? string.Empty,
-                string.IsNullOrWhiteSpace(runtime) ? null : runtime));
+                string.IsNullOrWhiteSpace(runtime) ? null : runtime,
+                string.IsNullOrWhiteSpace(model) ? null : model,
+                string.IsNullOrWhiteSpace(effort) ? null : effort));
 
         return outcome.Spawned ? outcome.Message : $"rejected: {outcome.Message}";
+    }
+
+    [McpServerTool, Description("Return the live model and effort choices for each supported agent runtime. The list is reloaded from .styloagent/agent-capabilities.json for each call, so agents can use the same current choices as spawn_agent without restarting Styloagent.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public string agent_capabilities()
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
+        return JsonSerializer.Serialize(_controller.AgentCapabilities(), Json);
     }
 
     [McpServerTool, Description("Return the current fleet: each agent's prefix, responsibility, parent, depth and state.")]

@@ -8,6 +8,7 @@ namespace Styloagent.App.Tests;
 
 public class FleetToolsTests
 {
+    private static readonly IReadOnlyList<string> TestEfforts = new[] { "low", "high" };
     private sealed class FakeController : IFleetController
     {
         public SpawnRequest? LastReq;
@@ -21,6 +22,9 @@ public class FleetToolsTests
         public Task<SpawnOutcome> SpawnAsync(SpawnRequest req) { LastReq = req; return Task.FromResult(Next); }
         public FleetSnapshot Snapshot() => new(
             new[] { new FleetMember("overview-", "the top", null, 0, "running") }, 12, 3, false);
+        public AgentCapabilities AgentCapabilities() => new(
+            new[] { new AgentRuntimeCapabilities("codex", new[] {
+                new AgentCapability("gpt-test", "Test model", TestEfforts) }) }, "test");
         public Task<IssueOutcome> ReportIssueAsync(IssueRequest req) { LastIssue = req; return Task.FromResult(NextIssue); }
         public Task<WrapUpOutcome> WrapUpAsync(string callerPrefix) { LastWrapUp = callerPrefix; return Task.FromResult(NextWrapUp); }
         public Task<MessageOutcome> SendMessageAsync(MessageRequest req) { LastMessage = req; return Task.FromResult(NextMessage); }
@@ -150,6 +154,28 @@ public class FleetToolsTests
             runtime: "codex");
 
         Assert.Equal("codex", ctrl.LastReq!.Runtime);
+    }
+
+    [Fact]
+    public async Task spawn_agent_passes_model_and_effort_through()
+    {
+        var ctrl = new FakeController();
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), ctrl, new McpAuth("secret"));
+
+        await tools.spawn_agent("codex-", "owns CLI hooks", ".", "You are codex-.", worktree: false,
+            runtime: "codex", model: "gpt-test", effort: "high");
+
+        Assert.Equal("gpt-test", ctrl.LastReq!.Model);
+        Assert.Equal("high", ctrl.LastReq.Effort);
+    }
+
+    [Fact]
+    public void agent_capabilities_serializes_the_live_catalog()
+    {
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), new FakeController(), new McpAuth("secret"));
+        var json = tools.agent_capabilities();
+        Assert.Contains("gpt-test", json);
+        Assert.Contains("high", json);
     }
 
     [Fact]

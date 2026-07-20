@@ -13,6 +13,7 @@ public class StyloagentMcpServerTests
     {
         public Task<SpawnOutcome> SpawnAsync(SpawnRequest req) => Task.FromResult(SpawnOutcome.Ok(req.Prefix));
         public FleetSnapshot Snapshot() => new(Array.Empty<FleetMember>(), 12, 3, false);
+        public AgentCapabilities AgentCapabilities() => new(Array.Empty<AgentRuntimeCapabilities>(), "test");
         public Task<IssueOutcome> ReportIssueAsync(IssueRequest req) => Task.FromResult(IssueOutcome.Ok("issue"));
         public Task<WrapUpOutcome> WrapUpAsync(string callerPrefix) => Task.FromResult(new WrapUpOutcome(WrapUpStatus.Merged, "merged", null));
         public Task<MessageOutcome> SendMessageAsync(MessageRequest req) => Task.FromResult(MessageOutcome.Ok("/ch/inbox/x.md"));

@@ -61,7 +61,9 @@
                 IsVisible="{Binding Converter={x:Static conv:IsAgentPaneConverter.Instance}}"
                 ToolTip.Tip="Agent actions">
           <Button.Flyout>
-            <MenuFlyout>
+            <!-- Keep the wide menu inside the window when the tab is against the right dock edge. -->
+            <MenuFlyout Placement="BottomEdgeAlignedRight"
+                        PlacementConstraintAdjustment="FlipX,FlipY,SlideX,SlideY,ResizeY">
               <MenuItem Header="Spawn" Command="{Binding SpawnCommand}" />
               <MenuItem Header="Dehydrate (checkpoint + park)" Command="{Binding DehydrateCommand}" />
               <MenuItem Header="Rehydrate" Command="{Binding RehydrateCommand}" />

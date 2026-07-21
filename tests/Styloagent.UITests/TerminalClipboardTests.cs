@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Styloagent.Terminal;
@@ -108,6 +109,34 @@ public class TerminalClipboardTests
             Assert.Contains("PASTED_FROM_CLIPBOARD", fake.Writes);
 
             window.Close();
+        });
+    }
+
+    [Fact]
+    public Task PasteFromClipboard_Image_WritesTemporaryImagePathToPty()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);
+
+            var window = new Window { Content = control, Width = 600, Height = 400 };
+            window.Show();
+            await DrainAsync();
+
+            var clipboard = TopLevel.GetTopLevel(control)?.Clipboard;
+            Assert.NotNull(clipboard);
+            var source = new Bitmap(System.IO.Path.GetFullPath(
+                System.IO.Path.Combine(AppContext.BaseDirectory, "../../../../../docs/screenshots/welcome.png")));
+            await clipboard!.SetBitmapAsync(source);
+
+            await control.PasteFromClipboardAsync();
+            await DrainAsync();
+
+            Assert.Contains(fake.Writes, w => w.Contains("styloagent-clipboard-") && w.EndsWith(".png'", StringComparison.Ordinal));
+            window.Close();
+            source.Dispose();
         });
     }
 

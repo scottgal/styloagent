@@ -9,6 +9,7 @@ using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Styloagent.Core.Sessions;
@@ -598,9 +599,8 @@ public sealed partial class TerminalControl : UserControl
     {
         UserInteracted?.Invoke(this, EventArgs.Empty);
 
-        // Standard mac clipboard chords (Cmd+C / Cmd+X / Cmd+V, "like Rider"). Handle these BEFORE the PTY
-        // key path so Cmd never reaches the child — and so Cmd+C (copy) is never confused with Ctrl+C, which
-        // stays the PTY's SIGINT/ETX. Copy works without a live session; paste is gated on one internally.
+        // Standard mac clipboard chords plus macOS Option+C / Option+V. Handle these BEFORE the PTY key path
+        // so they never reach the child; Option+V also supports image clipboard contents.
         if (TryHandleClipboardShortcut(e)) return;
 
         if (_session is null) return;
@@ -617,19 +617,21 @@ public sealed partial class TerminalControl : UserControl
     // ── Clipboard (copy / paste / cut) ───────────────────────────────────────
 
     /// <summary>
-    /// Handles the standard mac clipboard chords — Cmd+C (copy the selection), Cmd+X (the child's screen is
-    /// read-only, so cut behaves as copy), Cmd+V (paste into the PTY). Returns true when it consumed the key.
-    /// Bound to <see cref="KeyModifiers.Meta"/> (Cmd) ONLY — NOT Alt/Option (Option+C/V/X are the printable
-    /// characters ç √ ≈ the terminal must still type), and NOT Ctrl (which the PTY needs for Ctrl+C=ETX /
-    /// Ctrl+D=EOT). Always consumes the chord so a stray Cmd+letter never leaks to the child.
+    /// Handles macOS Cmd clipboard chords and Option+C/V. Ctrl is never intercepted because the PTY needs
+    /// Ctrl+C=ETX / Ctrl+D=EOT. Option+X remains printable.
     /// </summary>
     private bool TryHandleClipboardShortcut(KeyEventArgs e)
     {
-        if ((e.KeyModifiers & KeyModifiers.Meta) == 0) return false;
+        bool command = (e.KeyModifiers & KeyModifiers.Meta) != 0;
+        bool macOption = OperatingSystem.IsMacOS() && (e.KeyModifiers & KeyModifiers.Alt) != 0;
+        if (!command && !macOption) return false;
         switch (e.Key)
         {
             case AvaloniaKey.C:
-            case AvaloniaKey.X:
+                CopySelectionToClipboard();
+                e.Handled = true;
+                return true;
+            case AvaloniaKey.X when command:
                 CopySelectionToClipboard();
                 e.Handled = true;
                 return true;
@@ -667,12 +669,23 @@ public sealed partial class TerminalControl : UserControl
         catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[TerminalControl] paste failed: {ex}"); }
     }
 
-    /// <summary>Core of paste (test seam): reads the clipboard and writes it to the PTY.</summary>
+    /// <summary>Core of paste (test seam): reads text or an image and writes it to the PTY. Clipboard images
+    /// are materialized as temporary PNG paths, matching image drag/drop behavior.</summary>
     internal async Task PasteFromClipboardAsync()
     {
         if (_session is null) return;
         var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
         if (clipboard is null) return;
+
+        var bitmap = await clipboard.TryGetBitmapAsync();
+        if (bitmap is not null)
+        {
+            string path = Path.Combine(Path.GetTempPath(), $"styloagent-clipboard-{Guid.NewGuid():N}.png");
+            bitmap.Save(path);
+            InsertDroppedImagePaths([path]);
+            return;
+        }
+
         string? text = await clipboard.TryGetTextAsync();
         if (string.IsNullOrEmpty(text)) return;
         WritePaste(text);

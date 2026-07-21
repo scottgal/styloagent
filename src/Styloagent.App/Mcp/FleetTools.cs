@@ -72,6 +72,16 @@ public sealed class FleetTools
         return outcome.Spawned ? outcome.Message : $"rejected: {outcome.Message}";
     }
 
+    [McpServerTool, Description("Rename an agent's cockpit identity and broadcast the stable-prefix to display-name mapping to the fleet. The prefix does not change, so bus routing remains stable.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> rename_agent(string prefix, string name)
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
+        return await _controller.RenameAgentAsync(prefix, name);
+    }
+
     [McpServerTool, Description("Return the live model and effort choices for each supported agent runtime. The list is reloaded from .styloagent/agent-capabilities.json for each call, so agents can use the same current choices as spawn_agent without restarting Styloagent.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public string agent_capabilities()
@@ -230,7 +240,7 @@ public sealed class FleetTools
         return (repos.FirstOrDefault(r => r.Primary) ?? repos[0]).Path;
     }
 
-    [McpServerTool, Description("Rich live status of the whole fleet: each agent's prefix, responsibility, state (working | idle | needs-you | exited), current activity, seconds since its last output, context usage (e.g. \"83k · 22%\") and whether it has a git worktree — plus working/waiting counts and the paused flag. Use this to see what everyone is doing and who is stalled or blocked.")]
+    [McpServerTool, Description("Rich live status of the whole fleet: each agent's stable prefix, display name, runtime/model/effort, responsibility, state (working | idle | needs-you | exited), current activity, seconds since its last output, remaining context tokens and pressure, and whether it has a git worktree — plus working/waiting counts and the paused flag.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public string fleet_status()
     {

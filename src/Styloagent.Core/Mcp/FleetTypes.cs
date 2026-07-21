@@ -61,11 +61,12 @@ public sealed record MessageOutcome(bool Sent, string? Path, string Message)
 /// <param name="Activity">What it's doing right now (e.g. "editing", "running commands", "idle").</param>
 /// <param name="IdleSeconds">Seconds since its last output (-1 if it has produced none yet).</param>
 /// <param name="Usage">Context readout showing remaining tokens and used percentage (empty until known).</param>
+/// <param name="Name">The operator-facing display name; <paramref name="Prefix"/> remains the stable routing identity.</param>
 public sealed record AgentStatus(
     string Prefix, string Responsibility, string State, string Activity,
     int IdleSeconds, string Usage, bool Worktree, string Repo = "",
     long RemainingTokens = 0, double RemainingFraction = 0, string Pressure = "unknown",
-    string Runtime = "", string Model = "", string Effort = "");
+    string Runtime = "", string Model = "", string Effort = "", string Name = "");
 
 /// <summary>A whole-fleet situational snapshot for the fleet_status tool.</summary>
 public sealed record FleetStatusReport(

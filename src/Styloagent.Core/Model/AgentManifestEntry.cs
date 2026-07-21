@@ -12,4 +12,5 @@ public sealed record AgentManifestEntry(
     AgentTransport Transport,
     AgentRuntimeKind Runtime = AgentRuntimeKind.Claude,
     string? Model = null,
-    string? Effort = null);
+    string? Effort = null,
+    bool AutoStartPrompt = true);

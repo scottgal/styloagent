@@ -27,6 +27,7 @@ internal partial class ManifestRow
     public string Runtime { get; set; } = "claude";
     public string? Model { get; set; }
     public string? Effort { get; set; }
+    public bool AutoStartPrompt { get; set; } = true;
     public string? SshHost { get; set; }
     public string? CredentialRef { get; set; }
 }
@@ -49,6 +50,7 @@ public sealed class ManifestStore
                 Runtime = e.Runtime == AgentRuntimeKind.Codex ? "codex" : "claude",
                 Model = e.Model,
                 Effort = e.Effort,
+                AutoStartPrompt = e.AutoStartPrompt,
                 SshHost = e.Transport.SshHost,
                 CredentialRef = e.Transport.CredentialRef,
             }).ToList(),
@@ -75,6 +77,7 @@ public sealed class ManifestStore
                 ? AgentRuntimeKind.Codex
                 : AgentRuntimeKind.Claude,
             r.Model,
-            r.Effort)).ToList();
+            r.Effort,
+            r.AutoStartPrompt)).ToList();
     }
 }

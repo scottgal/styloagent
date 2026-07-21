@@ -10,6 +10,7 @@ namespace Styloagent.Core.Mcp;
 public interface IFleetController
 {
     Task<SpawnOutcome> SpawnAsync(SpawnRequest req);
+    Task<string> RenameAgentAsync(string prefix, string name);
     FleetSnapshot Snapshot();
     AgentCapabilities AgentCapabilities();
     Projects.ModelPolicy ModelPolicy();

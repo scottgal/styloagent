@@ -65,7 +65,7 @@
               <MenuItem Header="Spawn" Command="{Binding SpawnCommand}" />
               <MenuItem Header="Dehydrate (checkpoint + park)" Command="{Binding DehydrateCommand}" />
               <MenuItem Header="Rehydrate" Command="{Binding RehydrateCommand}" />
-              <MenuItem Header="Rename" Command="{Binding RenameCommand}" CommandParameter="New Name" />
+              <MenuItem Header="Rename" Command="{Binding RenameCommand}" />
               <Separator />
               <MenuItem Header="Log (this agent)" Command="{Binding OpenLogCommand}" />
               <Separator />

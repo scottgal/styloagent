@@ -13,6 +13,7 @@ public class StyloagentMcpServerTests
     private sealed class FakeController : IFleetController
     {
         public Task<SpawnOutcome> SpawnAsync(SpawnRequest req) => Task.FromResult(SpawnOutcome.Ok(req.Prefix));
+        public Task<string> RenameAgentAsync(string prefix, string name) => Task.FromResult($"renamed {prefix} to {name}");
         public FleetSnapshot Snapshot() => new(Array.Empty<FleetMember>(), 12, 3, false);
         public AgentCapabilities AgentCapabilities() => new(Array.Empty<AgentRuntimeCapabilities>(), "test");
         public Styloagent.Core.Projects.ModelPolicy ModelPolicy() => new(

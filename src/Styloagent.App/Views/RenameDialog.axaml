@@ -1,0 +1,16 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Styloagent.App.Views.RenameDialog"
+        Title="Rename agent"
+        Width="420" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource CockpitBgBrush}">
+  <StackPanel Margin="18" Spacing="12">
+    <TextBlock Text="Agent name" FontSize="13" Foreground="{DynamicResource PrimaryTextBrush}" />
+    <TextBox x:Name="NameBox" MinWidth="360" Watermark="Enter a name…" />
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button x:Name="CancelButton" Content="Cancel" Padding="16,4" />
+      <Button x:Name="RenameButton" Content="Rename" Padding="16,4" />
+    </StackPanel>
+  </StackPanel>
+</Window>

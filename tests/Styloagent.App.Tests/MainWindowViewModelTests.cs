@@ -207,11 +207,55 @@ public class MainWindowViewModelTests : IDisposable
 
             Assert.Equal(2, vm.Panes.Count);
             Assert.Equal(AgentRuntimeKind.Codex, vm.Panes[1].Runtime);
+            Assert.StartsWith("agent-", vm.Panes[1].Prefix);
+            Assert.Equal("New Codex", vm.Panes[1].DisplayName);
             Assert.Equal("codex", launcher.Options[1].Command);
             Assert.Contains("--config", launcher.Options[1].Args);
             Assert.Contains(launcher.Options[1].Args, a => a.Contains("hooks.SessionStart", StringComparison.Ordinal));
             Assert.DoesNotContain(launcher.Options[1].Args, a => a == "--settings");
             Assert.DoesNotContain(launcher.Options[1].Args, a => a == "--mcp-config");
+            Assert.DoesNotContain(launcher.Options[1].Args, a => a.Contains("You are", StringComparison.Ordinal));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task AddClaudeCommand_opens_blank_generic_agent_without_inheriting_seeded_name()
+    {
+        var root = MakeTwoAgentChannel();
+        try
+        {
+            var launcher = new FakeLauncher();
+            var vm = await MainWindowViewModel.InitializeAsync(root, launcher, new FakeWatcher());
+
+            vm.AddClaudeCommand.Execute(null);
+            await WaitUntil(() => launcher.Options.Count >= 2);
+
+            Assert.StartsWith("agent-", vm.Panes[1].Prefix);
+            Assert.Equal("New Claude", vm.Panes[1].DisplayName);
+            Assert.DoesNotContain(launcher.Spawned[1].Writes, w => w.Contains("You are", StringComparison.Ordinal));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task RenameAgent_updates_tab_identity_and_broadcasts_stable_prefix_mapping()
+    {
+        var root = MakeTwoAgentChannel();
+        try
+        {
+            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            var pane = vm.Panes[0];
+            var prefix = pane.Prefix;
+
+            var result = await vm.RenameAgentAsync(prefix, "Planner");
+
+            Assert.Contains("renamed", result);
+            Assert.Equal("Planner", pane.DisplayName);
+            Assert.Equal("Planner", pane.Title);
+            Assert.Contains(vm.Timeline.Entries, e => e.Description.Contains("renamed from"));
+            Assert.Contains(Directory.EnumerateFiles(root, "*.md", SearchOption.AllDirectories), path =>
+                File.ReadAllText(path).Contains("Agent " + prefix + " is now named 'Planner'"));
         }
         finally { Directory.Delete(root, recursive: true); }
     }

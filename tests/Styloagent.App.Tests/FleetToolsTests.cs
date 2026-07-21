@@ -21,6 +21,7 @@ public class FleetToolsTests
         public MessageRequest? LastMessage;
         public MessageOutcome NextMessage = MessageOutcome.Ok("/ch/inbox/router-hello.md");
         public Task<SpawnOutcome> SpawnAsync(SpawnRequest req) { LastReq = req; return Task.FromResult(Next); }
+        public Task<string> RenameAgentAsync(string prefix, string name) => Task.FromResult($"renamed {prefix} to {name}");
         public FleetSnapshot Snapshot() => new(
             new[] { new FleetMember("overview-", "the top", null, 0, "running") }, 12, 3, false);
         public AgentCapabilities AgentCapabilities() => new(
@@ -81,6 +82,17 @@ public class FleetToolsTests
         Assert.Equal("overview-", ctrl.LastReq!.ParentPrefix);
         Assert.Equal("foss-", ctrl.LastReq.Prefix);
         Assert.Contains("spawned foss-", result);
+    }
+
+    [Fact]
+    public async Task rename_agent_requires_auth_and_forwards_name()
+    {
+        var ctrl = new FakeController();
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), ctrl, new McpAuth("secret"));
+
+        var result = await tools.rename_agent("agent-1-", "Planner");
+
+        Assert.Equal("renamed agent-1- to Planner", result);
     }
 
     [Fact]

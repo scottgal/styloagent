@@ -815,6 +815,33 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     /// <summary>Wired by the shell to a modal confirm (message → true to apply). Null → apply without asking.</summary>
     public Func<string, Task<bool>>? ConfirmReparentAsync { get; set; }
+    public Func<string, Task<string?>>? RequestAgentNameAsync { get; set; }
+
+    public async Task RenameAgentFromUiAsync(AgentPaneViewModel pane)
+    {
+        if (RequestAgentNameAsync is null) return;
+        var name = await RequestAgentNameAsync(pane.DisplayName);
+        if (!string.IsNullOrWhiteSpace(name))
+            await RenameAgentAsync(pane.Prefix, name);
+    }
+
+    /// <summary>Renames the cockpit identity and broadcasts the stable-prefix → display-name mapping.</summary>
+    public async Task<string> RenameAgentAsync(string prefix, string name)
+    {
+        var pane = Panes.FirstOrDefault(p => string.Equals(p.Prefix, prefix, StringComparison.OrdinalIgnoreCase));
+        if (pane is null) return $"agent not found: {prefix}";
+        var clean = name.Trim();
+        if (clean.Length == 0) return "name cannot be empty";
+
+        var oldName = pane.DisplayName;
+        pane.Rename(clean);
+        Timeline.Add(DateTimeOffset.Now, clean, $"renamed from {oldName}", pane.BorderColorHex);
+        var outcome = await SendBusMessage(new MessageRequest(
+            "cockpit-", "all-", "agent renamed",
+            $"Agent {prefix} is now named '{clean}' (previously '{oldName}'). Keep addressing it by stable prefix {prefix}.",
+            "normal"));
+        return outcome.Sent ? $"renamed {prefix} to {clean}" : $"renamed {prefix} to {clean}; broadcast failed: {outcome.Message}";
+    }
 
     /// <summary>
     /// Reparent <paramref name="dragged"/> under <paramref name="newOwner"/> (drag-drop v2a): change its
@@ -1254,8 +1281,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (documentDock is null || rootDock is null)
             return;
 
-        // Pick the next unseeded entry, or synthesize a generic one.
-        var nextEntry = _seededEntries.FirstOrDefault(e => !_openedPrefixes.Contains(e.Prefix));
+        // The runtime-specific top-bar buttons always open a fresh, blank terminal. The generic Add Agent
+        // command retains the seeded-entry behavior for backwards compatibility and keyboard workflows.
+        var nextEntry = runtimeOverride is null
+            ? _seededEntries.FirstOrDefault(e => !_openedPrefixes.Contains(e.Prefix))
+            : null;
 
         AgentManifestEntry entry;
         AgentPresentation presentation;
@@ -1281,10 +1311,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 RestartPromptPath: string.Empty,
                 SavedContextPath: SavedContextPathFor(prefix),   // so it can be dehydrated / parked
                 Transport: AgentTransport.Local,
-                Runtime: runtimeOverride ?? _defaultAgentRuntime);
+                Runtime: runtimeOverride ?? _defaultAgentRuntime,
+                AutoStartPrompt: runtimeOverride is null);
             presentation = new AgentPresentation(
                 Prefix: prefix,
-                DisplayName: prefix.TrimEnd('-'),
+                DisplayName: runtimeOverride is null
+                    ? prefix.TrimEnd('-')
+                    : runtimeOverride is AgentRuntimeKind.Codex ? "New Codex" : "New Claude",
                 BorderColorHex: PresentationStore.DefaultColorFor(prefix));
         }
 
@@ -2007,7 +2040,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             Pressure: p.ContextPressure,
             Runtime: p.Runtime.ToString().ToLowerInvariant(),
             Model: p.SelectedModel,
-            Effort: p.SelectedEffort)).ToList();
+            Effort: p.SelectedEffort,
+            Name: p.DisplayName)).ToList();
         return new FleetStatusReport(agents, WorkingCount, WaitingCount, FleetPaused);
     }
 

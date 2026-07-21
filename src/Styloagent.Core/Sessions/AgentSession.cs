@@ -80,7 +80,7 @@ public sealed class AgentSession
         _pty.Output += OnOutput;
         var promptMode = _runtime.SupportsInitialPromptArgument ? "passing prompt as CLI argument" : "injecting prompt";
         SpawnDiag.Log($"AgentSession.SpawnAsync launched prefix={_manifest.Prefix}; {promptMode} ({launchPrompt?.Length ?? 0} chars, settle={InjectSettleDelay.TotalMilliseconds}ms retry={InjectEnterRetryDelay.TotalMilliseconds}ms)");
-        if (!_runtime.SupportsInitialPromptArgument)
+        if (!string.IsNullOrEmpty(launchPrompt) && !_runtime.SupportsInitialPromptArgument)
             await InjectPromptAsync(_pty, launchPrompt ?? string.Empty, ct);
         CurrentPty = _pty;
         State = SessionState.Live;
@@ -170,7 +170,7 @@ public sealed class AgentSession
     private void OnOutput(string chunk) => Output?.Invoke(chunk);
 
     private IReadOnlyList<string> ArgsForPrompt(string prompt)
-        => _runtime.SupportsInitialPromptArgument
+        => _runtime.SupportsInitialPromptArgument && !string.IsNullOrEmpty(prompt)
             ? _launchArgs.Concat(new[] { prompt ?? string.Empty }).ToArray()
             : _launchArgs;
 }

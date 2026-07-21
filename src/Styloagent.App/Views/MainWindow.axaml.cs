@@ -36,6 +36,7 @@ public partial class MainWindow : Window
             vm.ConfirmShutdownAsync = message => new ConfirmDialog(message).ShowDialog<bool>(this);
             // Roster reparent (drag-drop): confirm the consequential authority-tree edit over this window.
             vm.ConfirmReparentAsync = message => new ConfirmDialog(message, "Move").ShowDialog<bool>(this);
+            vm.RequestAgentNameAsync = currentName => new RenameDialog(currentName).ShowDialog<string?>(this);
             vm.RequestShutdown = () =>
             {
                 if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)

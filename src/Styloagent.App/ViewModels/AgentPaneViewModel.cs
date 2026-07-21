@@ -611,7 +611,9 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
         State = _session.State;
     }
 
-    private string DefaultLaunchPrompt() => _manifest.Runtime == AgentRuntimeKind.Codex
+    private string DefaultLaunchPrompt() => !_manifest.AutoStartPrompt
+        ? string.Empty
+        : _manifest.Runtime == AgentRuntimeKind.Codex
         ? $"You are the '{_manifest.Prefix}' Styloagent workspace agent. Read .styloagent/PROTOCOL.md and your mission doc if present, check the fleet inbox, then carry out your assigned task."
         : $"You are agent '{_manifest.Prefix}'. Begin your work.";
 
@@ -678,6 +680,11 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
 
     /// <summary>Renames the display name shown in the cockpit UI (and the dock tab title).</summary>
     [RelayCommand]
+    private async Task Rename()
+    {
+        if (Host is not null) await Host.RenameAgentFromUiAsync(this);
+    }
+
     public void Rename(string newName)
     {
         DisplayName = newName;

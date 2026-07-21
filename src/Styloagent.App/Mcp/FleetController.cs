@@ -15,6 +15,9 @@ public sealed class FleetController : IFleetController
     public Task<SpawnOutcome> SpawnAsync(SpawnRequest req)
         => Dispatcher.UIThread.InvokeAsync(() => _vm.SpawnChildAsync(req));
 
+    public Task<string> RenameAgentAsync(string prefix, string name)
+        => Dispatcher.UIThread.InvokeAsync(() => _vm.RenameAgentAsync(prefix, name));
+
     public FleetSnapshot Snapshot()
         => Dispatcher.UIThread.CheckAccess()
             ? _vm.BuildFleetSnapshot()

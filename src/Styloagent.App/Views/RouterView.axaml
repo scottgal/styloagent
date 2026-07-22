@@ -9,22 +9,68 @@
 
       <Border Grid.Row="0" Background="{DynamicResource PanelHeaderBgBrush}" Padding="8,6">
         <Grid ColumnDefinitions="*,Auto">
-          <TextBlock Grid.Column="0" Text="Router ledger" FontSize="11"
-                     Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="Environments &amp; access" FontSize="11"
+                       Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+            <TextBlock FontSize="10" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center">
+              <TextBlock.Text>
+                <MultiBinding StringFormat="control: {0}">
+                  <Binding Path="ControlOwner" />
+                </MultiBinding>
+              </TextBlock.Text>
+            </TextBlock>
+          </StackPanel>
           <Button Grid.Column="1" Content="Refresh" FontSize="10" Padding="6,1"
                   Command="{Binding RefreshCommand}" />
         </Grid>
       </Border>
 
-      <!-- Empty state -->
-      <TextBlock Grid.Row="1" IsVisible="{Binding !HasResources}"
-                 Text="No environments configured."
-                 FontSize="11" Foreground="{DynamicResource MutedTextBrush}"
-                 TextWrapping="Wrap" Padding="12" />
+      <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+          <TextBlock IsVisible="{Binding IsEmpty}"
+                     Text="No environments configured. Ask overview- to register staging, a lab device, or another governed target."
+                     FontSize="11" Foreground="{DynamicResource MutedTextBrush}"
+                     TextWrapping="Wrap" Padding="12" />
 
-      <ScrollViewer Grid.Row="1" IsVisible="{Binding HasResources}"
-                    HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-        <ItemsControl ItemsSource="{Binding Resources}">
+          <ItemsControl ItemsSource="{Binding Environments}" IsVisible="{Binding HasEnvironments}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="vm:EnvironmentRow">
+                <Border Padding="10,8" Margin="0,1,0,0" Background="{DynamicResource RowBgBrush}"
+                        BorderThickness="3,0,0,0" BorderBrush="{Binding Color}">
+                  <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding DisplayName}" FontSize="13"
+                               FontWeight="SemiBold" Foreground="{DynamicResource PrimaryTextBrush}" />
+                    <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                      <TextBlock Text="{Binding Classification}" FontSize="9" Foreground="{DynamicResource MutedTextBrush}" />
+                      <TextBlock Text="{Binding Status}" FontSize="9" Foreground="{DynamicResource AccentBrush}" />
+                    </StackPanel>
+                    <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Description}" FontSize="10"
+                               Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap"
+                               IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8" Margin="0,3,0,0">
+                      <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryTextBrush}">
+                        <TextBlock.Text><MultiBinding StringFormat="owner: {0}"><Binding Path="Owner" /></MultiBinding></TextBlock.Text>
+                      </TextBlock>
+                      <TextBlock Text="{Binding PendingOwner}" FontSize="10" Foreground="{DynamicResource AccentBrush}"
+                                 IsVisible="{Binding PendingOwner, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    </StackPanel>
+                    <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Text="{Binding TargetSummary}" FontSize="10"
+                               Foreground="{DynamicResource MutedTextBrush}" TextTrimming="CharacterEllipsis"
+                               IsVisible="{Binding TargetSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <TextBlock Grid.Row="4" Grid.ColumnSpan="2" Text="{Binding BrowserSummary}" FontSize="10"
+                               Foreground="{DynamicResource AccentBrush}" Margin="0,2,0,0"
+                               IsVisible="{Binding BrowserSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <TextBlock Grid.Row="5" Grid.ColumnSpan="2" Text="{Binding CapacitySummary}" FontSize="9"
+                               Foreground="{DynamicResource MutedTextBrush}" Margin="0,2,0,0" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <TextBlock Text="Active resource leases" IsVisible="{Binding HasResources}" FontSize="10"
+                     FontWeight="SemiBold" Foreground="{DynamicResource MutedTextBrush}" Margin="10,10,10,4" />
+          <ItemsControl ItemsSource="{Binding Resources}" IsVisible="{Binding HasResources}">
           <ItemsControl.ItemTemplate>
             <DataTemplate DataType="vm:RouterResourceRow">
               <Border Padding="10,7" Margin="0,1,0,0" Background="{DynamicResource RowBgBrush}">
@@ -84,7 +130,8 @@
               </Border>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
-        </ItemsControl>
+          </ItemsControl>
+        </StackPanel>
       </ScrollViewer>
 
     </Grid>

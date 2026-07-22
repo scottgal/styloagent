@@ -24,6 +24,7 @@
     <PackageReference Include="Dock.Avalonia.Themes.Fluent" Version="11.3.12.1" />
     <PackageReference Include="Dock.Model.Mvvm" Version="11.3.12.1" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.0.0-preview.2" />
+    <PackageReference Include="Microsoft.Playwright" Version="1.61.0" />
     <PackageReference Include="VYaml" Version="1.4.0" />
     <PackageReference Include="FluentIcons.Avalonia.Fluent" Version="2.0.326" />
     <!-- Real-platform UI driving/screenshots via the mlui-test / mlui-mcp launch flags (no-op otherwise). -->

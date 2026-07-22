@@ -45,6 +45,14 @@ public class StyloagentMcpServerTests
         public Task<string> ReleaseAsync(string caller, string env, string resource) => Task.FromResult("released");
         public Task<string> LogAttemptAsync(string caller, string env, string account, bool ok) => Task.FromResult("logged");
         public Task<string> StatusAsync(string? env) => Task.FromResult("no resources");
+        public Task<string> RegisterEnvironmentAsync(string caller, string id, string displayName, string classification) => Task.FromResult("created");
+        public Task<string> ConfigureBrowserEnvironmentAsync(string caller, string environment, string webOrigin, string? browserCredentialRef, int readCapacity, int writeCapacity) => Task.FromResult("configured");
+        public Task<string> AssignEnvironmentAsync(string caller, string environment, string owner, string reason) => Task.FromResult("assigned");
+        public Task<string> OfferEnvironmentAsync(string caller, string environment, string owner, string reason) => Task.FromResult("offered");
+        public Task<string> AcceptEnvironmentAsync(string caller, string environment) => Task.FromResult("accepted");
+        public Task<string> ReturnEnvironmentAsync(string caller, string environment, string reason) => Task.FromResult("returned");
+        public Task<string> RevokeEnvironmentAsync(string caller, string environment, string reason, bool force) => Task.FromResult("revoked");
+        public Task<string> EnvironmentStatusAsync(string? environment) => Task.FromResult("no environments");
     }
 
     [Fact]

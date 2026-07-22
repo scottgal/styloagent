@@ -19,6 +19,9 @@ public class ProjectScaffolderTests : IDisposable
         Assert.True(Directory.Exists(Path.Combine(cfg.ChannelRoot, "inbox")));
         Assert.True(Directory.Exists(Path.Combine(cfg.ChannelRoot, "archive", "outbox")));
         Assert.True(Directory.Exists(cfg.LaunchPromptsDir));
+        Assert.True(Directory.Exists(Path.Combine(cfg.EnvironmentsRoot, "definitions")));
+        Assert.True(Directory.Exists(Path.Combine(cfg.BrowserRoot, "jobs")));
+        Assert.Equal("controlOwner: overview-\n", File.ReadAllText(Path.Combine(cfg.EnvironmentsRoot, "policy.yaml")));
         Assert.Equal(Path.Combine(_root, ".styloagent"), cfg.ConfigDir);
         Assert.Contains("proposed-agents.yaml", cfg.ProposedAgentsPath);
     }

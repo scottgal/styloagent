@@ -192,6 +192,17 @@ You have these MCP tools from the `styloagent` server:
   after each auth → `heartbeat(env, resource)` while working → `release(env, resource)` when done. The
   router serialises access (one holder per account, or N test slots) and cools an account after
   repeated auth failures. Deterministic; no need to reason about the queue — just claim and wait.
+- **Environment ownership** — `overview-` owns the control plane by default. It registers environments
+  with `register_environment`, delegates immediately with `assign_environment`, or makes a safe handoff
+  with `offer_environment` → recipient `accept_environment`. The current environment owner controls new
+  access claims. Owners may `return_environment`; overview may `revoke_environment` and use `force=true`
+  for an incident. Use `environment_status` to see the effective owner and pending handoff.
+- **Playwright routing** — configure a registered environment with `configure_browser_environment`
+  (allow-listed origin, optional opaque credential reference, read/write capacity). Agents submit
+  `request_browser_run`; the environment owner reviews and calls `approve_browser_run`. Use
+  `browser_status`, `browser_artifacts`, and `cancel_browser_run` for the durable lifecycle. Never pass
+  an API key or password—only the exact environment-approved `keychain://`, `infisical://`, or
+  `secret://` reference. Observe runs block non-idempotent requests; production mutation is fail-closed.
 
 As sub-agents learn the real system they report back via `send_message` (see `.styloagent/PROTOCOL.md`).
 Fold that back into the spec → re-derive the architecture → adjust the fleet, so the three docs stay a
@@ -327,6 +338,17 @@ agents don't collide or trip account lockouts: **`claim(env, resource, purpose)`
 **`router_status(env)`** until you hold it → connect → **`log_attempt(env, account, ok)`** after each
 auth → **`heartbeat(env, resource)`** while working → **`release(env, resource)`** when done. One
 holder per account (or N test slots); deterministic — just claim and wait.
+
+The overview owns the environment control plane. Register a governed target with
+**`register_environment(id, display_name, classification)`**, then delegate it using
+**`assign_environment`** or the accepted-handoff flow **`offer_environment`** →
+**`accept_environment`**. Owners can return authority; overview can revoke it. Check
+**`environment_status`** before coordinating work.
+
+For governed screenshots, the control owner first calls **`configure_browser_environment`** with an
+allow-listed origin and concurrency. Agents call **`request_browser_run`**; the environment owner calls
+**`approve_browser_run`** to execute it in an isolated Playwright context. Retrieve only sanitized output
+with **`browser_artifacts`**. Credential values are forbidden; use approved opaque secret references only.
 
 ## Finishing — `wrap_up`
 

@@ -48,7 +48,8 @@ public sealed class StyloagentMcpServer : IAsyncDisposable
     /// </param>
     public static async Task<StyloagentMcpServer> StartAsync(
         IFleetController controller, IRouterController router, string? hooksDir = null,
-        OperatorQuestionHub? operatorQuestions = null, DocumentOpenHub? documentOpen = null)
+        OperatorQuestionHub? operatorQuestions = null, DocumentOpenHub? documentOpen = null,
+        IBrowserController? browser = null)
     {
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
 
@@ -58,6 +59,7 @@ public sealed class StyloagentMcpServer : IAsyncDisposable
         builder.Services.AddHttpContextAccessor();
         builder.Services.AddSingleton<IFleetController>(controller);
         builder.Services.AddSingleton<IRouterController>(router);
+        builder.Services.AddSingleton<IBrowserController>(browser ?? new UnavailableBrowserController());
         builder.Services.AddSingleton(new McpAuth(token));
         builder.Services.AddSingleton(new PendingInbox(
             hooksDir ?? Path.Combine(Path.GetTempPath(), "styloagent-pending", Guid.NewGuid().ToString("N"))));
@@ -67,7 +69,8 @@ public sealed class StyloagentMcpServer : IAsyncDisposable
         builder.Services.AddMcpServer()
             .WithHttpTransport(o => o.Stateless = true)
             .WithTools<FleetTools>()
-            .WithTools<RouterTools>();
+            .WithTools<RouterTools>()
+            .WithTools<BrowserTools>();
 
         var app = builder.Build();
         app.MapMcp("/mcp");
@@ -79,6 +82,16 @@ public sealed class StyloagentMcpServer : IAsyncDisposable
         var server = new StyloagentMcpServer(app, baseUrl, token);
         server._running = true;
         return server;
+    }
+
+    private sealed class UnavailableBrowserController : IBrowserController
+    {
+        public Task<string> RequestAsync(string caller, string environment, string mode, string purpose, string relativePath, string? selector, bool fullPage, string? credentialRef) => Task.FromResult("browser broker unavailable");
+        public Task<string> ApproveAsync(string caller, string requestId) => Task.FromResult("browser broker unavailable");
+        public Task<string> CancelAsync(string caller, string requestId) => Task.FromResult("browser broker unavailable");
+        public Task<string> StatusAsync(string? requestId, string? environment) => Task.FromResult("browser broker unavailable");
+        public Task<string> ArtifactsAsync(string caller, string requestId) => Task.FromResult("browser broker unavailable");
+        public Task RevokeEnvironmentAsync(string caller, string environment) => Task.CompletedTask;
     }
 
     public IReadOnlyList<string> McpConfigArgs(string prefix) => McpConfig.Args(prefix, BaseUrl, Token);

@@ -72,5 +72,86 @@ public sealed class RouterTools
         if (caller is null) return "unauthorized: missing caller identity";
         return await _controller.StatusAsync(string.IsNullOrWhiteSpace(env) ? null : env).ConfigureAwait(false);
     }
+
+    [McpServerTool, Description("Register an environment for routed SSH, Playwright, deployment and shared-resource access. Only the environment control owner (overview- by default) may register one.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> register_environment(string id, string display_name, string classification)
+    {
+        var caller = AuthorizedCaller();
+        return caller is null ? "unauthorized" : await _controller
+            .RegisterEnvironmentAsync(caller, id, display_name, classification).ConfigureAwait(false);
+    }
+
+    [McpServerTool, Description("Configure an environment's allow-listed Playwright origin, approved opaque credential reference, and read/write concurrency. Only the environment control owner may change this hard policy. Never pass a credential value.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> configure_browser_environment(string environment, string web_origin,
+        string browser_credential_ref, int read_capacity, int write_capacity)
+    {
+        var caller = AuthorizedCaller();
+        return caller is null ? "unauthorized" : await _controller.ConfigureBrowserEnvironmentAsync(
+            caller, environment, web_origin,
+            string.IsNullOrWhiteSpace(browser_credential_ref) ? null : browser_credential_ref,
+            read_capacity, write_capacity).ConfigureAwait(false);
+    }
+
+    [McpServerTool, Description("Immediately assign an environment to one agent. Only the environment control owner (overview- by default) may do this.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> assign_environment(string environment, string owner, string reason)
+    {
+        var caller = AuthorizedCaller();
+        return caller is null ? "unauthorized" : await _controller
+            .AssignEnvironmentAsync(caller, environment, owner, reason).ConfigureAwait(false);
+    }
+
+    [McpServerTool, Description("Offer ownership of an environment to another agent. The recipient must call accept_environment before authority changes.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> offer_environment(string environment, string owner, string reason)
+    {
+        var caller = AuthorizedCaller();
+        return caller is null ? "unauthorized" : await _controller
+            .OfferEnvironmentAsync(caller, environment, owner, reason).ConfigureAwait(false);
+    }
+
+    [McpServerTool, Description("Accept an environment ownership offer addressed to you.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> accept_environment(string environment)
+    {
+        var caller = AuthorizedCaller();
+        return caller is null ? "unauthorized" : await _controller
+            .AcceptEnvironmentAsync(caller, environment).ConfigureAwait(false);
+    }
+
+    [McpServerTool, Description("Return an environment you own to its configured fallback owner.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> return_environment(string environment, string reason)
+    {
+        var caller = AuthorizedCaller();
+        return caller is null ? "unauthorized" : await _controller
+            .ReturnEnvironmentAsync(caller, environment, reason).ConfigureAwait(false);
+    }
+
+    [McpServerTool, Description("Revoke delegated environment ownership. Only the control owner may revoke. force=true also requires active brokered access to be terminated.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> revoke_environment(string environment, string reason, bool force)
+    {
+        var caller = AuthorizedCaller();
+        return caller is null ? "unauthorized" : await _controller
+            .RevokeEnvironmentAsync(caller, environment, reason, force).ConfigureAwait(false);
+    }
+
+    [McpServerTool, Description("Show configured environments, effective owners, pending handoffs and classifications. Pass an empty environment for all.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> environment_status(string environment)
+    {
+        var caller = AuthorizedCaller();
+        return caller is null ? "unauthorized" : await _controller
+            .EnvironmentStatusAsync(string.IsNullOrWhiteSpace(environment) ? null : environment).ConfigureAwait(false);
+    }
+
+    private string? AuthorizedCaller()
+    {
+        var ctx = _http.HttpContext;
+        return ctx is not null && _auth.TokenOk(ctx) ? McpAuth.CallerPrefix(ctx) : null;
+    }
 #pragma warning restore CA1707
 }

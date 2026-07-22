@@ -13,11 +13,20 @@ public class RouterViewTests : IDisposable
 {
     private readonly HeadlessAvaloniaFixture _fx;
     private readonly string _routerRoot;
+    private readonly string _environmentsRoot;
+    private readonly string _browserRoot;
 
     public RouterViewTests(HeadlessAvaloniaFixture fx)
     {
         _fx = fx;
         _routerRoot = Path.Combine(Path.GetTempPath(), "routerview-" + Guid.NewGuid().ToString("N"));
+        _environmentsRoot = Path.Combine(Path.GetTempPath(), "environmentview-" + Guid.NewGuid().ToString("N"));
+        _browserRoot = Path.Combine(Path.GetTempPath(), "browserview-" + Guid.NewGuid().ToString("N"));
+        Styloagent.Core.Environments.EnvironmentRegistry.Create(
+            _environmentsRoot, "staging", "Staging", "non-production", "deploy-");
+        new Styloagent.Core.Browser.BrowserJobStore(_browserRoot).Create(
+            "test-", "staging", Styloagent.Core.Browser.BrowserRunMode.Observe, "capture", "/", null,
+            false, null, DateTimeOffset.UtcNow);
         var now = DateTimeOffset.UtcNow;
         // Write a resource.yaml so the env/account is discovered
         var resDir = Path.Combine(_routerRoot, "prod", "accounts", "deploy-key");
@@ -34,6 +43,10 @@ public class RouterViewTests : IDisposable
     {
         if (Directory.Exists(_routerRoot))
             Directory.Delete(_routerRoot, recursive: true);
+        if (Directory.Exists(_environmentsRoot))
+            Directory.Delete(_environmentsRoot, recursive: true);
+        if (Directory.Exists(_browserRoot))
+            Directory.Delete(_browserRoot, recursive: true);
     }
 
     [Fact]
@@ -41,7 +54,7 @@ public class RouterViewTests : IDisposable
     {
         return _fx.DispatchAsync(async () =>
         {
-            var vm = new RouterViewModel(_routerRoot);
+            var vm = new RouterViewModel(_routerRoot, _environmentsRoot, _browserRoot);
             vm.Refresh();
             var view = new RouterView { DataContext = vm };
             var window = new Window { Width = 400, Height = 600, Content = view };
@@ -55,6 +68,9 @@ public class RouterViewTests : IDisposable
 
             Assert.Contains(texts, s => s.Contains("deploy-key"));
             Assert.Contains(texts, s => s.Contains("agent-1-"));
+            Assert.Contains(texts, s => s.Contains("Staging"));
+            Assert.Contains(texts, s => s.Contains("owner: deploy-"));
+            Assert.Contains(texts, s => s.Contains("Playwright: 0 active · 1 pending"));
 
             await ScreenshotCapture.CaptureControlAsync(window, view, "/tmp/styloagent-router.png");
             window.Close();

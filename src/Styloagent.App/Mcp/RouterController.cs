@@ -1,5 +1,6 @@
 using System.Text;
 using Styloagent.App.ViewModels;
+using Styloagent.Core.Environments;
 using Styloagent.Core.Mcp;
 using Styloagent.Core.Router;
 
@@ -9,13 +10,16 @@ namespace Styloagent.App.Mcp;
 public sealed class RouterController : IRouterController
 {
     private readonly MainWindowViewModel _vm;
+    private readonly IBrowserController? _browser;
 
-    public RouterController(MainWindowViewModel vm) => _vm = vm;
+    public RouterController(MainWindowViewModel vm, IBrowserController? browser = null) => (_vm, _browser) = (vm, browser);
 
     public Task<string> ClaimAsync(string caller, string env, string resource, string purpose)
     {
         var root = _vm.RouterRootOrNull;
         if (root is null) return Task.FromResult("no active project");
+        var authority = CheckEnvironmentAuthority(caller, env);
+        if (authority is not null) return Task.FromResult(authority);
 
         RouterClient.DropClaim(root, env, resource, caller, purpose, DateTimeOffset.Now);
 
@@ -67,6 +71,8 @@ public sealed class RouterController : IRouterController
     {
         var root = _vm.RouterRootOrNull;
         if (root is null) return Task.FromResult("no active project");
+        var authority = CheckEnvironmentAuthority(caller, env, allowActiveHolder: true, account);
+        if (authority is not null) return Task.FromResult(authority);
         RouterClient.LogAttempt(root, env, account, ok, DateTimeOffset.Now);
         return Task.FromResult("logged");
     }
@@ -116,5 +122,94 @@ public sealed class RouterController : IRouterController
         }
 
         return Task.FromResult(sb.ToString().TrimEnd());
+    }
+
+    public Task<string> RegisterEnvironmentAsync(string caller, string id, string displayName, string classification)
+    {
+        var root = _vm.EnvironmentsRootOrNull;
+        if (root is null) return Task.FromResult("no active project");
+        var controlOwner = EnvironmentRegistry.ReadControlOwner(root);
+        if (caller != controlOwner)
+            return Task.FromResult($"denied: {controlOwner} owns the environment control plane");
+        return Task.FromResult(EnvironmentRegistry.Create(root, id, displayName, classification, caller).Message);
+    }
+
+    public Task<string> ConfigureBrowserEnvironmentAsync(string caller, string environment, string webOrigin,
+        string? browserCredentialRef, int readCapacity, int writeCapacity)
+    {
+        var root = _vm.EnvironmentsRootOrNull;
+        if (root is null) return Task.FromResult("no active project");
+        var controlOwner = EnvironmentRegistry.ReadControlOwner(root);
+        if (caller != controlOwner)
+            return Task.FromResult($"denied: {controlOwner} owns environment policy");
+        return Task.FromResult(EnvironmentRegistry.ConfigureBrowser(root, environment, webOrigin,
+            browserCredentialRef, readCapacity, writeCapacity).Message);
+    }
+
+    public Task<string> AssignEnvironmentAsync(string caller, string environment, string owner, string reason)
+        => EnvironmentMutation(service => service.Assign(caller, environment, owner, reason, DateTimeOffset.UtcNow));
+
+    public Task<string> OfferEnvironmentAsync(string caller, string environment, string owner, string reason)
+        => EnvironmentMutation(service => service.Offer(caller, environment, owner, reason, DateTimeOffset.UtcNow));
+
+    public Task<string> AcceptEnvironmentAsync(string caller, string environment)
+        => EnvironmentMutation(service => service.Accept(caller, environment, DateTimeOffset.UtcNow));
+
+    public Task<string> ReturnEnvironmentAsync(string caller, string environment, string reason)
+        => EnvironmentMutation(service => service.Return(caller, environment, reason, DateTimeOffset.UtcNow));
+
+    public async Task<string> RevokeEnvironmentAsync(string caller, string environment, string reason, bool force)
+    {
+        var message = await EnvironmentMutation(service =>
+            service.Revoke(caller, environment, reason, force, DateTimeOffset.UtcNow)).ConfigureAwait(false);
+        if (force && message.StartsWith("ownership revoked", StringComparison.Ordinal) && _browser is not null)
+            await _browser.RevokeEnvironmentAsync(caller, environment).ConfigureAwait(false);
+        return message;
+    }
+
+    public Task<string> EnvironmentStatusAsync(string? environment)
+    {
+        var root = _vm.EnvironmentsRootOrNull;
+        if (root is null) return Task.FromResult("no active project");
+        var registry = EnvironmentOwnershipStore.Read(root);
+        var states = string.IsNullOrWhiteSpace(environment)
+            ? registry.Environments
+            : registry.Environments.Where(e => e.Definition.Id.Equals(environment, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (states.Count == 0) return Task.FromResult("no environments configured");
+        var lines = states.Select(e =>
+            $"{e.Definition.Id} ({e.Definition.DisplayName}) — {e.Definition.Status}; owner: {e.Owner}" +
+            (e.PendingOwner is null ? "" : $"; offered to: {e.PendingOwner}") +
+            $"; class: {e.Definition.Classification}");
+        return Task.FromResult($"control owner: {registry.ControlOwner}\n" + string.Join('\n', lines));
+    }
+
+    private Task<string> EnvironmentMutation(Func<EnvironmentOwnershipService, EnvironmentOperationResult> operation)
+    {
+        var root = _vm.EnvironmentsRootOrNull;
+        if (root is null) return Task.FromResult("no active project");
+        return Task.FromResult(operation(new EnvironmentOwnershipService(root)).Message);
+    }
+
+    /// <summary>
+    /// Registered environments are authority-gated. An unregistered router env retains the legacy
+    /// behaviour so existing ledgers remain usable while they are migrated into the registry.
+    /// </summary>
+    private string? CheckEnvironmentAuthority(string caller, string environment,
+        bool allowActiveHolder = false, string? resource = null)
+    {
+        var environmentsRoot = _vm.EnvironmentsRootOrNull;
+        if (environmentsRoot is null) return null;
+        var registry = EnvironmentOwnershipStore.Read(environmentsRoot);
+        var state = registry.Environments.FirstOrDefault(e =>
+            e.Definition.Id.Equals(environment, StringComparison.OrdinalIgnoreCase));
+        if (state is null || caller == state.Owner || caller == registry.ControlOwner) return null;
+        if (allowActiveHolder && resource is not null && _vm.RouterRootOrNull is { } routerRoot)
+        {
+            var routed = RouterProjection.Read(routerRoot).Resources.FirstOrDefault(r =>
+                r.Env.Equals(environment, StringComparison.OrdinalIgnoreCase) &&
+                r.Name.Equals(resource, StringComparison.OrdinalIgnoreCase));
+            if (routed?.Grants.Any(g => g.Prefix == caller) == true) return null;
+        }
+        return $"denied: {state.Owner} owns environment '{state.Definition.Id}'; request access from its owner or {registry.ControlOwner}";
     }
 }

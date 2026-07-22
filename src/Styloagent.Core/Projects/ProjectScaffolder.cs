@@ -12,6 +12,10 @@ public static class ProjectScaffolder
 
         Directory.CreateDirectory(cfg.ConfigDir);
         Directory.CreateDirectory(cfg.LaunchPromptsDir);
+        Directory.CreateDirectory(Path.Combine(cfg.EnvironmentsRoot, "definitions"));
+        Directory.CreateDirectory(Path.Combine(cfg.EnvironmentsRoot, "ownership"));
+        Directory.CreateDirectory(Path.Combine(cfg.BrowserRoot, "jobs"));
+        Directory.CreateDirectory(Path.Combine(cfg.BrowserRoot, "artifacts"));
         foreach (string sub in new[] { "inbox", "outbox", Path.Combine("archive", "inbox"), Path.Combine("archive", "outbox") })
             Directory.CreateDirectory(Path.Combine(cfg.ChannelRoot, sub));
 
@@ -23,6 +27,9 @@ public static class ProjectScaffolder
             File.WriteAllText(cfg.FleetPolicyPath, "maxFleet: 12\nmaxDepth: 3\n");
         if (!File.Exists(cfg.ModelPolicyPath))
             File.WriteAllText(cfg.ModelPolicyPath, DefaultTemplates.ModelPolicy);
+        var environmentPolicy = Path.Combine(cfg.EnvironmentsRoot, "policy.yaml");
+        if (!File.Exists(environmentPolicy))
+            File.WriteAllText(environmentPolicy, "controlOwner: overview-\n");
 
         return cfg;
     }

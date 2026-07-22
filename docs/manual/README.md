@@ -287,8 +287,10 @@ without a manual refresh.
 ## 9. The Router
 
 Agents often need **shared, capacity-limited resources** — a cloud account, a deploy slot, a browser
-session. The Router is a lease ledger that hands those out fairly, one holder (up to capacity) at a
-time, with a queue behind each resource.
+session. The Router now starts with governed environment cards: staging, production, lab devices and
+similar targets each have one effective owner, an optional pending handoff, a classification, target
+summary, and independent browser/SSH/deploy capacities. Below them, the lease ledger hands concrete
+resources out fairly, one holder (up to capacity) at a time, with a queue behind each resource.
 
 ![The Router ledger](images/router.png)
 
@@ -305,6 +307,26 @@ Resources are declared with a `resource.yaml` (capacity + lease TTL) under the r
 Grants **expire** on their TTL, and the panel surfaces grants and expiries live as the coordinator
 applies them. Use **Refresh** to force a reload. When no environments are configured the panel reads
 *"No environments configured."*
+
+`overview-` owns the environment control plane by default. It can register an environment, assign it
+immediately, offer a handoff that the recipient must accept, or revoke it. Ownership events are
+append-only under `.styloagent/environments/ownership/`; a forced revoke also cancels active brokered
+browser work.
+
+### Governed Playwright screenshots
+
+The control owner configures an environment's exact HTTP(S) origin, optional opaque credential
+reference, and read/write concurrency with `configure_browser_environment`. An agent then calls
+`request_browser_run`; the environment owner approves and starts it with `approve_browser_run`.
+Every run receives a fresh non-persistent browser context, a two-minute deadline, strict same-origin
+network routing, and masked password/secret selectors. Observe-mode runs additionally block
+non-idempotent HTTP methods. Completed screenshots and a sanitized manifest land under
+`.styloagent/browser/artifacts/<request-id>/`.
+
+Credential values are not accepted by this API. Only an environment-approved `keychain://`,
+`infisical://`, or `secret://` reference can be recorded, and credentialed runs fail closed until a
+broker-side credential provider is configured. Production mutation also fails closed until an
+operator-approval capability exists.
 
 ---
 

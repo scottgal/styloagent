@@ -651,8 +651,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 Avalonia.Threading.Dispatcher.UIThread.Post(() => HandleDocumentOpen(req));
 
             // Feed the live hooksDir so check_inbox drains the SAME PendingInbox store the delivery hooks fill.
-            _mcpServer = await StyloagentMcpServer.StartAsync(new FleetController(this), new RouterController(this),
-                _hookChannel?.HooksDirectory, _operatorQuestionHub, _documentOpenHub).ConfigureAwait(false);
+            var browserController = new BrowserController(this);
+            _mcpServer = await StyloagentMcpServer.StartAsync(new FleetController(this),
+                new RouterController(this, browserController), _hookChannel?.HooksDirectory,
+                _operatorQuestionHub, _documentOpenHub, browserController).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -673,6 +675,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     /// <summary>Returns the router root directory for the active project, or null when no project is loaded.</summary>
     public string? RouterRootOrNull => _project?.RouterRoot;
+
+    /// <summary>Returns the environment registry root for the active project.</summary>
+    public string? EnvironmentsRootOrNull => _project?.EnvironmentsRoot;
+
+    /// <summary>Returns the durable Playwright request/artifact root for the active project.</summary>
+    public string? BrowserRootOrNull => _project?.BrowserRoot;
 
     // ── Fleet management ─────────────────────────────────────────────────────
 
@@ -1569,7 +1577,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         // Start (or restart) the RouterHost whenever a project is attached so the coordinator
         // drives the ledger at project.RouterRoot.  Dispose the previous host first (idempotent).
-        Router = new RouterViewModel(project.RouterRoot);
+        Router = new RouterViewModel(project.RouterRoot, project.EnvironmentsRoot, project.BrowserRoot);
         Router.Refresh(); // initial load
         _routerHost?.Dispose();
         _routerHost = new RouterHost(

@@ -16,6 +16,7 @@ public class PreferencesStoreTests
             {
                 LightTheme = true, Accent = "Teal", TerminalTheme = "Dracula",
                 TerminalFontSize = 15, MarkdownFontSize = 16, EnableUiAutomation = true,
+                ShowRosterLastOutput = true, ShowRosterModel = true, ShowRosterContext = false,
             });
 
             // Sync Load (the startup path) and async LoadAsync must both round-trip.
@@ -27,6 +28,9 @@ public class PreferencesStoreTests
             Assert.Equal(15, loaded.TerminalFontSize);
             Assert.Equal(16, loaded.MarkdownFontSize);
             Assert.True(loaded.EnableUiAutomation);
+            Assert.True(loaded.ShowRosterLastOutput);
+            Assert.True(loaded.ShowRosterModel);
+            Assert.False(loaded.ShowRosterContext);
             Assert.True((await store.LoadAsync(path)).EnableUiAutomation);
         }
         finally { if (File.Exists(path)) File.Delete(path); }
@@ -38,6 +42,9 @@ public class PreferencesStoreTests
         var prefs = await new PreferencesStore().LoadAsync("/no/such/dir/styloagent-prefs.yaml");
         Assert.Equal("Blue", prefs.Accent);   // default accent is NOT the old purple
         Assert.False(prefs.LightTheme);
+        Assert.False(prefs.ShowRosterLastOutput);
+        Assert.False(prefs.ShowRosterModel);
+        Assert.True(prefs.ShowRosterContext);
     }
 
     [Fact]

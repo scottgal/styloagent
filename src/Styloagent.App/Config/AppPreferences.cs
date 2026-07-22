@@ -37,6 +37,15 @@ public partial class AppPreferences
     /// per action) or <c>Bypass</c> (skip all prompts; trusted repos only). Stored as the enum name.
     /// </summary>
     public string PermissionMode { get; set; } = Styloagent.Core.Hooks.FleetPermissionMode.Scoped.ToString();
+
+    /// <summary>Show the per-agent "last output" age in the roster (off by default for compact rows).</summary>
+    public bool ShowRosterLastOutput { get; set; }
+
+    /// <summary>Show runtime/model/effort in the roster (off by default for compact rows).</summary>
+    public bool ShowRosterModel { get; set; }
+
+    /// <summary>Show the compact context-pressure bar in the roster.</summary>
+    public bool ShowRosterContext { get; set; } = true;
 }
 
 /// <summary>One named accent: the bright accent (buttons/highlights) and its darker cockpit-bar shade.</summary>

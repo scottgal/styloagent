@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Mostlylucid.Avalonia.UITesting.Players;
 using SkiaSharp;
 using Styloagent.App.ViewModels;
@@ -45,6 +46,51 @@ public class AgentRosterBadgeTests
             "foss-", "/repo", "/repo/wt", "", "", "", AgentTransport.Local);
         var session = new AgentSession(entry, new NullLauncher(), new NullWatcher());
         return new AgentPaneViewModel(session, entry, "foss", "#E57373");
+    }
+
+    [Fact]
+    public Task CompactRoster_KeepsContextBar_AndCanHideEachMetadataField()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(root, "saved-context"));
+            File.WriteAllText(Path.Combine(root, "saved-context", "foss-context.md"), "# context");
+            MainWindowViewModel? vm = null;
+            Window? window = null;
+            try
+            {
+                vm = await MainWindowViewModel.InitializeAsync(root, new FakePtyLauncher(), new NullWatcher());
+                var pane = vm.Pane!;
+                pane.UsageText = "28k left · 72% used";
+                pane.ContextFraction = 0.72;
+
+                Assert.False(vm.ShowRosterLastOutput);
+                Assert.False(vm.ShowRosterModel);
+                Assert.True(vm.ShowRosterContext);
+
+                var template = (IDataTemplate)new AgentsView().Resources["AgentRowTemplate"]!;
+                var host = new ContentControl { Width = 240, Height = 70, ContentTemplate = template, Content = pane };
+                window = new Window { Width = 260, Height = 90, Content = host };
+                window.Show();
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+                var bar = host.GetVisualDescendants().OfType<ProgressBar>()
+                    .Single(p => p.Name == "ContextUsageBar");
+                Assert.True(bar.IsEffectivelyVisible);
+                Assert.Equal(0.72, bar.Value, 2);
+
+                vm.ShowRosterContext = false;
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+                Assert.False(bar.IsEffectivelyVisible);
+            }
+            finally
+            {
+                window?.Close();
+                vm?.Dispose();
+                if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            }
+        });
     }
 
     // Renders the REAL roster row template (extracted to a resource) against a "needs you" pane and

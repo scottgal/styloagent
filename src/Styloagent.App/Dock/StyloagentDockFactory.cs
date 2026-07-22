@@ -15,6 +15,8 @@ public enum CockpitLayoutMode
     Tile,
     /// <summary>The starter (overview) pane full-width on top; the rest tiled in a grid below.</summary>
     AutoTile,
+    /// <summary>Only working, waiting, newly-started, or recently-idle agents, tiled dynamically.</summary>
+    ActiveAgents,
 }
 
 /// <summary>
@@ -103,6 +105,7 @@ public sealed class StyloagentDockFactory : Factory
         {
             CockpitLayoutMode.Tile     => Grid(panes),
             CockpitLayoutMode.AutoTile => AutoTile(panes),
+            CockpitLayoutMode.ActiveAgents => Grid(panes),
             _                          => TabsDock(panes),
         };
 

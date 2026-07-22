@@ -79,6 +79,27 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isRosterCollapsed;
 
+    /// <summary>Optional roster metadata; defaults favour short rows while retaining context pressure.</summary>
+    [ObservableProperty]
+    private bool _showRosterLastOutput;
+
+    partial void OnShowRosterLastOutputChanged(bool value)
+    {
+        if (value)
+            foreach (var pane in Panes) pane.TickRelativeTimes();
+        SavePreferences();
+    }
+
+    [ObservableProperty]
+    private bool _showRosterModel;
+
+    partial void OnShowRosterModelChanged(bool value) => SavePreferences();
+
+    [ObservableProperty]
+    private bool _showRosterContext = true;
+
+    partial void OnShowRosterContextChanged(bool value) => SavePreferences();
+
     /// <summary>Collapse the right bus/docs panel.</summary>
     [ObservableProperty]
     private bool _isSidePanelCollapsed;
@@ -218,6 +239,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (theme is not null) GlobalTerminalTheme = theme;
         TerminalFontSize = prefs.TerminalFontSize;
         MarkdownFontSize = prefs.MarkdownFontSize;
+        ShowRosterLastOutput = prefs.ShowRosterLastOutput;
+        ShowRosterModel = prefs.ShowRosterModel;
+        ShowRosterContext = prefs.ShowRosterContext;
         UiAutomationEnabled = prefs.EnableUiAutomation;
         SelectedPermissionMode = Enum.TryParse<Styloagent.Core.Hooks.FleetPermissionMode>(prefs.PermissionMode, out var pm)
             ? pm : Styloagent.Core.Hooks.FleetPermissionMode.Scoped;
@@ -237,6 +261,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _prefs.MarkdownFontSize = MarkdownFontSize;
         _prefs.EnableUiAutomation = UiAutomationEnabled;
         _prefs.PermissionMode = SelectedPermissionMode.ToString();
+        _prefs.ShowRosterLastOutput = ShowRosterLastOutput;
+        _prefs.ShowRosterModel = ShowRosterModel;
+        _prefs.ShowRosterContext = ShowRosterContext;
         _ = _prefsStore.SaveAsync(_prefsPath, _prefs);
     }
 
@@ -254,18 +281,30 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private IRootDock? _layout;
 
-    /// <summary>How the centre tiles the agent panes (top-bar segmented switch). Tabs by default.</summary>
+    /// <summary>How the centre arranges agent panes (including the dynamic Active agents view).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsTabsLayout))]
     [NotifyPropertyChangedFor(nameof(IsTileLayout))]
     [NotifyPropertyChangedFor(nameof(IsAutoTileLayout))]
+    [NotifyPropertyChangedFor(nameof(IsActiveAgentsLayout))]
     private CockpitLayoutMode _layoutMode = CockpitLayoutMode.Tabs;
 
     public bool IsTabsLayout => LayoutMode == CockpitLayoutMode.Tabs;
     public bool IsTileLayout => LayoutMode == CockpitLayoutMode.Tile;
     public bool IsAutoTileLayout => LayoutMode == CockpitLayoutMode.AutoTile;
+    public bool IsActiveAgentsLayout => LayoutMode == CockpitLayoutMode.ActiveAgents;
 
-    /// <summary>Switches the centre layout mode (top-bar Tabs / Tile / Auto-tile) and rebuilds it.</summary>
+    /// <summary>How long a just-idled pane remains in the Active agents layout.</summary>
+    public static readonly TimeSpan ActiveAgentIdleRetention = TimeSpan.FromSeconds(30);
+
+    private AgentPaneViewModel[] _activeAgentLayoutMembers = [];
+    private bool _activeAgentLayoutRefreshPending;
+    private DateTimeOffset? _activeAgentNextExpiryAt;
+
+    /// <summary>Test seam: membership evaluations should be event/deadline driven, not run every second.</summary>
+    internal int ActiveLayoutMembershipEvaluationCountForTest { get; private set; }
+
+    /// <summary>Switches the centre layout mode from the top-bar segmented control and rebuilds it.</summary>
     [RelayCommand]
     private void SetLayoutMode(string mode)
     {
@@ -273,6 +312,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             "Tile"     => CockpitLayoutMode.Tile,
             "AutoTile" => CockpitLayoutMode.AutoTile,
+            "ActiveAgents" => CockpitLayoutMode.ActiveAgents,
             _          => CockpitLayoutMode.Tabs,
         };
         if (m == LayoutMode && Layout is not null) return;
@@ -284,14 +324,23 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// Rebuilds the centre dock tree for the current <see cref="LayoutMode"/> from the live panes,
     /// preserving which pane is active. The pane view-models are reused, so their terminals persist.
     /// </summary>
-    private void RebuildCenterLayout()
+    private void RebuildCenterLayout(
+        DateTimeOffset? now = null,
+        IReadOnlyList<AgentPaneViewModel>? activeVisible = null)
     {
         if (_dockFactory is null) return;
         // Hidden agents are kept off the document surface (Fix F) — their sessions run on, but they don't
         // take a tile/tab, even across a layout-mode switch.
         var previous = Layout;
-        var visible = Panes.Where(p => !p.IsHidden).ToList();
-        var active = (SelectedPane is { IsHidden: false } sel ? sel : null) ?? visible.FirstOrDefault();
+        IReadOnlyList<AgentPaneViewModel> visible = LayoutMode == CockpitLayoutMode.ActiveAgents
+            ? activeVisible ?? ComputeActiveLayoutPanes(now ?? DateTimeOffset.UtcNow)
+            : Panes.Where(p => !p.IsHidden).ToList();
+        _activeAgentLayoutMembers = LayoutMode == CockpitLayoutMode.ActiveAgents
+            ? visible.ToArray()
+            : [];
+        var firstVisible = visible.Count == 0 ? null : visible[0];
+        var active = (SelectedPane is { IsHidden: false } sel ? sel : null) ?? firstVisible;
+        if (active is not null && !visible.Contains(active)) active = firstVisible;
         var layout = _dockFactory.BuildLayout(visible, LayoutMode);
         Layout = layout;
         _dockFactory.InitLayout(layout);
@@ -302,6 +351,84 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // growth per switch). Sever the previous tree so it becomes collectible; the reused pane VMs are
         // already re-homed in the new layout by InitLayout, so we only clear the discarded container docks.
         ReleaseDockTree(previous, keep: layout);
+    }
+
+    /// <summary>Re-tiles only when membership of the dynamic Active agents layout actually changed.</summary>
+    internal void RefreshActiveAgentLayout(DateTimeOffset? now = null)
+    {
+        if (LayoutMode != CockpitLayoutMode.ActiveAgents) return;
+        var at = now ?? DateTimeOffset.UtcNow;
+        var visible = ComputeActiveLayoutPanes(at);
+        if (!SameAgents(visible, _activeAgentLayoutMembers) || !CurrentLayoutAgentsMatch(visible))
+            RebuildCenterLayout(at, visible);
+    }
+
+    private IReadOnlyList<AgentPaneViewModel> ComputeActiveLayoutPanes(DateTimeOffset now)
+    {
+        ActiveLayoutMembershipEvaluationCountForTest++;
+        var visible = new List<AgentPaneViewModel>(Panes.Count);
+        DateTimeOffset? nextExpiry = null;
+        foreach (var pane in Panes)
+        {
+            if (pane.IsHidden
+                || !ActiveAgentLayoutPolicy.ShouldShow(
+                    pane.HookState, pane.LastActivityAt, now, ActiveAgentIdleRetention))
+                continue;
+
+            visible.Add(pane);
+            if (pane.HookState == AgentHookState.Idle && pane.LastActivityAt is { } last)
+            {
+                var expiry = last + ActiveAgentIdleRetention;
+                if (nextExpiry is null || expiry < nextExpiry) nextExpiry = expiry;
+            }
+        }
+        _activeAgentNextExpiryAt = nextExpiry;
+        return visible;
+    }
+
+    /// <summary>Timer path: do no membership work until the earliest idle grace period can expire.</summary>
+    internal void RefreshActiveAgentLayoutOnTick(DateTimeOffset now)
+    {
+        if (LayoutMode != CockpitLayoutMode.ActiveAgents
+            || _activeAgentNextExpiryAt is not { } expiry
+            || now <= expiry)
+            return;
+        RefreshActiveAgentLayout(now);
+    }
+
+    private static bool SameAgents(
+        IReadOnlyList<AgentPaneViewModel> left,
+        IReadOnlyList<AgentPaneViewModel> right)
+    {
+        if (left.Count != right.Count) return false;
+        for (var i = 0; i < left.Count; i++)
+            if (!ReferenceEquals(left[i], right[i])) return false;
+        return true;
+    }
+
+    private bool CurrentLayoutAgentsMatch(IReadOnlyList<AgentPaneViewModel> expected)
+    {
+        if (Layout is null) return expected.Count == 0;
+        var actual = new List<AgentPaneViewModel>(expected.Count);
+        static void Walk(IDockable node, List<AgentPaneViewModel> found)
+        {
+            if (node is AgentPaneViewModel pane) found.Add(pane);
+            if (node is not IDock { VisibleDockables: { } children }) return;
+            foreach (var child in children) Walk(child, found);
+        }
+        Walk(Layout, actual);
+        return SameAgents(expected, actual);
+    }
+
+    private void ScheduleActiveAgentLayoutRefresh()
+    {
+        if (LayoutMode != CockpitLayoutMode.ActiveAgents || _activeAgentLayoutRefreshPending) return;
+        _activeAgentLayoutRefreshPending = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _activeAgentLayoutRefreshPending = false;
+            RefreshActiveAgentLayout();
+        }, DispatcherPriority.Background);
     }
 
     /// <summary>Detaches a discarded dock tree from itself so it (and every view Avalonia materialized under
@@ -357,6 +484,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (pane is null || !pane.IsHidden) return;
         pane.IsHidden = false;
+        if (LayoutMode == CockpitLayoutMode.ActiveAgents)
+        {
+            RefreshActiveAgentLayout();
+            return;
+        }
         if (_dockFactory?.DocumentDock is { } dock)
         {
             if (!ReferenceEquals(pane.Owner, dock))
@@ -728,7 +860,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 }
             if (e.OldItems is not null)
                 foreach (AgentPaneViewModel p in e.OldItems)
+                {
+                    p.PropertyChanged -= OnPaneLifecycleChanged;
+                    _paneState.Remove(p);
                     UnwireThrottle(p);
+                }
+
+            ScheduleActiveAgentLayoutRefresh();
         };
     }
 
@@ -947,7 +1085,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     private void OnPaneLifecycleChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(AgentPaneViewModel.State) || sender is not AgentPaneViewModel p) return;
+        if (sender is not AgentPaneViewModel p) return;
+        if (e.PropertyName is nameof(AgentPaneViewModel.HookState)
+            or nameof(AgentPaneViewModel.IsHidden))
+            ScheduleActiveAgentLayoutRefresh();
+        else if (e.PropertyName == nameof(AgentPaneViewModel.LastActivityAt)
+                 && p.HookState == AgentHookState.Idle)
+            ScheduleActiveAgentLayoutRefresh();
+
+        if (e.PropertyName != nameof(AgentPaneViewModel.State)) return;
         var prev = _paneState.TryGetValue(p, out var s) ? s : SessionState.Unspawned;
         _paneState[p] = p.State;
 
@@ -2547,6 +2693,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             pane.IsHidden = false;
             _dockFactory.AddDockable(dock, pane);
+            // Active mode owns its membership; a manual roster reveal is reconciled once, event-driven.
+            ScheduleActiveAgentLayoutRefresh();
         }
         _dockFactory.SetActiveDockable(pane);
     }
@@ -3114,7 +3262,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         // Refresh each roster's relative "last output Ns" readout off the shared 1s tick
         // (no per-pane timer). Runs on the UI thread; panes only mutate here too.
-        foreach (var pane in Panes) pane.TickRelativeTimes();
+        // The compact roster hides this field by default; do not fan out N PropertyChanged notifications
+        // every second for a visual that is not being rendered. Turning it back on binds the current value
+        // immediately, then ticks resume.
+        if (ShowRosterLastOutput)
+            foreach (var pane in Panes) pane.TickRelativeTimes();
+        RefreshActiveAgentLayoutOnTick(DateTimeOffset.UtcNow);
 
         // Every ~3s, refresh each agent's token/context readout from its transcript (off-thread),
         // then run the scope-dilution guard off the freshest readings.

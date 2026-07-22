@@ -296,12 +296,14 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     /// </summary>
     public void ApplyHookEvent(HookEvent e)
     {
+        bool hadActivity = LastActivityAt is not null;
         HookState = Runtime == AgentRuntimeKind.Codex && e.EventName == "Stop"
             ? AgentHookState.Idle
             : HookStateMachine.Next(HookState, e);
         LastActivityAt = DateTimeOffset.UtcNow;
-        OnPropertyChanged(nameof(LastOutputText));
-        OnPropertyChanged(nameof(HasActivityMeta));
+        OnPropertyChanged(nameof(LastActivityAt));
+        if (Host?.ShowRosterLastOutput != false) OnPropertyChanged(nameof(LastOutputText));
+        if (!hadActivity) OnPropertyChanged(nameof(HasActivityMeta));
 
         if (!string.IsNullOrEmpty(e.SessionId)) _sessionId = e.SessionId;
         if (!string.IsNullOrEmpty(e.Cwd)) _cwd = e.Cwd;
@@ -346,6 +348,7 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     // ── Token / context usage (read from the agent's Claude transcript) ──────────────────────
     private string? _sessionId;
     private string? _cwd;
+    private int _usageRefreshInFlight;
 
     /// <summary>The agent's Claude transcript path (cwd + session id), or null before the first hook event.</summary>
     public string? TranscriptPath
@@ -354,6 +357,7 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     /// <summary>Compact token/context readout for the roster, e.g. "83k · 22%". Empty until known.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasUsage))]
+    [NotifyPropertyChangedFor(nameof(ContextPercentText))]
     private string _usageText = "";
 
     [ObservableProperty]
@@ -368,8 +372,13 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     /// <summary>True once a usage readout is available — gates the roster line.</summary>
     public bool HasUsage => !string.IsNullOrEmpty(UsageText);
 
-    /// <summary>Latest context-window fill (0–1), for the scope-dilution nudge. 0 until known.</summary>
-    public double ContextFraction { get; set; }
+    /// <summary>Latest context-window fill (0–1), for the roster bar and scope-dilution nudge.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ContextPercentText))]
+    private double _contextFraction;
+
+    /// <summary>Compact label shown beside the roster context bar.</summary>
+    public string ContextPercentText => HasUsage ? $"{ContextFraction * 100:0}%" : "—";
 
     /// <summary>Set once the dilution nudge has fired for this agent, so it isn't repeated every tick.</summary>
     public bool DilutionNudged { get; set; }
@@ -386,26 +395,38 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
         var cwd = _cwd ?? _manifest.Worktree;
         var sid = _sessionId;
         if (string.IsNullOrEmpty(sid)) return;
+        if (Interlocked.Exchange(ref _usageRefreshInFlight, 1) != 0) return;
 
         _ = Task.Run(() =>
         {
-            var usage = _manifest.Runtime == AgentRuntimeKind.Codex
-                ? Styloagent.Core.Transcripts.CodexTranscriptReader.ReadLatestForSession(sid)
-                : Styloagent.Core.Transcripts.TranscriptReader.ReadLatest(
-                    Styloagent.Core.Transcripts.TranscriptReader.PathFor(cwd, sid));
-            var text = usage is null ? "" : $"{FormatTokens(usage.RemainingTokens)} left · {usage.ContextFraction * 100:0}% used";
-            var frac = usage?.ContextFraction ?? 0;
-            var remaining = usage?.RemainingTokens ?? 0;
-            var remainingFraction = usage?.RemainingFraction ?? 0;
-            var pressure = Styloagent.Core.Sessions.ContextPressurePolicy.For(frac).ToString().ToLowerInvariant();
-            global::Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            try
             {
-                UsageText = text;
-                ContextFraction = frac;
-                RemainingTokens = remaining;
-                RemainingFraction = remainingFraction;
-                ContextPressure = pressure;
-            });
+                var usage = _manifest.Runtime == AgentRuntimeKind.Codex
+                    ? Styloagent.Core.Transcripts.CodexTranscriptReader.ReadLatestForSession(sid)
+                    : Styloagent.Core.Transcripts.TranscriptReader.ReadLatest(
+                        Styloagent.Core.Transcripts.TranscriptReader.PathFor(cwd, sid));
+                var text = usage is null ? "" : $"{FormatTokens(usage.RemainingTokens)} left · {usage.ContextFraction * 100:0}% used";
+                var frac = usage?.ContextFraction ?? 0;
+                var remaining = usage?.RemainingTokens ?? 0;
+                var remainingFraction = usage?.RemainingFraction ?? 0;
+                var pressure = Styloagent.Core.Sessions.ContextPressurePolicy.For(frac).ToString().ToLowerInvariant();
+                global::Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    UsageText = text;
+                    ContextFraction = frac;
+                    RemainingTokens = remaining;
+                    RemainingFraction = remainingFraction;
+                    ContextPressure = pressure;
+                });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.WriteLine($"[AgentPane] usage refresh failed: {ex.Message}");
+            }
+            finally
+            {
+                Volatile.Write(ref _usageRefreshInFlight, 0);
+            }
         });
     }
 

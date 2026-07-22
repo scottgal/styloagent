@@ -87,7 +87,7 @@
           </AutoCompleteBox.ItemTemplate>
         </AutoCompleteBox>
 
-        <!-- Centre: layout-mode segmented switch (Tabs / Tile / Auto-tile) -->
+        <!-- Centre: layout-mode segmented switch -->
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" HorizontalAlignment="Center"
                     VerticalAlignment="Center">
           <StackPanel.Styles>
@@ -102,10 +102,14 @@
           <ToggleButton IsChecked="{Binding IsTileLayout, Mode=OneWay}" CornerRadius="0"
                         Command="{Binding SetLayoutModeCommand}" CommandParameter="Tile" ToolTip.Tip="Tile evenly"
                         Content="Tile" />
-          <ToggleButton IsChecked="{Binding IsAutoTileLayout, Mode=OneWay}" CornerRadius="0,4,4,0"
+          <ToggleButton IsChecked="{Binding IsAutoTileLayout, Mode=OneWay}" CornerRadius="0"
                         Command="{Binding SetLayoutModeCommand}" CommandParameter="AutoTile"
                         ToolTip.Tip="Auto-tile: starter on top, agents tiled below"
                         Content="Auto-tile" />
+          <ToggleButton IsChecked="{Binding IsActiveAgentsLayout, Mode=OneWay}" CornerRadius="0,4,4,0"
+                        Command="{Binding SetLayoutModeCommand}" CommandParameter="ActiveAgents"
+                        ToolTip.Tip="Active agents: dynamically tile working agents; remove them after 30 seconds idle"
+                        Content="Active" />
           <!-- Close leftover empty document areas and reflow the layout -->
           <Button x:Name="TidyLayoutButton" FontSize="12" Padding="7,3" Margin="8,0,0,0" VerticalAlignment="Center"
                   Command="{Binding TidyEmptyDocksCommand}"

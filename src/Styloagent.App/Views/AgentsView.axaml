@@ -74,14 +74,20 @@
               <!-- Relative "last output Ns" readout; hidden until the first hook event -->
               <TextBlock Text="{Binding LastOutputText}" FontSize="9"
                          Foreground="{DynamicResource MutedTextBrush}"
-                         IsVisible="{Binding HasActivityMeta}" />
+                         IsVisible="{Binding Host.ShowRosterLastOutput}" />
               <!-- Runtime selection resolved for this job: agent · model · effort. -->
               <TextBlock Text="{Binding AgentSelectionText}" FontSize="9"
-                         Foreground="{DynamicResource MutedTextBrush}" />
-              <!-- Token / context readout ("83k · 22%") from the agent's transcript -->
-              <TextBlock Text="{Binding UsageText}" FontSize="9"
                          Foreground="{DynamicResource MutedTextBrush}"
-                         IsVisible="{Binding HasUsage}" />
+                         IsVisible="{Binding Host.ShowRosterModel}" />
+              <!-- Context stays useful in compact rows: a thin pressure bar instead of another text line. -->
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6" Height="10"
+                    IsVisible="{Binding Host.ShowRosterContext}"
+                    ToolTip.Tip="{Binding UsageText}">
+                <ProgressBar Name="ContextUsageBar" Grid.Column="0" Minimum="0" Maximum="1"
+                             Value="{Binding ContextFraction}" Height="4" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="{Binding ContextPercentText}" FontSize="8"
+                           Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+              </Grid>
             </StackPanel>
             <!-- Quick Approve + per-agent management menu + identity dot (amber when the agent needs you) -->
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
@@ -146,6 +152,12 @@
             </StackPanel>
           </StackPanel>
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <ToggleButton Content="Age" FontSize="8" Padding="3,1" ToolTip.Tip="Show last-output age"
+                          IsChecked="{Binding ShowRosterLastOutput, Mode=TwoWay}" />
+            <ToggleButton Content="Model" FontSize="8" Padding="3,1" ToolTip.Tip="Show runtime, model and effort"
+                          IsChecked="{Binding ShowRosterModel, Mode=TwoWay}" />
+            <ToggleButton Content="Ctx" FontSize="8" Padding="3,1" ToolTip.Tip="Show context-pressure bar"
+                          IsChecked="{Binding ShowRosterContext, Mode=TwoWay}" />
             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
                         IsVisible="{Binding WaitingCount, Converter={x:Static conv:CountToBoolConverter.Instance}}">
               <TextBlock Text="{Binding AttentionHudText}" FontSize="10" Foreground="{DynamicResource AttentionBrush}" VerticalAlignment="Center" />

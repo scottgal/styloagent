@@ -206,6 +206,18 @@
                   <TextBlock Text="How much new agents can do without asking. Scoped (default): auto-accept edits + fleet tools, other commands still prompt. Bypass: no prompts (trusted repos). Prompt: approve every action. Applies to newly spawned agents."
                              FontSize="10" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" />
                   <Border Height="1" Background="{DynamicResource SubtleBorderBrush}" />
+                  <TextBlock Text="Idle terminals" FontWeight="SemiBold" FontSize="12"
+                             Foreground="{DynamicResource AccentBrush}" />
+                  <ToggleSwitch Content="Checkpoint and park idle agents"
+                                IsChecked="{Binding AutoDehydrateIdleAgents}" />
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="After minutes" FontSize="11" VerticalAlignment="Center" />
+                    <NumericUpDown Grid.Column="1" Width="96" FontSize="11" Minimum="5" Maximum="1440"
+                                   Increment="5" FormatString="0" Value="{Binding IdleDehydrateMinutes}" />
+                  </Grid>
+                  <TextBlock Text="Only idle agents with an acknowledged checkpoint are parked. Active or uncheckpointed terminals remain alive."
+                             FontSize="10" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" />
+                  <Border Height="1" Background="{DynamicResource SubtleBorderBrush}" />
                   <TextBlock Text="Automation" FontWeight="SemiBold" FontSize="12"
                              Foreground="{DynamicResource AccentBrush}" />
                   <ToggleSwitch Content="Enable UI automation" IsChecked="{Binding UiAutomationEnabled}" />

@@ -34,7 +34,7 @@ public sealed class PortaPtyLauncher : IPtyLauncher
     /// directories to PATH (so a bundle-launched app can still find <c>claude</c>), then overlays
     /// any explicit overrides from <paramref name="overrides"/>.
     /// </summary>
-    private static Dictionary<string, string> BuildEnvironment(IReadOnlyDictionary<string, string>? overrides)
+    internal static Dictionary<string, string> BuildEnvironment(IReadOnlyDictionary<string, string>? overrides)
     {
         var env = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (System.Collections.DictionaryEntry kv in Environment.GetEnvironmentVariables())
@@ -53,10 +53,33 @@ public sealed class PortaPtyLauncher : IPtyLauncher
         var prefix = string.Join(':', toolDirs);
         env["PATH"] = string.IsNullOrEmpty(existing) ? prefix : $"{prefix}:{existing}";
 
+        // Claude Code's /login (and `claude auth login`) delegates OAuth to $BROWSER. A process launched
+        // from a macOS .app commonly has no BROWSER even though it has a GUI session, so Claude falls back
+        // to printing the URL inside the embedded PTY and the sign-in flow appears stuck. Point it at the
+        // host OS launcher; Claude keeps ownership of the callback/code exchange and writes credentials to
+        // the normal user keychain. Never replace an inherited or explicit user choice.
+        EnsureBrowserLauncher(env);
+
         if (overrides is { Count: > 0 })
             foreach (var kv in overrides)
                 env[kv.Key] = kv.Value;
 
         return env;
+    }
+
+    internal static string? PreferredBrowserLauncher()
+    {
+        if (OperatingSystem.IsMacOS()) return "/usr/bin/open";
+        if (OperatingSystem.IsWindows()) return "explorer.exe";
+        if (File.Exists("/usr/bin/xdg-open")) return "/usr/bin/xdg-open";
+        if (File.Exists("/usr/bin/gio")) return "/usr/bin/gio open";
+        return null;
+    }
+
+    internal static void EnsureBrowserLauncher(IDictionary<string, string> env)
+    {
+        if ((!env.TryGetValue("BROWSER", out var browser) || string.IsNullOrWhiteSpace(browser))
+            && PreferredBrowserLauncher() is { } launcher)
+            env["BROWSER"] = launcher;
     }
 }

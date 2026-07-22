@@ -17,6 +17,7 @@ public class PreferencesStoreTests
                 LightTheme = true, Accent = "Teal", TerminalTheme = "Dracula",
                 TerminalFontSize = 15, MarkdownFontSize = 16, EnableUiAutomation = true,
                 ShowRosterLastOutput = true, ShowRosterModel = true, ShowRosterContext = false,
+                AutoDehydrateIdleAgents = false, IdleDehydrateMinutes = 90,
             });
 
             // Sync Load (the startup path) and async LoadAsync must both round-trip.
@@ -31,6 +32,8 @@ public class PreferencesStoreTests
             Assert.True(loaded.ShowRosterLastOutput);
             Assert.True(loaded.ShowRosterModel);
             Assert.False(loaded.ShowRosterContext);
+            Assert.False(loaded.AutoDehydrateIdleAgents);
+            Assert.Equal(90, loaded.IdleDehydrateMinutes);
             Assert.True((await store.LoadAsync(path)).EnableUiAutomation);
         }
         finally { if (File.Exists(path)) File.Delete(path); }
@@ -45,6 +48,8 @@ public class PreferencesStoreTests
         Assert.False(prefs.ShowRosterLastOutput);
         Assert.False(prefs.ShowRosterModel);
         Assert.True(prefs.ShowRosterContext);
+        Assert.True(prefs.AutoDehydrateIdleAgents);
+        Assert.Equal(30, prefs.IdleDehydrateMinutes);
     }
 
     [Fact]

@@ -46,6 +46,12 @@ public partial class AppPreferences
 
     /// <summary>Show the compact context-pressure bar in the roster.</summary>
     public bool ShowRosterContext { get; set; } = true;
+
+    /// <summary>Checkpoint and park worker terminals that remain idle for the configured period.</summary>
+    public bool AutoDehydrateIdleAgents { get; set; } = true;
+
+    /// <summary>Idle minutes before an eligible live worker is checkpointed and parked.</summary>
+    public double IdleDehydrateMinutes { get; set; } = 30;
 }
 
 /// <summary>One named accent: the bright accent (buttons/highlights) and its darker cockpit-bar shade.</summary>

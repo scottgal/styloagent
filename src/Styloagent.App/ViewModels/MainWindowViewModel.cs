@@ -104,6 +104,21 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isSidePanelCollapsed;
 
+    /// <summary>Automatically checkpoint and park workers before long-lived PTYs/auth state go stale.</summary>
+    [ObservableProperty]
+    private bool _autoDehydrateIdleAgents = true;
+
+    partial void OnAutoDehydrateIdleAgentsChanged(bool value)
+    {
+        if (!value) CancelAutoDehydrateAttempts();
+        SavePreferences();
+    }
+
+    [ObservableProperty]
+    private double _idleDehydrateMinutes = 30;
+
+    partial void OnIdleDehydrateMinutesChanged(double value) => SavePreferences();
+
     /// <summary>Terminal themes offered in the settings picker.</summary>
 #pragma warning disable CA1822 // instance property for XAML binding
     public IReadOnlyList<Styloagent.Terminal.TerminalTheme> TerminalThemes => Styloagent.Terminal.TerminalTheme.All;
@@ -242,6 +257,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         ShowRosterLastOutput = prefs.ShowRosterLastOutput;
         ShowRosterModel = prefs.ShowRosterModel;
         ShowRosterContext = prefs.ShowRosterContext;
+        AutoDehydrateIdleAgents = prefs.AutoDehydrateIdleAgents;
+        IdleDehydrateMinutes = Math.Clamp(prefs.IdleDehydrateMinutes, 5, 1440);
         UiAutomationEnabled = prefs.EnableUiAutomation;
         SelectedPermissionMode = Enum.TryParse<Styloagent.Core.Hooks.FleetPermissionMode>(prefs.PermissionMode, out var pm)
             ? pm : Styloagent.Core.Hooks.FleetPermissionMode.Scoped;
@@ -264,6 +281,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _prefs.ShowRosterLastOutput = ShowRosterLastOutput;
         _prefs.ShowRosterModel = ShowRosterModel;
         _prefs.ShowRosterContext = ShowRosterContext;
+        _prefs.AutoDehydrateIdleAgents = AutoDehydrateIdleAgents;
+        _prefs.IdleDehydrateMinutes = IdleDehydrateMinutes;
         _ = _prefsStore.SaveAsync(_prefsPath, _prefs);
     }
 
@@ -726,8 +745,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // ── Attention auto-reveal (Task 4) ────────────────────────────────────────
 
     private static readonly TimeSpan IdleWindow = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan AutoDehydrateRetryDelay = TimeSpan.FromMinutes(15);
     private InteractionMonitor _interaction = new();
     private DispatcherTimer? _idleTimer;
+
+    // An attempted park remains fail-safe: AgentSession only closes the PTY after its checkpoint file
+    // changes. Track attempts here so the 1s UI timer cannot start duplicates, activity can cancel a
+    // pending checkpoint, and an unresponsive agent is not prompted again on every tick.
+    private readonly Dictionary<AgentPaneViewModel, CancellationTokenSource> _autoDehydrateInFlight = new();
+    private readonly Dictionary<AgentPaneViewModel, DateTimeOffset> _autoDehydrateRetryAfter = new();
+
+    /// <summary>Test seam: number of automatic checkpoint attempts started.</summary>
+    internal int AutoDehydrateAttemptCountForTest { get; private set; }
 
     /// <summary>
     /// Test seam: when set, <see cref="InitializeAsync"/> passes this clock to the
@@ -863,6 +892,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 {
                     p.PropertyChanged -= OnPaneLifecycleChanged;
                     _paneState.Remove(p);
+                    CancelAutoDehydrateAttempt(p);
+                    _autoDehydrateRetryAfter.Remove(p);
                     UnwireThrottle(p);
                 }
 
@@ -1086,6 +1117,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private void OnPaneLifecycleChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (sender is not AgentPaneViewModel p) return;
+        if (e.PropertyName == nameof(AgentPaneViewModel.HookState)
+            && p.HookState != AgentHookState.Idle)
+        {
+            // The agent resumed while its checkpoint request was outstanding. Do not park a terminal
+            // that has become active, and let a future genuinely-idle period get a fresh attempt.
+            CancelAutoDehydrateAttempt(p);
+            _autoDehydrateRetryAfter.Remove(p);
+        }
         if (e.PropertyName is nameof(AgentPaneViewModel.HookState)
             or nameof(AgentPaneViewModel.IsHidden))
             ScheduleActiveAgentLayoutRefresh();
@@ -3258,6 +3297,84 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     private int _usageTick;
 
+    /// <summary>
+    /// Starts acknowledged checkpoint-and-park attempts for agents that have remained hook-idle beyond
+    /// the configured threshold. Working/waiting agents and panes without a checkpoint target are never
+    /// touched. The per-pane operation is deduplicated and failures are backed off.
+    /// </summary>
+    internal async Task CheckAutoDehydrateAsync(DateTimeOffset now)
+    {
+        if (!AutoDehydrateIdleAgents) return;
+
+        var threshold = TimeSpan.FromMinutes(Math.Clamp(IdleDehydrateMinutes, 5, 1440));
+        var attempts = new List<Task>();
+        foreach (var pane in Panes.ToList())
+        {
+            if (pane.State != SessionState.Live
+                || pane.HookState != AgentHookState.Idle
+                || pane.LastActivityAt is not { } lastActivity
+                || now - lastActivity < threshold
+                || !pane.DehydrateCommand.CanExecute(null)
+                || _autoDehydrateInFlight.ContainsKey(pane)
+                || (_autoDehydrateRetryAfter.TryGetValue(pane, out var retryAt) && now < retryAt))
+                continue;
+
+            var cts = new CancellationTokenSource();
+            _autoDehydrateInFlight[pane] = cts;
+            AutoDehydrateAttemptCountForTest++;
+            attempts.Add(AutoDehydratePaneAsync(pane, now, cts));
+        }
+
+        if (attempts.Count > 0)
+            await Task.WhenAll(attempts);
+    }
+
+    private async Task AutoDehydratePaneAsync(
+        AgentPaneViewModel pane,
+        DateTimeOffset attemptAt,
+        CancellationTokenSource cts)
+    {
+        Timeline.Add(DateTimeOffset.Now, pane.DisplayName,
+            "idle — checkpointing before park…", pane.BorderColorHex);
+        try
+        {
+            await pane.DehydrateAsync(cts.Token);
+            if (cts.IsCancellationRequested) return;
+
+            if (pane.State == SessionState.Dehydrated)
+            {
+                _autoDehydrateRetryAfter.Remove(pane);
+                RefreshInstruments();
+            }
+            else
+            {
+                _autoDehydrateRetryAfter[pane] = attemptAt + AutoDehydrateRetryDelay;
+                Timeline.Add(DateTimeOffset.Now, pane.DisplayName,
+                    "idle park deferred — checkpoint not acknowledged", pane.BorderColorHex);
+            }
+        }
+        finally
+        {
+            if (_autoDehydrateInFlight.TryGetValue(pane, out var current)
+                && ReferenceEquals(current, cts))
+                _autoDehydrateInFlight.Remove(pane);
+            cts.Dispose();
+        }
+    }
+
+    private void CancelAutoDehydrateAttempt(AgentPaneViewModel pane)
+    {
+        if (_autoDehydrateInFlight.TryGetValue(pane, out var cts))
+            cts.Cancel();
+    }
+
+    private void CancelAutoDehydrateAttempts()
+    {
+        foreach (var cts in _autoDehydrateInFlight.Values.ToList())
+            cts.Cancel();
+        _autoDehydrateRetryAfter.Clear();
+    }
+
     internal void OnIdleTick()
     {
         // Refresh each roster's relative "last output Ns" readout off the shared 1s tick
@@ -3265,9 +3382,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // The compact roster hides this field by default; do not fan out N PropertyChanged notifications
         // every second for a visual that is not being rendered. Turning it back on binds the current value
         // immediately, then ticks resume.
+        var now = DateTimeOffset.UtcNow;
         if (ShowRosterLastOutput)
             foreach (var pane in Panes) pane.TickRelativeTimes();
-        RefreshActiveAgentLayoutOnTick(DateTimeOffset.UtcNow);
+        RefreshActiveAgentLayoutOnTick(now);
+        _ = CheckAutoDehydrateAsync(now);
 
         // Every ~3s, refresh each agent's token/context readout from its transcript (off-thread),
         // then run the scope-dilution guard off the freshest readings.
@@ -3594,6 +3713,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         _idleTimer?.Stop();
         _idleTimer = null;
+        CancelAutoDehydrateAttempts();
 
         if (_dockFactory is not null)
             _dockFactory.ActiveDockableChanged -= OnActiveDockableChanged;

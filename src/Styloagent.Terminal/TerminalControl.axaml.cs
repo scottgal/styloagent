@@ -32,6 +32,11 @@ public sealed partial class TerminalControl : UserControl
     // Not readonly: re-created on each Attach so a re-attach replays the backlog into a CLEAN engine
     // (see ResetEngine / Attach). Every reader touches this field, so the swap is picked up everywhere.
     private XTerm.Terminal _terminal;
+    // XTerm's buffer is mutated by PTY output on a background thread and read by Avalonia rendering on the
+    // UI thread. Terminal.Write may accept background calls, but its mutable Lines/cells are not an atomic
+    // render snapshot. Serialize every mutation, resize and buffer read so a wheel-triggered visible-slice
+    // render can never combine rows/cells from different buffer generations (garbled scrollback).
+    private readonly object _terminalGate = new();
     private readonly AvaloniaList<string> _rows = new();
     private IPtySession? _session;
 
@@ -220,13 +225,13 @@ public sealed partial class TerminalControl : UserControl
     internal int RebuildCount { get; private set; }
 
     /// <summary>Test seam: the grid width (columns) the engine — and thus the PTY — is currently sized to.</summary>
-    internal int PtyCols => _terminal.Cols;
+    internal int PtyCols { get { lock (_terminalGate) return _terminal.Cols; } }
 
     /// <summary>Test seam: the grid height (rows) the engine — and thus the PTY — is currently sized to.</summary>
-    internal int PtyRows => _terminal.Rows;
+    internal int PtyRows { get { lock (_terminalGate) return _terminal.Rows; } }
 
     /// <summary>Test seam: whether the engine is on the alternate (full-screen TUI) buffer.</summary>
-    internal bool IsAltBuffer => _terminal.IsAlternateBufferActive;
+    internal bool IsAltBuffer { get { lock (_terminalGate) return _terminal.IsAlternateBufferActive; } }
 
     /// <summary>
     /// Test seam: the CURRENT VT live-screen as exactly <see cref="PtyRows"/> rows of exactly
@@ -236,20 +241,23 @@ public sealed partial class TerminalControl : UserControl
     /// </summary>
     internal IReadOnlyList<string> ScreenGrid()
     {
-        TerminalBuffer buffer = _terminal.Buffer;
-        int cols = _terminal.Cols;
-        var grid = new List<string>(_terminal.Rows);
-        for (int y = 0; y < _terminal.Rows; y++)
+        lock (_terminalGate)
         {
-            BufferLine? line = SafeLine(buffer, buffer.YBase + y);
-            // TranslateToString(false, 0, cols) gives every cell (no right-trim) so a cell an erase
-            // BLANKED reads back as a space — exactly what "no ghost survived" must look like.
-            string s = line is null ? string.Empty : line.TranslateToString(false, 0, cols);
-            if (s.Length < cols) s = s.PadRight(cols);
-            else if (s.Length > cols) s = s.Substring(0, cols);
-            grid.Add(s);
+            TerminalBuffer buffer = _terminal.Buffer;
+            int cols = _terminal.Cols;
+            var grid = new List<string>(_terminal.Rows);
+            for (int y = 0; y < _terminal.Rows; y++)
+            {
+                BufferLine? line = SafeLine(buffer, buffer.YBase + y);
+                // TranslateToString(false, 0, cols) gives every cell (no right-trim) so a cell an erase
+                // BLANKED reads back as a space — exactly what "no ghost survived" must look like.
+                string s = line is null ? string.Empty : line.TranslateToString(false, 0, cols);
+                if (s.Length < cols) s = s.PadRight(cols);
+                else if (s.Length > cols) s = s.Substring(0, cols);
+                grid.Add(s);
+            }
+            return grid;
         }
-        return grid;
     }
 
     public TerminalControl()
@@ -335,9 +343,12 @@ public sealed partial class TerminalControl : UserControl
     /// </summary>
     private void ResetEngine()
     {
-        _terminal.DataReceived -= OnTerminalDataReceived;   // stop the discarded engine forwarding to the PTY
-        System.Threading.Interlocked.Exchange(ref _pendingTrimmedLines, 0);   // fresh engine → no carried-over trims
-        _terminal = BuildEngine(_terminal.Cols, _terminal.Rows);
+        lock (_terminalGate)
+        {
+            _terminal.DataReceived -= OnTerminalDataReceived;   // stop the discarded engine forwarding to the PTY
+            System.Threading.Interlocked.Exchange(ref _pendingTrimmedLines, 0);   // fresh engine → no carried-over trims
+            _terminal = BuildEngine(_terminal.Cols, _terminal.Rows);
+        }
     }
 
     /// <summary>
@@ -407,7 +418,7 @@ public sealed partial class TerminalControl : UserControl
     {
         // Write to XTerm engine — Terminal.Write is safe to call from any thread. This is the VT-state
         // update and MUST stay eager and in-order; only the (expensive) rebuild is deferred/coalesced.
-        _terminal.Write(text);
+        lock (_terminalGate) _terminal.Write(text);
 
         // Coalesce the buffer rebuild. A streaming agent (its startup banner, a TUI redraw) fires Output
         // in a rapid burst; rebuilding the full transcript once PER CHUNK let the render queue outpace its
@@ -578,7 +589,8 @@ public sealed partial class TerminalControl : UserControl
 
         if (!xtermKey.HasValue) return;
 
-        string? vtSequence = _terminal.GenerateKeyInput(xtermKey.Value, mods);
+        string? vtSequence;
+        lock (_terminalGate) vtSequence = _terminal.GenerateKeyInput(xtermKey.Value, mods);
 
         // XTerm.NET returns null for Enter; fall back to the standard CR sequence.
         if (vtSequence is null && xtermKey == XTermKey.Enter)
@@ -701,7 +713,9 @@ public sealed partial class TerminalControl : UserControl
     {
         if (_session is null || string.IsNullOrEmpty(text)) return;
         NoteHumanInput(text);   // pasted text is human input — gates device-query answers like typing does
-        string payload = _terminal.BracketedPasteMode ? "\u001b[200~" + text + "\u001b[201~" : text;
+        string payload;
+        lock (_terminalGate)
+            payload = _terminal.BracketedPasteMode ? "\u001b[200~" + text + "\u001b[201~" : text;
         FireAndForgetWrite(payload);
     }
 
@@ -783,7 +797,8 @@ public sealed partial class TerminalControl : UserControl
     /// </summary>
     internal bool HandleWheelScroll(double deltaY)
     {
-        if (_terminal.IsAlternateBufferActive) return false;
+        lock (_terminalGate)
+            if (_terminal.IsAlternateBufferActive) return false;
         double max = Math.Max(0, ScrollArea.Extent.Height - ScrollArea.Viewport.Height);
         if (max <= 0) return false;
         const double rowsPerNotch = 3;
@@ -878,11 +893,14 @@ public sealed partial class TerminalControl : UserControl
         // and clears it; so we must decide off the PRE-relayout follow state, not the post-relayout one.
         bool wasFollowing = _followTail;
 
-        if (cols != _terminal.Cols || rows != _terminal.Rows)
+        lock (_terminalGate)
         {
-            _terminal.Resize(cols, rows);
-            _session?.Resize(cols, rows);
-            RebuildRows();
+            if (cols != _terminal.Cols || rows != _terminal.Rows)
+            {
+                _terminal.Resize(cols, rows);
+                _session?.Resize(cols, rows);
+                RebuildRows();
+            }
         }
 
         // Re-pin to the tail AFTER layout absorbs the new extent/viewport (Loaded runs post-layout, same as the
@@ -900,6 +918,11 @@ public sealed partial class TerminalControl : UserControl
     /// Must be called on the UI thread.
     /// </summary>
     private void RebuildRows()
+    {
+        lock (_terminalGate) RebuildRowsCore();
+    }
+
+    private void RebuildRowsCore()
     {
         RebuildCount++;
         TerminalBuffer buffer = _terminal.Buffer;
@@ -989,6 +1012,11 @@ public sealed partial class TerminalControl : UserControl
     /// buffer content changed). This is the crux of the fix — a rebuild is O(viewport), never O(transcript).
     /// </summary>
     private void RenderVisibleSlice(bool forceRebuild = false)
+    {
+        lock (_terminalGate) RenderVisibleSliceCore(forceRebuild);
+    }
+
+    private void RenderVisibleSliceCore(bool forceRebuild = false)
     {
         int count = _rowCount;
         if (count <= 0) return;
@@ -1232,7 +1260,8 @@ public sealed partial class TerminalControl : UserControl
 
         if (xtermKey.HasValue)
         {
-            string? seq = _terminal.GenerateKeyInput(xtermKey.Value, mods);
+            string? seq;
+            lock (_terminalGate) seq = _terminal.GenerateKeyInput(xtermKey.Value, mods);
             // XTerm.NET returns null for Enter; fall back to the standard CR sequence.
             if (seq is null && xtermKey == XTermKey.Enter)
                 seq = "\r";
@@ -1246,7 +1275,7 @@ public sealed partial class TerminalControl : UserControl
             && (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Alt)) != 0)
         {
             char ch = (char)('a' + (e.Key - AvaloniaKey.A));
-            return _terminal.GenerateCharInput(ch, mods);
+            lock (_terminalGate) return _terminal.GenerateCharInput(ch, mods);
         }
 
         return null;

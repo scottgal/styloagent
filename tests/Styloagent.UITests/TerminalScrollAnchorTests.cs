@@ -117,4 +117,62 @@ public class TerminalScrollAnchorTests
             window.Close();
         });
     }
+
+    [Fact]
+    public Task ConcurrentPtyOutput_AndWheelScrolling_NeverMixBufferGenerations()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var view = new TerminalControl();
+            var window = new Window { Width = 720, Height = 420, Content = view, Name = "ConcurrentScroll" };
+            window.Show();
+            await Drain();
+            view.Attach(fake);
+
+            for (int i = 0; i < 300; i++)
+                fake.FireOutput($"LINE_{i:0000} ABCDEFGHIJKLMNOPQRSTUVWXYZ\r\n");
+            await Drain();
+            Assert.True(view.HandleWheelScroll(30));
+
+            // Production PTY callbacks arrive on a reader thread, unlike the older regression tests which
+            // invoked FakePtySession on Avalonia's UI thread. Keep mutating XTerm while the UI repeatedly
+            // rebuilds different virtualized slices—the race that used to splice rows/cells from different
+            // buffer generations and display corrupted historical text.
+            var writer = Task.Run(async () =>
+            {
+                for (int i = 300; i < 700; i++)
+                {
+                    fake.FireOutput($"LINE_{i:0000} ABCDEFGHIJKLMNOPQRSTUVWXYZ\r\n");
+                    if (i % 4 == 0) await Task.Delay(1);
+                }
+            });
+
+            var screen = view.GetVisualDescendants().OfType<SelectableTextBlock>().First(t => t.Name == "ScreenText");
+            for (int i = 0; i < 80; i++)
+            {
+                view.HandleWheelScroll(i % 2 == 0 ? 2 : -1);
+                await Drain();
+                AssertWholeMarkerRows(InlineText(screen));
+                await Task.Delay(1);
+            }
+            await writer;
+            await Drain();
+            AssertWholeMarkerRows(InlineText(screen));
+            window.Close();
+        });
+    }
+
+    private static void AssertWholeMarkerRows(string rendered)
+    {
+        foreach (var raw in rendered.Split('\n'))
+        {
+            var line = raw.TrimEnd();
+            if (line.Length == 0) continue;
+            Assert.StartsWith("LINE_", line);
+            Assert.True(line.Length >= 36, $"partially rendered/corrupt scrollback row: '{line}'");
+            Assert.True(int.TryParse(line.AsSpan(5, 4), out _), $"corrupt marker in row: '{line}'");
+            Assert.EndsWith("ABCDEFGHIJKLMNOPQRSTUVWXYZ", line);
+        }
+    }
 }

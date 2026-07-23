@@ -120,6 +120,32 @@ public class ChangesViewModelTests
             => Task.FromResult(NextFails ? GitResult.Fail("boom") : GitResult.Success());
     }
 
+    private sealed class FakeTags : IGitTag
+    {
+        public string? CreatedName;
+        public string? CreatedMessage;
+        public bool Pushed;
+
+        public Task<GitResult<IReadOnlyList<GitTag>>> ListTagsAsync(string w, CancellationToken ct = default)
+        {
+            IReadOnlyList<GitTag> tags = new[] { new GitTag("v2.4.8", "deadbeef") };
+            return Task.FromResult(GitResult<IReadOnlyList<GitTag>>.Success(tags));
+        }
+
+        public Task<GitResult> CreateAnnotatedTagAsync(string w, string name, string message, CancellationToken ct = default)
+        {
+            CreatedName = name;
+            CreatedMessage = message;
+            return Task.FromResult(GitResult.Success());
+        }
+
+        public Task<GitResult> PushTagsAsync(string w, CancellationToken ct = default)
+        {
+            Pushed = true;
+            return Task.FromResult(GitResult.Success());
+        }
+    }
+
     // ── existing tests (updated to 5-arg ctor) ───────────────────────────────
 
     [Fact]
@@ -458,5 +484,29 @@ public class ChangesViewModelTests
         vm.Clear();
 
         Assert.Empty(vm.Stashes);
+    }
+
+    [Theory]
+    [InlineData("v1.4.2,v1.5.9,not-a-release", "v1.5.10")]
+    [InlineData("1.4.2,1.5.9", "1.5.10")]
+    [InlineData("release-4,preview", "v0.1.0")]
+    public void SuggestNextTag_follows_the_existing_semver_prefix_and_increments_patch(string names, string expected)
+        => Assert.Equal(expected, ChangesViewModel.SuggestNextTag(names.Split(',')));
+
+    [Fact]
+    public async Task Tag_commands_create_an_annotated_tag_and_push_all_tags()
+    {
+        var tags = new FakeTags();
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash(), tags);
+        await vm.LoadAsync("/wt");
+        Assert.Equal("v2.4.9", vm.SuggestedTag);
+
+        vm.TagMessage = "Cockpit release";
+        await vm.CreateTagAsync();
+        await vm.PushTagsAsync();
+
+        Assert.Equal("v2.4.9", tags.CreatedName);
+        Assert.Equal("Cockpit release", tags.CreatedMessage);
+        Assert.True(tags.Pushed);
     }
 }

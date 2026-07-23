@@ -134,7 +134,7 @@
       </ListBox>
 
       <!-- ── Commit bar + push/pull/stash actions ─────────────────────────── -->
-      <Grid Grid.Row="5" RowDefinitions="Auto,Auto,Auto,Auto,*">
+      <Grid Grid.Row="5" RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
 
         <!-- Error banner -->
         <Border Grid.Row="0"
@@ -182,10 +182,21 @@
           <Button Content="Pull"
                   FontSize="11" Padding="8,4"
                   Command="{Binding PullCommand}" />
+          <TextBlock Text="{Binding WriteStatus}" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
         </StackPanel>
 
+        <!-- Release/tag flow: suggestion follows the existing vX.Y.Z or X.Y.Z convention. -->
+        <Grid Grid.Row="3" ColumnDefinitions="Auto,*,*,Auto,Auto" ColumnSpacing="5" Margin="6,4,6,0"
+              IsVisible="{Binding HasTagging}">
+          <TextBlock Text="Tag" FontSize="11" VerticalAlignment="Center" Foreground="{DynamicResource MutedTextBrush}" />
+          <TextBox Grid.Column="1" Text="{Binding SuggestedTag}" FontSize="11" Padding="5,2" />
+          <TextBox Grid.Column="2" Text="{Binding TagMessage}" Watermark="release note" FontSize="11" Padding="5,2" />
+          <Button Grid.Column="3" Content="Create" FontSize="11" Padding="7,3" Command="{Binding CreateTagCommand}" ToolTip.Tip="Create annotated tag at HEAD" />
+          <Button Grid.Column="4" Content="Push tags" FontSize="11" Padding="7,3" Command="{Binding PushTagsCommand}" />
+        </Grid>
+
         <!-- Stash row -->
-        <Grid Grid.Row="3" ColumnDefinitions="Auto,Auto,*" Margin="6,4,6,6">
+        <Grid Grid.Row="4" ColumnDefinitions="Auto,Auto,*" Margin="6,4,6,6">
           <Button Grid.Column="0"
                   Content="Stash"
                   FontSize="11" Padding="8,4"
@@ -212,7 +223,7 @@
         </Grid>
 
         <!-- Diff panel -->
-        <views:DiffView Grid.Row="4" DataContext="{Binding Diff}" />
+        <views:DiffView Grid.Row="5" DataContext="{Binding Diff}" />
 
       </Grid>
 

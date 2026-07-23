@@ -34,9 +34,10 @@
                   <TextBlock Grid.Column="0" Text="{Binding ShortSha}"
                              FontFamily="Menlo, Cascadia Mono, Consolas, monospace" FontSize="10.5"
                              Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
-                  <TextBlock Grid.Column="1" Text="{Binding Subject}" FontSize="11.5"
-                             Foreground="{DynamicResource PrimaryTextBrush}" TextTrimming="CharacterEllipsis"
-                             VerticalAlignment="Center" Margin="8,0" />
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="8,0">
+                    <TextBlock Text="{Binding Subject}" FontSize="11.5" Foreground="{DynamicResource PrimaryTextBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding TagsText}" FontSize="10" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                  </StackPanel>
                   <TextBlock Grid.Column="2" Text="{Binding TimeText}" FontSize="10"
                              Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center"
                              Margin="0,0,8,0" />

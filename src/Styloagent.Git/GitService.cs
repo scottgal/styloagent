@@ -9,7 +9,7 @@ namespace Styloagent.Git;
 /// Never throws: failures surface as a failed <see cref="GitResult"/> carrying git's stderr.
 /// Mirrors GitCliReader's process pattern.
 /// </summary>
-public sealed class GitService : IGitService, IGitLog, IGitDiff, IGitWrite, IGitBranch, IGitStash
+public sealed class GitService : IGitService, IGitLog, IGitDiff, IGitWrite, IGitBranch, IGitStash, IGitTag
 {
     /// <summary>
     /// Test seam for the cockpit-freeze regression: a caller sets this to a box before invoking a git
@@ -137,6 +137,24 @@ public sealed class GitService : IGitService, IGitLog, IGitDiff, IGitWrite, IGit
         var list = r.Stdout.Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0).ToList();
         return GitResult<IReadOnlyList<string>>.Success(list);
     }
+
+    public async Task<GitResult<IReadOnlyList<GitTag>>> ListTagsAsync(string worktreePath, CancellationToken ct = default)
+    {
+        // An annotated tag's object name is the tag object, not the commit it points to. Ask for the
+        // peeled object as well, falling back to objectname for lightweight tags.
+        var r = await RunAsync(worktreePath, ct, "for-each-ref", "--format=%(refname:short)%00%(*objectname)%00%(objectname)", "refs/tags").ConfigureAwait(false);
+        if (!r.Ok) return GitResult<IReadOnlyList<GitTag>>.Fail(r.Stderr);
+        var tags = r.Stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.TrimEnd('\r').Split('\0')).Where(parts => parts.Length == 3)
+            .Select(parts => new GitTag(parts[0], string.IsNullOrWhiteSpace(parts[1]) ? parts[2] : parts[1])).ToList();
+        return GitResult<IReadOnlyList<GitTag>>.Success(tags);
+    }
+
+    public async Task<GitResult> CreateAnnotatedTagAsync(string worktreePath, string name, string message, CancellationToken ct = default)
+        => ToResult(await RunAsync(worktreePath, ct, "tag", "-a", name, "-m", message).ConfigureAwait(false));
+
+    public async Task<GitResult> PushTagsAsync(string worktreePath, CancellationToken ct = default)
+        => ToResult(await RunAsync(worktreePath, ct, "push", "--tags").ConfigureAwait(false));
 
     private static GitResult ToResult(ProcOutcome p) => p.Ok ? GitResult.Success() : GitResult.Fail(p.Stderr);
 

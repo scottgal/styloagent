@@ -18,6 +18,7 @@ public sealed partial class ChangesViewModel : ObservableObject
     private readonly IGitWrite _write;
     private readonly IGitBranch _branch;
     private readonly IGitStash _stash;
+    private readonly IGitTag? _tags;
     private string _worktreePath = string.Empty;
 
     [ObservableProperty]
@@ -42,7 +43,12 @@ public sealed partial class ChangesViewModel : ObservableObject
     [ObservableProperty]
     private string _newBranchName = "";
 
+    [ObservableProperty] private string _suggestedTag = "";
+    [ObservableProperty] private string _tagMessage = "Release";
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasWriteError))] private string? _writeStatus;
+
     public bool HasWriteError => !string.IsNullOrEmpty(WriteError);
+    public bool HasTagging => _tags is not null;
 
     public ObservableCollection<GitChange> Files        { get; } = new();
     public ObservableCollection<GitChange> StagedFiles  { get; } = new();
@@ -55,16 +61,21 @@ public sealed partial class ChangesViewModel : ObservableObject
     /// <summary>True when there is at least one staged file and a non-empty commit message.</summary>
     public bool CanCommit => StagedFiles.Count > 0 && !string.IsNullOrWhiteSpace(CommitMessage);
 
-    public ChangesViewModel(IGitService git, IGitDiff diff, IGitWrite write, IGitBranch branch, IGitStash stash)
+    public ChangesViewModel(IGitService git, IGitDiff diff, IGitWrite write, IGitBranch branch, IGitStash stash, IGitTag? tags = null)
     {
         _git    = git;
         _diff   = diff;
         _write  = write;
         _branch = branch;
         _stash  = stash;
+        _tags = tags;
     }
 
-    private void Report(GitResult r) => WriteError = r.Ok ? null : r.Error;
+    private void Report(GitResult r)
+    {
+        WriteError = r.Ok ? null : r.Error;
+        WriteStatus = r.Ok ? "Done" : null;
+    }
 
     /// <summary>Clears all file lists, the diff, the commit message, branch state, and any write error.</summary>
     public void Clear()
@@ -107,6 +118,7 @@ public sealed partial class ChangesViewModel : ObservableObject
             OnPropertyChanged(nameof(CanCommit));
             await LoadBranchesAsync();
             await LoadStashesAsync();
+            await LoadTagsAsync();
             return;
         }
 
@@ -120,6 +132,47 @@ public sealed partial class ChangesViewModel : ObservableObject
         OnPropertyChanged(nameof(CanCommit));
         await LoadBranchesAsync();
         await LoadStashesAsync();
+        await LoadTagsAsync();
+    }
+
+    private async Task LoadTagsAsync()
+    {
+        if (_tags is null || string.IsNullOrEmpty(_worktreePath)) return;
+        var result = await _tags.ListTagsAsync(_worktreePath);
+        if (!result.Ok || result.Value is null) return;
+        SuggestedTag = SuggestNextTag(result.Value.Select(t => t.Name));
+    }
+
+    [RelayCommand]
+    public async Task CreateTagAsync()
+    {
+        if (_tags is null || string.IsNullOrWhiteSpace(SuggestedTag)) return;
+        var tag = SuggestedTag.Trim();
+        var r = await _tags.CreateAnnotatedTagAsync(_worktreePath, tag, string.IsNullOrWhiteSpace(TagMessage) ? tag : TagMessage.Trim());
+        Report(r);
+        if (r.Ok) WriteStatus = $"Created tag {tag} at HEAD";
+        await LoadTagsAsync();
+    }
+
+    [RelayCommand]
+    public async Task PushTagsAsync()
+    {
+        if (_tags is null) return;
+        var r = await _tags.PushTagsAsync(_worktreePath);
+        Report(r);
+        if (r.Ok) WriteStatus = "Pushed tags";
+    }
+
+    internal static string SuggestNextTag(IEnumerable<string> names)
+    {
+        var parsed = names.Select(n => (HasV: n.StartsWith('v'), Parts: n.TrimStart('v').Split('.')))
+            .Where(x => x.Parts.Length == 3 && int.TryParse(x.Parts[0], out _) && int.TryParse(x.Parts[1], out _) && int.TryParse(x.Parts[2], out _))
+            .Select(x => (x.HasV, Major: int.Parse(x.Parts[0]), Minor: int.Parse(x.Parts[1]), Patch: int.Parse(x.Parts[2])))
+            .OrderByDescending(x => x.Major).ThenByDescending(x => x.Minor).ThenByDescending(x => x.Patch)
+            .ToList();
+        if (parsed.Count == 0) return "v0.1.0";
+        var highest = parsed[0];
+        return $"{(highest.HasV ? "v" : "")}{highest.Major}.{highest.Minor}.{highest.Patch + 1}";
     }
 
     /// <summary>Fetches the stash list and repopulates <see cref="Stashes"/>.</summary>

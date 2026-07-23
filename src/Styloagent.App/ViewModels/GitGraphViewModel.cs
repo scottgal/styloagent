@@ -15,7 +15,7 @@ public sealed partial class GitGraphViewModel : ObservableObject
 
     /// <summary>One row of history text, aligned (by <see cref="CommitGraphLayout.RowHeight"/>) with
     /// the graph dots drawn beside it.</summary>
-    public sealed record CommitRow(string ShortSha, string Subject, string Author, string TimeText);
+    public sealed record CommitRow(string ShortSha, string Subject, string Author, string TimeText, string TagsText);
 
     [ObservableProperty]
     private CommitGraph? _graph;
@@ -61,7 +61,8 @@ public sealed partial class GitGraphViewModel : ObservableObject
         {
             var sha = c.SHA.Length >= 7 ? c.SHA[..7] : c.SHA;
             var when = DateTimeOffset.FromUnixTimeSeconds((long)c.CommitterTime).ToLocalTime().ToString("yyyy-MM-dd");
-            Commits.Add(new CommitRow(sha, c.Subject, c.Author.Name, when));
+            var tags = string.Join(" · ", c.Decorators.Where(d => d.Type == DecoratorType.Tag).Select(d => d.Name));
+            Commits.Add(new CommitRow(sha, c.Subject, c.Author.Name, when, tags));
         }
     }
 }

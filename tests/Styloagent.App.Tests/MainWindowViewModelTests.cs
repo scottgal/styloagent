@@ -416,23 +416,6 @@ public class MainWindowViewModelTests : IDisposable
         finally { Directory.Delete(root, recursive: true); }
     }
 
-    [Fact]
-    public async Task SpawnProposed_adds_a_live_pane()
-    {
-        var root = MakeTwoAgentChannel();
-        try
-        {
-            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
-            int before = vm.Panes.Count;
-
-            await vm.SpawnProposedAsync(new ProposedAgent("newsub-", "owns the new subsystem", ".", "You are newsub-."));
-
-            Assert.Equal(before + 1, vm.Panes.Count);
-            Assert.Contains(vm.Panes, p => p.DisplayName.Contains("newsub"));
-        }
-        finally { Directory.Delete(root, recursive: true); }
-    }
-
     // ── Overview-launch path tests ────────────────────────────────────────────
 
     [Fact]

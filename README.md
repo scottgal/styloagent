@@ -19,15 +19,10 @@ your recents:
 
 ![Welcome — open a project folder](docs/screenshots/welcome.png)
 
-It then launches a single **overview** agent with that system prompt. The overview reads the
-repo, decides the initial subsystems, and writes them to `.styloagent/proposed-agents.yaml`.
-Styloagent watches that file and surfaces the suggestions as a **PROPOSED** section at the top of
-the roster — colour-coded by prefix, each with a one-click **Spawn** (or **Spawn all**):
-
-![Proposed team roster](docs/screenshots/proposed-team.png)
-
-Clicking **Spawn** promotes a proposal into a live, long-lived agent with its own terminal in the
-cockpit. From there the team keeps splitting and specialising through the coordination protocol.
+It then launches a single **overview** agent with that system prompt. The overview reads the repo
+and spawns governed specialist agents directly as work becomes ready. Hidden panes move into a
+compact **INACTIVE** roster section, where they can be shown again or checkpointed and parked
+without losing their identity.
 
 ### Multiple projects, side by side
 
@@ -90,9 +85,9 @@ Each pane launches a real `claude` (or any CLI) over a PTY and renders its full-
 
 Agents coordinate through the `send_message` MCP tool, which writes a durable markdown trace to the
 channel *and* delivers in-process. The bus — in the left column under the roster — groups it so
-*what needs you* is glanceable: a pinned **Needs attention** group (unreplied threads), then
-**Recent**, then **Archive** — each row with a status glyph (● unreplied · ↩ replied · ▤ archived),
-colour-coded participants matching the roster, and relative time:
+*what needs you* is glanceable: **ACTIVE** threads remain visible, while opened threads move into the
+collapsed **READ** drawer and completed/dismissed threads move into **ACTIONED**. Rows are
+colour-coded by participant and carry their handling state and relative time:
 
 ![Attention-first Signal Bus](docs/screenshots/bus-attention.png)
 
@@ -131,13 +126,13 @@ The cockpit shell and its panels are built and tested end-to-end:
   hosted as floatable/tabbable Dock documents.
 - **Agent roster** — colour-coded, with a live **⚠ needs-you** state badge driven by injected
   Claude Code hooks (§4.4 hook-state channel).
-- **Signal Bus** — attention-first threads from the `ChannelProjection`, colour-aligned with the
-  roster.
+- **Signal Bus** — attention-first threads from the `ChannelProjection`, moving from **ACTIVE** to
+  compact **READ** and **ACTIONED** sections as they are viewed and completed.
 - **Document Library** — repo+channel markdown, opened as rendered documents via
   `Mostlylucid.LucidView.Markdown` (LiveMarkdown.Avalonia + Naiad), extracted from lucidVIEW.
 - **Onboarding** — point at a folder → scaffold `.styloagent/` → launch the **overview** agent
-  (system prompt injected) → watch `proposed-agents.yaml` → a **PROPOSED** roster section you spawn
-  from. Recents remembered; `STYLOAGENT_REPO` opens a project directly.
+  (system prompt injected) → spawn governed specialists directly. Recents remembered;
+  `STYLOAGENT_REPO` opens a project directly.
 - **`Styloagent.Core`** — fleet manifest, YAML persistence (VYaml), channel→manifest seeding, the
   `AgentSession` spawn → dehydrate → rehydrate state machine, and the pure bus/doc/hook logic.
 

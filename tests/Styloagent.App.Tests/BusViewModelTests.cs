@@ -269,11 +269,11 @@ public class BusViewModelTests : IDisposable
             vm.OpenThreadCommand.Execute(thread);                // operator views it → SEEN
             Assert.True(store.IsSeen(thread.Key, thread.LastActivity));
 
-            // THE FIX: a seen-but-unreplied thread leaves NEEDS ATTENTION for RECENT — the list shrinks.
+            // A seen-but-unreplied thread leaves ACTIVE for READ — the live list shrinks.
             await vm.LoadAsync();
-            await WaitUntil(() => vm.RecentThreads.Any(t => t.Key.Contains("open-question")));
+            await WaitUntil(() => vm.ReadThreads.Any(t => t.Key.Contains("open-question")));
             Assert.DoesNotContain(vm.AttentionThreads, t => t.Key.Contains("open-question"));
-            Assert.Contains(vm.RecentThreads, t => t.Key.Contains("open-question"));
+            Assert.Contains(vm.ReadThreads, t => t.Key.Contains("open-question"));
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
     }
@@ -316,8 +316,8 @@ public class BusViewModelTests : IDisposable
             Assert.True(store.IsArchived(thread.Key));
 
             await vm.LoadAsync();
-            await WaitUntil(() => vm.ArchivedThreads.Count > 0 && vm.AttentionThreads.Count == 0);
-            Assert.Contains(vm.ArchivedThreads, t => t.Subject.Contains("open"));
+            await WaitUntil(() => vm.ActionedThreads.Count > 0 && vm.AttentionThreads.Count == 0);
+            Assert.Contains(vm.ActionedThreads, t => t.Subject.Contains("open"));
             Assert.DoesNotContain(vm.AttentionThreads, t => t.Subject.Contains("open"));
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
@@ -336,7 +336,7 @@ public class BusViewModelTests : IDisposable
 
             vm.OpenThreadCommand.Execute(vm.AttentionThreads[0]);   // seen → demoted on reload
             await vm.LoadAsync();
-            await WaitUntil(() => vm.RecentThreads.Any(t => t.Key.Contains("open-question")));
+            await WaitUntil(() => vm.ReadThreads.Any(t => t.Key.Contains("open-question")));
 
             // A fresh follow-up (newer than the seen-watermark) re-demands attention → back to WAITING.
             File.WriteAllText(Path.Combine(root, "inbox", "alpha-follow-up-open-question.md"),
@@ -480,19 +480,19 @@ public class BusViewModelTests : IDisposable
 
             var vm = new BusViewModel(root, Prefixes3, new ChannelProjection());
             await vm.LoadAsync();
-            await WaitUntil(() => vm.AttentionThreads.Count > 0 && vm.RecentThreads.Count > 0 && vm.ArchivedThreads.Count > 1);
+            await WaitUntil(() => vm.AttentionThreads.Count > 0 && vm.ReadThreads.Count > 0 && vm.ActionedThreads.Count > 1);
 
             // Attention: the unreplied inbound.
             Assert.Contains(vm.AttentionThreads, t => t.Subject.Contains("open"));
             Assert.All(vm.AttentionThreads, t => Assert.Equal("●", t.Glyph));
-            // Recent: the broadcast (nothing to action, not handled).
-            Assert.Contains(vm.RecentThreads, t => t.Subject.Contains("heads"));
+            // Read: the broadcast (nothing to action, not handled).
+            Assert.Contains(vm.ReadThreads, t => t.Subject.Contains("heads"));
             // A replied thread must NOT linger in the active groups...
             Assert.DoesNotContain(vm.AttentionThreads, t => t.Subject.Contains("done"));
-            Assert.DoesNotContain(vm.RecentThreads, t => t.Subject.Contains("done"));
+            Assert.DoesNotContain(vm.ReadThreads, t => t.Subject.Contains("done"));
             // ...it moves to Archive, alongside the plainly-archived thread.
-            Assert.Contains(vm.ArchivedThreads, t => t.Subject.Contains("done"));
-            Assert.Contains(vm.ArchivedThreads, t => t.Subject.Contains("old"));
+            Assert.Contains(vm.ActionedThreads, t => t.Subject.Contains("done"));
+            Assert.Contains(vm.ActionedThreads, t => t.Subject.Contains("old"));
         }
         finally
         {

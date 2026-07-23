@@ -50,8 +50,8 @@ public class BusAttentionViewTests
                 var texts = window.GetVisualDescendants().OfType<TextBlock>()
                     .Select(t => t.Text ?? string.Empty).ToList();
                 Assert.Contains(texts, s => s.Contains("ACTIVE"));
-                Assert.Contains(texts, s => s.Contains("QUEUED"));
-                Assert.Contains(texts, s => s.Contains("ARCHIVE"));
+                Assert.Contains(texts, s => s.Contains("READ"));
+                Assert.Contains(texts, s => s.Contains("ACTIONED"));
                 Assert.Contains(texts, s => s.Contains("open"));   // alpha subject row materialized
 
                 await ScreenshotCapture.CaptureControlAsync(window, view, "/tmp/styloagent-bus-attention.png");
@@ -68,7 +68,7 @@ public class BusAttentionViewTests
     // thread shows a WAITING pill, and the handled threads auto-collapse into the Archive drawer
     // (Expander collapsed by default) so the active list stays short.
     [Fact]
-    public Task BusView_shows_a_waiting_pill_and_auto_collapses_the_archive()
+    public Task BusView_shows_a_waiting_pill_and_collapses_read_and_actioned()
     {
         return _fx.DispatchAsync(async () =>
         {
@@ -99,9 +99,10 @@ public class BusAttentionViewTests
                     .Select(t => t.Text ?? string.Empty).ToList();
                 Assert.Contains(texts, s => s == "WAITING");
 
-                // The Archive drawer is collapsed by default (handled threads tucked away).
-                var expander = window.GetVisualDescendants().OfType<Expander>().Single();
-                Assert.False(expander.IsExpanded);
+                // Read and Actioned are collapsed by default so handled history stays out of the live list.
+                var expanders = window.GetVisualDescendants().OfType<Expander>().ToList();
+                Assert.Equal(2, expanders.Count);
+                Assert.All(expanders, expander => Assert.False(expander.IsExpanded));
 
                 window.Close();
             }
@@ -149,7 +150,7 @@ public class BusAttentionViewTests
                 await HeadlessRender.SettleAsync(window);
 
                 Assert.Empty(vm.AttentionThreads);                                   // NEEDS ATTENTION shrank
-                Assert.Contains(vm.RecentThreads, t => t.Key.Contains("open-question"));
+                Assert.Contains(vm.ReadThreads, t => t.Key.Contains("open-question"));
 
                 window.Close();
             }
@@ -261,7 +262,7 @@ public class BusAttentionViewTests
     }
 
     private static string ThreadPill(BusViewModel vm, string keyFragment) =>
-        vm.AttentionThreads.Concat(vm.RecentThreads).Concat(vm.ArchivedThreads)
+        vm.AttentionThreads.Concat(vm.ReadThreads).Concat(vm.ActionedThreads)
           .First(t => t.Key.Contains(keyFragment)).StatusPillText;
 
     // Archive (✕): dismissing a thread marks it DONE and drops it out of NEEDS ATTENTION into the Archive drawer.
@@ -289,13 +290,13 @@ public class BusAttentionViewTests
                 Assert.Single(vm.AttentionThreads);
 
                 vm.ArchiveThreadCommand.Execute(vm.AttentionThreads[0]);   // operator dismisses it
-                Assert.Equal("DONE", vm.ArchivedThreads.Concat(vm.AttentionThreads)
+                Assert.Equal("DONE", vm.ActionedThreads.Concat(vm.AttentionThreads)
                     .First(t => t.Key.Contains("open-question")).StatusPillText);
                 await vm.LoadAsync();                                       // reload re-sections it
                 await HeadlessRender.SettleAsync(window);
 
                 Assert.Empty(vm.AttentionThreads);
-                Assert.Contains(vm.ArchivedThreads, t => t.Key.Contains("open-question"));
+                Assert.Contains(vm.ActionedThreads, t => t.Key.Contains("open-question"));
 
                 window.Close();
             }

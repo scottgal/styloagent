@@ -95,27 +95,30 @@
           </Border>
           <ItemsControl ItemsSource="{Binding AttentionThreads}" ItemTemplate="{StaticResource ThreadTemplate}" />
 
-          <Border Background="#15152A" Padding="8,4" Margin="0,6,0,0">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="QUEUED" FontSize="10" FontWeight="SemiBold"
-                         Foreground="{DynamicResource MutedTextBrush}" LetterSpacing="1" />
-              <TextBlock Text="{Binding RecentThreads.Count}" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" />
-            </StackPanel>
-          </Border>
-          <ItemsControl ItemsSource="{Binding RecentThreads}" ItemTemplate="{StaticResource ThreadTemplate}" />
+          <Expander IsExpanded="False" Margin="0,6,0,0" Padding="0" HorizontalAlignment="Stretch">
+            <Expander.Header>
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="READ" FontSize="10" FontWeight="SemiBold"
+                           Foreground="{DynamicResource MutedTextBrush}" LetterSpacing="1" />
+                <TextBlock Text="{Binding ReadThreads.Count}" FontSize="10"
+                           Foreground="{DynamicResource MutedTextBrush}" />
+              </StackPanel>
+            </Expander.Header>
+            <ItemsControl ItemsSource="{Binding ReadThreads}" ItemTemplate="{StaticResource ThreadTemplate}" />
+          </Expander>
 
-          <!-- Handled threads auto-collapse into this Archive drawer (collapsed by default) so the
-               active NEEDS ATTENTION + RECENT lists stay short. The header + count stay glanceable;
+          <!-- Handled threads auto-collapse into this Actioned drawer (collapsed by default) so the
+               active + read lists stay short. The header + count stay glanceable;
                expand to review resolved threads. -->
           <Expander IsExpanded="False" Margin="0,6,0,0" Padding="0" HorizontalAlignment="Stretch">
             <Expander.Header>
               <StackPanel Orientation="Horizontal" Spacing="6">
-                <TextBlock Text="ARCHIVE" FontSize="10" FontWeight="SemiBold"
+                <TextBlock Text="ACTIONED" FontSize="10" FontWeight="SemiBold"
                            Foreground="#55556E" LetterSpacing="1" />
-                <TextBlock Text="{Binding ArchivedThreads.Count}" FontSize="10" Foreground="#55556E" />
+                <TextBlock Text="{Binding ActionedThreads.Count}" FontSize="10" Foreground="#55556E" />
               </StackPanel>
             </Expander.Header>
-            <ItemsControl ItemsSource="{Binding ArchivedThreads}" ItemTemplate="{StaticResource ThreadTemplate}" />
+            <ItemsControl ItemsSource="{Binding ActionedThreads}" ItemTemplate="{StaticResource ThreadTemplate}" />
           </Expander>
 
         </StackPanel>

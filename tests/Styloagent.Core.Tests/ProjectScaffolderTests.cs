@@ -23,7 +23,6 @@ public class ProjectScaffolderTests : IDisposable
         Assert.True(Directory.Exists(Path.Combine(cfg.BrowserRoot, "jobs")));
         Assert.Equal("controlOwner: overview-\n", File.ReadAllText(Path.Combine(cfg.EnvironmentsRoot, "policy.yaml")));
         Assert.Equal(Path.Combine(_root, ".styloagent"), cfg.ConfigDir);
-        Assert.Contains("proposed-agents.yaml", cfg.ProposedAgentsPath);
     }
 
     [Fact]

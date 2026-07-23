@@ -173,50 +173,56 @@
       <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
         <StackPanel>
 
-          <!-- PROPOSED subsystems: written by the overview agent; click Spawn to promote to live.
-               Collapsed into an accordion by default (Fix 0) so the proposed list keeps a minimal
-               vertical footprint and doesn't dominate the roster — the operator expands it to spawn.
-               The whole Expander hides when there are no proposals. -->
+          <!-- Hidden panes remain addressable here without occupying the live roster or centre layout.
+               Dehydrate closes their PTYs only after checkpoint acknowledgement; Show restores a pane. -->
           <Expander IsExpanded="False"
                     HorizontalAlignment="Stretch"
                     Padding="0"
                     Margin="0,0,0,1"
-                    IsVisible="{Binding ProposedTeam.Proposals.Count, Converter={x:Static conv:CountToBoolConverter.Instance}}">
+                    IsVisible="{Binding InactiveAgents.Count, Converter={x:Static conv:CountToBoolConverter.Instance}}">
             <Expander.Header>
-              <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-                <TextBlock Text="PROPOSED" FontSize="10" FontWeight="SemiBold"
-                           Foreground="{DynamicResource AttentionBrush}" LetterSpacing="1"
-                           VerticalAlignment="Center" />
-                <!-- Count badge so the operator sees how many proposals are waiting without expanding. -->
-                <Border Background="#3A2020" CornerRadius="7" Padding="5,0" MinWidth="16" VerticalAlignment="Center">
-                  <TextBlock Text="{Binding ProposedTeam.Proposals.Count}" FontSize="10"
-                             Foreground="{DynamicResource AttentionBrush}" HorizontalAlignment="Center" />
-                </Border>
-                <Button Content="Spawn all" FontSize="9" Padding="5,0" Margin="4,0,0,0"
-                        Command="{Binding ProposedTeam.SpawnAllCommand}" />
-              </StackPanel>
+              <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <TextBlock Text="INACTIVE" FontSize="10" FontWeight="SemiBold"
+                             Foreground="{DynamicResource MutedTextBrush}" LetterSpacing="1"
+                             VerticalAlignment="Center" />
+                  <Border Background="#242436" CornerRadius="7" Padding="5,0" MinWidth="16" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding InactiveAgents.Count}" FontSize="10"
+                               Foreground="{DynamicResource MutedTextBrush}" HorizontalAlignment="Center" />
+                  </Border>
+                </StackPanel>
+                <Button Grid.Column="1" Content="Park all" FontSize="9" Padding="5,0" Margin="8,0,0,0"
+                        Command="{Binding ParkInactiveCommand}"
+                        ToolTip.Tip="Checkpoint and stop every hidden live agent" />
+              </Grid>
             </Expander.Header>
 
-            <ItemsControl ItemsSource="{Binding ProposedTeam.Proposals}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate DataType="vm:ProposedAgentItem">
-                    <Border Background="{DynamicResource RowBgBrush}" Margin="0,1,0,0">
-                      <Grid ColumnDefinitions="4,*,Auto">
-                        <Border Grid.Column="0" Background="{Binding ColorHex}" Width="4" />
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="7,2" Spacing="6">
-                          <TextBlock Text="{Binding Prefix}" FontWeight="SemiBold" FontSize="11" Foreground="{Binding ColorHex}" />
-                          <TextBlock Text="{Binding Responsibility}" FontSize="9" Foreground="#8888AA" TextTrimming="CharacterEllipsis" />
-                          <TextBlock Text="{Binding RejectionMessage}" FontSize="9" Foreground="#E5736B"
-                                     IsVisible="{Binding RejectionMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                        </StackPanel>
-                        <Button Grid.Column="2" Content="Spawn" FontSize="9" Padding="5,0" Margin="0,0,5,0" VerticalAlignment="Center"
-                                Command="{Binding DataContext.ProposedTeam.SpawnCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                CommandParameter="{Binding Agent}" />
-                      </Grid>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
+            <ItemsControl ItemsSource="{Binding InactiveAgents}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:AgentPaneViewModel">
+                  <Border Background="{DynamicResource RowBgBrush}" Margin="0,1,0,0">
+                    <Grid ColumnDefinitions="4,*,Auto">
+                      <Border Grid.Column="0" Background="{Binding BorderColorHex}" Width="4" />
+                      <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="7,3" Spacing="6">
+                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="10"
+                                   Foreground="{Binding BorderColorHex}" />
+                        <TextBlock Text="{Binding StatusHeadline}" FontSize="9"
+                                   Foreground="{Binding HookStateColorHex}" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="3" Margin="0,0,5,0">
+                        <Button Content="Show" FontSize="9" Padding="5,0"
+                                Command="{Binding Host.ShowAgentCommand}" CommandParameter="{Binding}" />
+                        <Button Content="Park" FontSize="9" Padding="5,0"
+                                Command="{Binding DehydrateCommand}"
+                                ToolTip.Tip="Checkpoint and stop this terminal" />
+                        <Button Content="Wake" FontSize="9" Padding="5,0"
+                                Command="{Binding RehydrateCommand}" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
           </Expander>
 
           <!-- Live roster, grouped by repo so each repo's fleet roots at ITS OWN overview (BUG 3). The

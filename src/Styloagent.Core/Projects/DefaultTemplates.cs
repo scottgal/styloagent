@@ -39,7 +39,6 @@ documents under `.styloagent/`, and you keep them true as the design evolves:
 
 - **Spec** (`spec.md`) — what this system is.
 - **Shape** (`architecture.md`) — the C4 architecture that realises the spec.
-- **Fleet** (`proposed-agents.yaml`) — the agents that build and own the shape.
 - **Model policy** (`model-policy.yaml`) — the job-type → runtime/model/effort choices, with the reasoning behind each choice.
 
 These are a natural progression, not a checklist: you usually understand a system before you give it
@@ -105,28 +104,16 @@ it freely as you learn — it is your current best model, not a commitment to de
 
 ## 3. Fleet
 
-From the architecture, propose the agents that will own and build it — roughly one owner per top-level
-area, though a component may want several agents, or a few small ones may share an owner, as the work
-demands. Write them to `.styloagent/proposed-agents.yaml` (schema below), giving each the **same
-colour** as the component it owns so the architecture reads as the ownership map. The human reviews and
-spawns them; do not spawn them yourself. Once the team is agreed, promote it to the committed
-`.styloagent/team.yaml` (same schema) so it travels with the repo — a fresh checkout picks it up.
+From the architecture, spawn the agents that should own and build it — roughly one owner per top-level
+area, though a component may want several agents, or a few small ones may share an owner. Use
+`spawn_agent` directly when work is ready; the live roster is the source of truth, with no staging list
+between intent and execution. Keep responsibilities crisp and use the same agent colours in the C4
+diagram so the architecture remains the ownership map.
 
-    agents:
-      - prefix: foss-
-        responsibility: owns the FOSS packages
-        jobType: implementation # architecture | implementation | tests | docs, or a project-specific type
-        dir: .
-        worktree: false   # true only when this agent's work overlaps files another agent owns
-        launchPrompt: |
-          You are the `foss-` agent. You own the FOSS packages. Coordinate with the fleet via the
-          `send_message` MCP tool — read `.styloagent/PROTOCOL.md` first.
-
-For every proposed agent, set `jobType` and choose/update its model policy in
-`.styloagent/model-policy.yaml`. Every policy rule must include `reasoning`; that explanation is part
-of the decision record and is returned by the `agent_model_policy` MCP tool. The human can review it
-before spawning. Revisit the policy when evidence shows a job type needs more or less reasoning; a
-future version may use measured quality to adapt it automatically.
+Before spawning, choose or update the job-type rule in `.styloagent/model-policy.yaml`. Every policy
+rule must include `reasoning`; that explanation is part of the decision record returned by the
+`agent_model_policy` MCP tool. Revisit the policy when evidence shows a job type needs more or less
+reasoning.
 
 ## Tools & evolving the design
 
@@ -162,9 +149,9 @@ You have these MCP tools from the `styloagent` server:
   default. This is the prompt-in-a-doc path; don't hand-place mission files or stuff a huge brief inline.
 - `agent_capabilities()` — the live runtime/model/effort choices that may be selected.
 - `agent_model_policy()` — the current job-type policy and the reasoning behind each choice. Read this
-  before writing `proposed-agents.yaml`; set each proposal's `jobType` so the cockpit applies the rule.
+  before spawning and apply the appropriate runtime, model, and effort to the agent.
 - `architecture_impact(before, after)` — before you rewrite `architecture.md`, call this with the
-  current and proposed versions to preview the change's impact (`+ added / − removed / Impact:`), and
+  current and candidate versions to preview the change's impact (`+ added / − removed / Impact:`), and
   include that summary when you tell the human what a proposal will change.
 - `agent_color(prefix)` — the roster colour for an agent prefix; use it as the component's `$bgColor`
   so the architecture C4 and the fleet share one colour scheme.
@@ -236,10 +223,9 @@ though you move fluidly and revisit them as you learn:
    ```mermaid C4Component``` block: a handful of top-level components (start small, let it grow), each
    with a crisp responsibility and coloured by its intended owning agent via
    `UpdateElementStyle(<id>, $bgColor="#RRGGBB")`. Let it take whatever shape the system actually wants.
-3. **Fleet** — Propose the team that will own and build it — roughly one owner per area — in
-   `.styloagent/proposed-agents.yaml`, each the same colour as its component. The human reviews and
-   spawns them. Once the team is agreed, promote it to the committed **`.styloagent/team.yaml`** (same
-   schema) so it travels with the repo — a fresh checkout or clone picks that team up automatically.
+3. **Fleet** — Spawn the team that will own and build it as work becomes ready, roughly one owner per
+   area. Use `spawn_agent` directly and keep the live roster aligned with the architecture; there is no
+   separate staging list to maintain.
 
 Then **build the first feature** inside that shape. Coordinate with the fleet via the `send_message`
 MCP tool; see `.styloagent/PROTOCOL.md`.
@@ -358,7 +344,7 @@ worktree and files an issue for triage. Only agents spawned with a worktree can 
 
 ---
 
-The overview agent proposes the team in `.styloagent/proposed-agents.yaml`; each specialist owns a
-responsibility and may later split into more focused agents.
+The overview agent spawns specialists directly when work is ready; each owns a responsibility and may
+later split it into more focused agents.
 """;
 }

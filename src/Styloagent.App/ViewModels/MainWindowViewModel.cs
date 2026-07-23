@@ -44,6 +44,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// repos on every roster/repo change. Single-repo workspaces render as one header-less group.</summary>
     public System.Collections.ObjectModel.ObservableCollection<RosterRepoGroup> RosterGroups { get; } = new();
 
+    /// <summary>Agents deliberately hidden from the centre surface. They remain addressable and resumable.</summary>
+    public System.Collections.ObjectModel.ObservableCollection<AgentPaneViewModel> InactiveAgents { get; } = new();
+
     /// <summary>Panes currently waiting for human attention, oldest-first.</summary>
     public System.Collections.ObjectModel.ObservableCollection<AgentPaneViewModel> AttentionQueue { get; } = new();
 
@@ -518,6 +521,25 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Checkpoints every hidden live agent and closes its PTY. Agents stay in the compact Inactive roster
+    /// and can be rehydrated or shown later. A missing/failed checkpoint leaves that agent alive.
+    /// </summary>
+    [RelayCommand]
+    private async Task ParkInactive()
+    {
+        var eligible = InactiveAgents
+            .Where(p => p.State == SessionState.Live && p.DehydrateCommand.CanExecute(null))
+            .ToList();
+        if (eligible.Count == 0) return;
+
+        Timeline.Add(DateTimeOffset.Now, "workspace",
+            $"checkpointing and parking {eligible.Count} inactive agent{(eligible.Count == 1 ? "" : "s")}…",
+            "#8899BB");
+        await Task.WhenAll(eligible.Select(p => p.DehydrateAsync()));
+        RefreshInstruments();
+    }
+
+    /// <summary>
     /// Human-in-the-loop approval: sends "Yes" (option 1 + Enter) to a waiting agent's permission prompt over
     /// its PTY, so the operator can approve from the roster without hunting for the terminal pane. This is an
     /// explicit per-prompt human action — NOT auto-bypass; the operator chooses to approve each one.
@@ -648,9 +670,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private DocLibraryViewModel? _docLibrary;
-
-    [ObservableProperty]
-    private ProposedTeamViewModel? _proposedTeam;
 
     [ObservableProperty]
     private IssuesViewModel? _issues;
@@ -965,9 +984,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// the repo set only change there).</summary>
     private void RebuildRoster()
     {
-        var groups = RosterGrouping.Build(Panes.ToList(), _repos, p => RepoNameForPrefix(p.Prefix));
+        var groups = RosterGrouping.Build(Panes.Where(p => !p.IsHidden).ToList(), _repos, p => RepoNameForPrefix(p.Prefix));
         RosterGroups.Clear();
         foreach (var g in groups) RosterGroups.Add(g);
+        ReconcileInactiveAgents(Panes.Where(p => p.IsHidden).ToList());
 
         // Colour each agent's DOCK TAB by its repo (same hue as the roster group) so mixed-repo tabs are
         // distinguishable; only in a multi-repo workspace (single-repo → no band, like the roster header).
@@ -977,6 +997,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 pane.RepoBandColorHex = g.ShowHeader ? g.ColorHex : null;
                 pane.RepoBandTooltip = g.ShowHeader ? $"repo: {g.RepoName}" : null;
             }
+    }
+
+    private void ReconcileInactiveAgents(IReadOnlyList<AgentPaneViewModel> desired)
+    {
+        for (var i = InactiveAgents.Count - 1; i >= 0; i--)
+            if (!desired.Contains(InactiveAgents[i]))
+                InactiveAgents.RemoveAt(i);
+        for (var i = 0; i < desired.Count; i++)
+        {
+            var pane = desired[i];
+            var current = InactiveAgents.IndexOf(pane);
+            if (current < 0) InactiveAgents.Insert(i, pane);
+            else if (current != i) InactiveAgents.Move(current, i);
+        }
     }
 
     // ── Roster reparent (drag-drop v2a): edit the authority hierarchy WITHIN a repo ──────────────
@@ -1041,12 +1075,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (!string.Equals(RepoNameForPrefix(dragged.Prefix), RepoNameForPrefix(newOwner.Prefix), StringComparison.Ordinal))
             return ReparentResult.Reject("cross-repo moves aren't supported yet");
 
-        // Guard 1: run the EXISTING Core authority lint (read-only) over the PROPOSED tree.
-        var proposed = Panes.Select(p => new Styloagent.Core.Architecture.AuthorityNode(
+        // Guard 1: run the existing Core authority lint (read-only) over the candidate tree.
+        var candidate = Panes.Select(p => new Styloagent.Core.Architecture.AuthorityNode(
             p.Prefix,
             ReferenceEquals(p, dragged) ? newOwner.Prefix : p.ParentPrefix,
             p.WorktreePath is not null)).ToList();
-        var violations = Styloagent.Core.Architecture.AuthorityTreeLint.Check(proposed);
+        var violations = Styloagent.Core.Architecture.AuthorityTreeLint.Check(candidate);
         if (violations.Count > 0)
             return ReparentResult.Reject(ReparentReason(violations[0], dragged, newOwner));
 
@@ -1128,6 +1162,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (e.PropertyName is nameof(AgentPaneViewModel.HookState)
             or nameof(AgentPaneViewModel.IsHidden))
             ScheduleActiveAgentLayoutRefresh();
+        if (e.PropertyName == nameof(AgentPaneViewModel.IsHidden))
+            RebuildRoster();
         else if (e.PropertyName == nameof(AgentPaneViewModel.LastActivityAt)
                  && p.HookState == AgentHookState.Idle)
             ScheduleActiveAgentLayoutRefresh();
@@ -1733,7 +1769,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private static string RepoName(string? root)
         => string.IsNullOrEmpty(root) ? "repo" : Path.GetFileName(root!.TrimEnd('/', '\\'));
 
-    /// <summary>Wires the ProposedTeam VM against a project's proposed-agents.yaml. Idempotent.</summary>
+    /// <summary>Attaches project-scoped services. Idempotent.</summary>
     public void AttachProject(ProjectConfig project)
     {
         _project = project;
@@ -1756,8 +1792,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(MaxFleet));
         OnPropertyChanged(nameof(MaxDepth));
         OnPropertyChanged(nameof(FleetHudText));
-        ProposedTeam?.Dispose();
-        ProposedTeam = new ProposedTeamViewModel(project.ProposedAgentsPath, project.TeamPath, SpawnProposedAsync);
         Issues = new IssuesViewModel(project.IssuesDir, OpenDocumentByPath);
 
         // Start (or restart) the RouterHost whenever a project is attached so the coordinator
@@ -2037,41 +2071,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         return Path.Combine(dir, $"{HookSettings.SanitizeAgentId(prefix)}context.md");
     }
 
-    /// <summary>
-    /// Turns a proposed subsystem into a live roster agent. Normal case: routes through the governed
-    /// <see cref="SpawnChildAsync"/>, so a human-spawn gets the same governor + worktree + lineage as an
-    /// agent's <c>spawn_agent</c>. Sole exception: with no overview owner (a bare worktree roster) this
-    /// is a ROOT spawn — the parent-centric governor can't check a root without risking a second root
-    /// (breaking single-rooted authority), so it creates the pane directly, still honouring the
-    /// proposal's worktree decision.
-    /// </summary>
-    public async Task<SpawnOutcome> SpawnProposedAsync(ProposedAgent p)
-    {
-        var policy = BuildModelPolicy().For(p.JobType);
-        var owner = OverviewPane();
-        if (owner is not null && owner.Prefix != p.Prefix)
-            return await SpawnChildAsync(new SpawnRequest(
-                owner.Prefix, p.Prefix, p.Responsibility, p.Dir, p.LaunchPrompt, p.Worktree,
-                Runtime: policy.Runtime ?? RuntimeName(_defaultAgentRuntime),
-                Model: policy.Model, Effort: policy.Effort));
-
-        // Root / no-owner exception: establish the single root directly.
-        string? worktreePath = null, worktreeBranch = null;
-        if (p.Worktree)
-        {
-            var wt = await TryAddWorktreeAsync(p.Prefix);
-            if (!wt.Ok) return SpawnOutcome.Reject(RejectReason.InvalidPrefix, $"worktree add failed: {wt.Error}");
-            (worktreePath, worktreeBranch) = (wt.Path, wt.Branch);
-        }
-        var pane = CreatePaneForProposed(p, worktreeOverride: worktreePath, worktreeBranch: worktreeBranch,
-            runtime: RuntimeFromRequest(policy.Runtime), model: policy.Model, effort: policy.Effort);
-        if (worktreePath is not null && _git is not null && pane is not null)
-            _ = pane.RefreshGitStatusAsync(_git);
-        return pane is null
-            ? SpawnOutcome.Reject(RejectReason.InvalidPrefix, "could not create pane")
-            : SpawnOutcome.Ok(p.Prefix);
-    }
-
     /// <summary>Outcome of a worktree add: Ok (with Path/Branch, or all-null when the agent shares the repo), or a failure Error.</summary>
     private readonly record struct WorktreeAdd(bool Ok, string? Path, string? Branch, string? Error)
     {
@@ -2167,8 +2166,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // Fix 2: hand a (worktree-isolated) agent its mission as a committed doc it can read from its own
         // checkout, then point its launch prompt at it. No mission doc → the launch prompt is used as-is.
         string launchPrompt = await PlaceMissionDocAsync(req.Prefix, req.MissionDoc, req.LaunchPrompt, worktreePath);
-        var proposed = new ProposedAgent(req.Prefix, req.Responsibility, req.Dir, launchPrompt);
-        var paneVm = CreatePaneForProposed(proposed, parentPrefix: req.ParentPrefix, depth: parentDepth + 1,
+        var paneVm = CreateAgentPane(req.Prefix, req.Responsibility, req.Dir, launchPrompt,
+            parentPrefix: req.ParentPrefix, depth: parentDepth + 1,
             worktreeOverride: worktreePath, worktreeBranch: worktreeBranch, runtime: runtime,
             model: req.Model, effort: req.Effort);
         if (worktreePath is not null && _git is not null)
@@ -2181,7 +2180,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Drops a crashed agent's pane so its prefix can be reclaimed by a re-spawn: removes its dockable,
     /// roster entry and hook mapping. The PTY is already dead (this runs only for an exited ghost), so
-    /// there is nothing to kill — it is the inverse of the additions made in <see cref="CreatePaneForProposed"/>.
+    /// there is nothing to kill — it is the inverse of the additions made in <see cref="CreateAgentPane"/>.
     /// </summary>
     private void RemoveAgentPane(AgentPaneViewModel pane)
     {
@@ -2535,13 +2534,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Core pane-creation path shared by SpawnProposed and SpawnChild.
+    /// Core pane-creation path for governed child spawns.
     /// Builds the manifest entry, reserves the hook id, creates the AgentPaneViewModel
     /// (with optional lineage), adds it to Panes + dock, and fires SpawnAsync.
     /// Returns null if the dock factory is unavailable (guards are not met).
     /// </summary>
-    private AgentPaneViewModel? CreatePaneForProposed(
-        ProposedAgent p,
+    private AgentPaneViewModel? CreateAgentPane(
+        string prefix,
+        string responsibility,
+        string dir,
+        string launchPrompt,
         string? parentPrefix = null,
         int depth = 0,
         string? worktreeOverride = null,
@@ -2564,24 +2566,24 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             ?? Environment.GetEnvironmentVariable("STYLOAGENT_REPO")
             ?? DefaultWorkingDirectory();
         string launchPromptPath = string.Empty;
-        if (_project is not null && !string.IsNullOrWhiteSpace(p.LaunchPrompt))
+        if (_project is not null && !string.IsNullOrWhiteSpace(launchPrompt))
         {
             Directory.CreateDirectory(_project.LaunchPromptsDir);
-            launchPromptPath = ResolveLaunchPromptPath(_project.LaunchPromptsDir, p.Prefix, p.LaunchPrompt);
-            File.WriteAllText(launchPromptPath, p.LaunchPrompt);
+            launchPromptPath = ResolveLaunchPromptPath(_project.LaunchPromptsDir, prefix, launchPrompt);
+            File.WriteAllText(launchPromptPath, launchPrompt);
         }
 
         string resolvedWorktree = worktreeOverride ?? WorkingDirectoryResolver.Resolve(
-            string.IsNullOrWhiteSpace(p.Dir) ? root : Path.Combine(root, p.Dir),
+            string.IsNullOrWhiteSpace(dir) ? root : Path.Combine(root, dir),
             root);   // fall back to the repo root, never to ~/
 
         var entry = new AgentManifestEntry(
-            Prefix: p.Prefix,
+            Prefix: prefix,
             Repo: root,
             Worktree: resolvedWorktree,
             LaunchPromptPath: launchPromptPath,
             RestartPromptPath: string.Empty,
-            SavedContextPath: SavedContextPathFor(p.Prefix),   // so it can be dehydrated / parked
+            SavedContextPath: SavedContextPathFor(prefix),   // so it can be dehydrated / parked
             Transport: AgentTransport.Local,
             Runtime: runtime ?? _defaultAgentRuntime,
             Model: model,
@@ -2593,12 +2595,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var paneVm = new AgentPaneViewModel(
             session,
             entry,
-            p.Prefix.TrimEnd('-'),
-            PresentationStore.DefaultColorFor(p.Prefix))
+            prefix.TrimEnd('-'),
+            PresentationStore.DefaultColorFor(prefix))
         {
             ParentPrefix = parentPrefix,
             Depth = depth,
-            Responsibility = p.Responsibility,
+            Responsibility = responsibility,
             InteractionRecorder = _interaction.RecordInput,
             Host = this,
         };
@@ -3612,8 +3614,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (_busViewModel is null) return Array.Empty<SeqThread>();
 
         return _busViewModel.AttentionThreads
-            .Concat(_busViewModel.RecentThreads)
-            .Concat(_busViewModel.ArchivedThreads)
+            .Concat(_busViewModel.ReadThreads)
+            .Concat(_busViewModel.ActionedThreads)
             .Select(item =>
             {
                 string slug = item.Messages.Count > 0
@@ -3718,7 +3720,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (_dockFactory is not null)
             _dockFactory.ActiveDockableChanged -= OnActiveDockableChanged;
 
-        ProposedTeam?.Dispose();
         _busViewModel?.Dispose();
         _searchIndex.Dispose();
 

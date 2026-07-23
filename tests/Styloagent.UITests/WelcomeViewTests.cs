@@ -12,10 +12,10 @@ using Xunit;
 namespace Styloagent.UITests;
 
 [Collection("Avalonia")]
-public class WelcomeAndProposedTests
+public class WelcomeViewTests
 {
     private readonly HeadlessAvaloniaFixture _fx;
-    public WelcomeAndProposedTests(HeadlessAvaloniaFixture fx) => _fx = fx;
+    public WelcomeViewTests(HeadlessAvaloniaFixture fx) => _fx = fx;
 
     private sealed class FakePicker : IFolderPicker
     {

@@ -131,7 +131,7 @@ public class FleetSpawnTests
     }
 
     [Fact]
-    public async Task SpawnProposed_is_owned_by_the_overview_keeping_the_authority_tree_single_rooted()
+    public async Task Direct_spawn_is_owned_by_the_overview_keeping_the_authority_tree_single_rooted()
     {
         var repo = Path.Combine(Path.GetTempPath(), "hw-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(repo);
@@ -144,15 +144,16 @@ public class FleetSpawnTests
                 repoRoot: repo, overviewSystemPromptPath: cfg.SystemPromptPath);
             vm.AttachProject(cfg);
             // Panes populate via the (shared, headless) UI dispatcher, so under parallel load they aren't
-            // guaranteed present the instant InitializeAsync/SpawnProposed return — wait for the condition
+            // guaranteed present the instant InitializeAsync/direct spawn return — wait for the condition
             // instead of a fixed delay (de-flake; mirrors the bus de-flake in ddb84cf).
             await WaitUntil(() => vm.Panes.Any(p => p.Prefix == "overview-"));
             var overview = vm.Panes.First(p => p.Prefix == "overview-");
             Assert.Equal("overview-", overview.Prefix);
 
-            await vm.SpawnProposedAsync(new Styloagent.Core.Projects.ProposedAgent("hello-", "writes hello world", ".", "You are hello-."));
+            await vm.SpawnChildAsync(new SpawnRequest(
+                overview.Prefix, "hello-", "writes hello world", ".", "You are hello-.", Worktree: false));
 
-            // Wait for the child to be present AND spawned (State=Live): CreatePaneForProposed adds the pane
+            // Wait for the child to be present AND spawned (State=Live): CreateAgentPane adds the pane
             // synchronously but starts SpawnAsync fire-and-forget, so State→Live lands slightly later — under
             // parallel load, later than the pane's mere presence. The dehydrate-command assert below needs Live.
             await WaitUntil(() => vm.Panes.Any(p => p.Prefix == "hello-" && p.State == Styloagent.Core.Model.SessionState.Live));
@@ -172,7 +173,7 @@ public class FleetSpawnTests
     }
 
     [Fact]
-    public async Task SpawnProposed_with_worktree_true_creates_an_agent_branch()
+    public async Task Direct_spawn_with_worktree_true_creates_an_agent_branch()
     {
         var repo = Path.Combine(Path.GetTempPath(), "psp-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(repo);
@@ -186,8 +187,8 @@ public class FleetSpawnTests
             vm.AttachProject(cfg);
             Assert.Equal("overview-", vm.Panes[0].Prefix);
 
-            var outcome = await vm.SpawnProposedAsync(
-                new ProposedAgent("iso-", "overlaps foss", ".", "You are iso-.", Worktree: true));
+            var outcome = await vm.SpawnChildAsync(new SpawnRequest(
+                vm.Panes[0].Prefix, "iso-", "overlaps foss", ".", "You are iso-.", Worktree: true));
 
             Assert.True(outcome.Spawned);
             Assert.Equal("agent/iso", git.AddedBranch);

@@ -22,7 +22,7 @@ Timeline, browse the Document Library, and read the Git and Router panels.
 
 1. [Getting started](#1-getting-started)
 2. [The cockpit at a glance](#2-the-cockpit-at-a-glance)
-3. [The roster & the PROPOSED section](#3-the-roster--the-proposed-section)
+3. [The roster & inactive agents](#3-the-roster--inactive-agents)
 4. [Terminals & the session lifecycle](#4-terminals--the-session-lifecycle)
 5. [The Signal Bus — attention-first coordination](#5-the-signal-bus--attention-first-coordination)
 6. [The Activity Timeline](#6-the-activity-timeline)
@@ -56,12 +56,9 @@ project path; Styloagent opens it directly.
 ### What happens on open
 
 1. Styloagent launches a single **overview** agent with the scaffolded system prompt.
-2. The overview reads the repo, decides the initial subsystems, and writes them to
-   `.styloagent/proposed-agents.yaml`.
-3. Styloagent watches that file and surfaces the suggestions as a **PROPOSED** section at the top of
-   the roster (see [§3](#3-the-roster--the-proposed-section)).
-4. You promote proposals into live agents with a click — and from there the team keeps splitting and
-   specialising through the coordination protocol.
+2. The overview reads the repo and spawns governed specialists directly as work becomes ready.
+3. The live roster remains the source of truth as the team splits and specialises through the
+   coordination protocol.
 
 ---
 
@@ -95,24 +92,20 @@ When one or more agents are blocked on you, the roster header shows a **⚠ N wa
 
 ---
 
-## 3. The roster & the PROPOSED section
+## 3. The roster & inactive agents
 
 The roster is the fleet's org chart. Each agent gets a row, colour-coded by its prefix — the same
 hue as its terminal accent and its messages on the bus, so an agent is recognisable everywhere.
 
-![The roster with the PROPOSED section on top](images/roster-proposed.png)
+### The INACTIVE section
 
-### The PROPOSED section
+**Hide pane** removes an agent from the centre layout and live roster without deleting its identity.
+Hidden agents appear in a compact, collapsed **INACTIVE** section:
 
-When the overview agent proposes new subsystems it writes them to `.styloagent/proposed-agents.yaml`,
-and they appear in a highlighted **PROPOSED** block at the top of the roster:
-
-- Each proposal shows its **prefix** (colour-coded) and a one-line **responsibility**.
-- **Spawn** promotes a single proposal into a live, long-lived agent with its own terminal.
-- **Spawn all** promotes the whole proposed team at once.
-
-A spawned proposal becomes an agent **owned by the overview** — the authority tree stays
-single-rooted, so lineage (who spawned whom) is always clear.
+- **Show** restores the pane.
+- **Park** checkpoints that agent and stops its terminal only after acknowledgement.
+- **Wake** rehydrates a parked agent.
+- **Park all** checkpoints and stops every eligible inactive terminal in one action.
 
 ### Live roster rows
 
@@ -189,11 +182,11 @@ groups those messages so that **what needs you is always glanceable**.
 
 ![The attention-first Signal Bus](images/signal-bus.png)
 
-Messages are grouped into three sections:
+Threads move through three sections:
 
-1. **Needs attention** (pinned) — unreplied threads addressed to you or awaiting a decision.
-2. **Recent** — threads that have been replied to or are just informational.
-3. **Archive** — resolved, archived threads.
+1. **Active** — unread threads that need a reply or decision.
+2. **Read** (collapsed) — opened threads and informational notes.
+3. **Actioned** (collapsed) — replied, completed, or explicitly dismissed threads.
 
 Each row carries:
 
@@ -201,8 +194,10 @@ Each row carries:
 - **Colour-coded participants** matching the roster — you can see who's talking at a glance.
 - A **relative timestamp** (e.g. *"2m ago"*).
 
-**Double-click** a message to open its full markdown in the centre dock. **Popping out a thread**
-opens it as a document you can carousel through, message by message.
+Opening or expanding a thread marks it read and moves it out of Active. **Double-click** a message to
+open its full markdown in the centre dock. **Popping out a thread** opens it as a document you can
+carousel through, message by message. Use **✕** after acting to move an unresolved thread directly to
+Actioned.
 
 Because every message is also a file under the channel, the whole conversation is durable, greppable,
 and versioned alongside the code — the bus view is just an attention-first projection of it.
@@ -373,7 +368,7 @@ Open **Settings** from the top bar. Everything here is **persisted** across sess
 | Switch centre layout | **Tabs / Tile / Auto-tile** (top bar) |
 | Jump to the next waiting agent | **Jump ⌥→** (roster header, when agents are waiting) |
 | Pause all spawns | **⏸ Pause** (roster header) |
-| Spawn a proposed agent | **Spawn** / **Spawn all** (PROPOSED section) |
+| Hide an agent without removing it | **Hide pane**; manage it in the **INACTIVE** section |
 | Spawn / suspend / resume an agent | **Spawn** / **Dehydrate** / **Rehydrate** (pane toolbar) |
 | Open a bus message | Double-click it in the Signal Bus |
 | Open a file an agent touched | Click its row in the Activity Timeline |

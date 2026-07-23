@@ -209,10 +209,10 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
     private ObservableCollection<BusThreadItem> _attentionThreads = new();
 
     [ObservableProperty]
-    private ObservableCollection<BusThreadItem> _recentThreads = new();
+    private ObservableCollection<BusThreadItem> _readThreads = new();
 
     [ObservableProperty]
-    private ObservableCollection<BusThreadItem> _archivedThreads = new();
+    private ObservableCollection<BusThreadItem> _actionedThreads = new();
 
     [ObservableProperty]
     private bool _isLoading;
@@ -351,7 +351,7 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                         // Preserve which threads the operator had expanded — a reload must not snap them
                         // shut. Keyed by thread slug so a REPLACED row re-opens (a reused row keeps its own).
                         var expandedKeys = AttentionThreads
-                            .Concat(RecentThreads).Concat(ArchivedThreads)
+                            .Concat(ReadThreads).Concat(ActionedThreads)
                             .Where(t => t.IsExpanded)
                             .Select(t => t.Key)
                             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -381,8 +381,8 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                         // DynamicResource/style/collection subscriptions.
                         ReconcileMessages(Messages, items);
                         ReconcileThreads(AttentionThreads, attention);
-                        ReconcileThreads(RecentThreads, recent);
-                        ReconcileThreads(ArchivedThreads, archived);
+                        ReconcileThreads(ReadThreads, recent);
+                        ReconcileThreads(ActionedThreads, archived);
                         IsLoading = false;
                     }
 

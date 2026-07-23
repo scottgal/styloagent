@@ -188,54 +188,6 @@ public class ReadmeScreenshotTests
         });
     }
 
-    [Fact]
-    public Task Capture_proposed_team()
-    {
-        var pty = new FakePtySession();
-        return _fx.DispatchAsync(async () =>
-        {
-            var root = Path.Combine(Path.GetTempPath(), "shot-proposed-" + Guid.NewGuid().ToString("N"));
-            try
-            {
-                // Scaffold a real project, then write the proposals the overview agent would produce.
-                var cfg = ProjectScaffolder.Ensure(root);
-                File.WriteAllText(cfg.ProposedAgentsPath,
-                    "agents:\n" +
-                    "  - prefix: foss-\n    responsibility: owns the FOSS packages & releases\n    dir: .\n    launchPrompt: |\n      You are foss-.\n" +
-                    "  - prefix: dash-\n    responsibility: the cockpit dashboard & layout\n    dir: .\n    launchPrompt: |\n      You are dash-.\n" +
-                    "  - prefix: bus-\n    responsibility: the signal bus & message routing\n    dir: .\n    launchPrompt: |\n      You are bus-.\n" +
-                    "  - prefix: docs-\n    responsibility: docs, specs & onboarding\n    dir: .\n    launchPrompt: |\n      You are docs-.\n");
-
-                // A cockpit VM against the scaffolded project (empty channel → no live panes yet), then
-                // wire the proposed team so the PROPOSED section renders from the yaml above.
-                var vm = await MainWindowViewModel.InitializeAsync(
-                    cfg.ChannelRoot, new OneShotLauncher(pty), new NoOpWatcher(), repoRoot: cfg.Root);
-                vm.AttachProject(cfg);
-
-                var view = new AgentsView { DataContext = vm };
-                var window = new Window { Width = 300, Height = 320, Content = view };
-                window.Show();
-
-                // The PROPOSED roster is a collapsed-by-default Expander, so expand it (each pass, as soon
-                // as it materializes) before capturing — otherwise the figure shows only the collapsed
-                // "PROPOSED" header, not the agent cards. Its cards then materialize asynchronously, so poll
-                // until the first card's prefix text appears rather than relying on a single settle.
-                bool HasCards() => window.GetVisualDescendants().OfType<TextBlock>().Any(t => (t.Text ?? "") == "foss-");
-                for (int i = 0; i < 40 && !HasCards(); i++)
-                {
-                    foreach (var exp in window.GetVisualDescendants().OfType<Expander>())
-                        exp.IsExpanded = true;
-                    await HeadlessRender.SettleAsync(window);
-                    await Task.Delay(25);
-                }
-                await ScreenshotCapture.CaptureControlAsync(window, view, Shot("proposed-team.png"));
-                window.Close();
-                vm.Dispose();   // stop idle/debounce timers so a later test's SettleAsync can idle
-            }
-            finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
-        });
-    }
-
     private sealed class NullPicker : IFolderPicker
     {
         public Task<string?> PickFolderAsync() => Task.FromResult<string?>(null);

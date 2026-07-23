@@ -3,7 +3,7 @@ using VYaml.Serialization;
 
 namespace Styloagent.Core.Projects;
 
-/// <summary>The model choice applied to a proposed job type, including the explanation for that choice.</summary>
+/// <summary>The model choice applied to a job type, including the explanation for that choice.</summary>
 public sealed record ModelPolicySelection(string? Runtime, string? Model, string? Effort, string Reasoning);
 
 /// <summary>Repo-local policy that lets the overview choose an appropriate model for each kind of work.</summary>

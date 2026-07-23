@@ -5,12 +5,12 @@ namespace Styloagent.Core.Tests;
 
 public class DefaultTemplatesTests
 {
-    // Note: "worktree:" alone already appears in the spawn_agent parameter docs, so asserting the bare
-    // key would pass vacuously. The real gap (design §2.1) is the proposed-agents YAML *schema block*,
-    // which must teach the field with its default — "worktree: false" is unique to that block.
     [Fact]
-    public void SystemPrompt_proposal_schema_teaches_the_worktree_field()
-        => Assert.Contains("worktree: false", DefaultTemplates.SystemPrompt);
+    public void SystemPrompt_uses_direct_governed_spawning_without_a_staging_file()
+    {
+        Assert.Contains("`spawn_agent` directly", DefaultTemplates.SystemPrompt);
+        Assert.DoesNotContain("proposed-agents.yaml", DefaultTemplates.SystemPrompt);
+    }
 
     [Theory]
     [InlineData("## Execution discipline")]

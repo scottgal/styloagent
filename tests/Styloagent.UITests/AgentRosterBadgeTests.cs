@@ -70,8 +70,8 @@ public class AgentRosterBadgeTests
                 Assert.True(vm.ShowRosterContext);
 
                 var template = (IDataTemplate)new AgentsView().Resources["AgentRowTemplate"]!;
-                var host = new ContentControl { Width = 240, Height = 70, ContentTemplate = template, Content = pane };
-                window = new Window { Width = 260, Height = 90, Content = host };
+                var host = new ContentControl { Width = 240, Height = 140, ContentTemplate = template, Content = pane };
+                window = new Window { Width = 260, Height = 160, Content = host };
                 window.Show();
                 await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
 
@@ -80,9 +80,15 @@ public class AgentRosterBadgeTests
                 Assert.True(bar.IsEffectivelyVisible);
                 Assert.Equal(0.72, bar.Value, 2);
 
+                var details = host.GetVisualDescendants().OfType<StackPanel>()
+                    .Single(p => p.Name == "RosterDetails");
+                Assert.False(details.IsEffectivelyVisible);
+
                 vm.ShowRosterContext = false;
+                pane.IsRosterExpanded = true;
                 await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
-                Assert.False(bar.IsEffectivelyVisible);
+                Assert.True(bar.IsEffectivelyVisible);       // context pressure survives compact/global settings
+                Assert.True(details.IsEffectivelyVisible);   // all metadata is still there on click-expand
             }
             finally
             {

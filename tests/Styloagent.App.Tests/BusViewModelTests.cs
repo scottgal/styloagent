@@ -268,6 +268,8 @@ public class BusViewModelTests : IDisposable
             Assert.Equal("WAITING", thread.StatusPillText);      // starts loud, in NEEDS ATTENTION
             vm.OpenThreadCommand.Execute(thread);                // operator views it → SEEN
             Assert.True(store.IsSeen(thread.Key, thread.LastActivity));
+            Assert.DoesNotContain(thread, vm.AttentionThreads);
+            Assert.Contains(thread, vm.ReadThreads);
 
             // A seen-but-unreplied thread leaves ACTIVE for READ — the live list shrinks.
             await vm.LoadAsync();
@@ -314,6 +316,8 @@ public class BusViewModelTests : IDisposable
             Assert.True(thread.IsDone);                          // instant → DONE
             Assert.Equal("DONE", thread.StatusPillText);
             Assert.True(store.IsArchived(thread.Key));
+            Assert.DoesNotContain(thread, vm.AttentionThreads);
+            Assert.Contains(thread, vm.ActionedThreads);
 
             await vm.LoadAsync();
             await WaitUntil(() => vm.ActionedThreads.Count > 0 && vm.AttentionThreads.Count == 0);

@@ -13,12 +13,26 @@
     <Grid RowDefinitions="Auto,*">
 
       <Border Grid.Row="0" Background="{DynamicResource PanelHeaderBgBrush}" Padding="8,6">
-        <Grid ColumnDefinitions="*,Auto">
-          <TextBlock Grid.Column="0" Text="Issues raised by the fleet" FontSize="11"
-                     Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
-          <Button Grid.Column="1" Content="Refresh" FontSize="10" Padding="6,1"
-                  Command="{Binding RefreshCommand}" />
-        </Grid>
+        <StackPanel Spacing="5">
+          <Grid ColumnDefinitions="*,Auto,Auto">
+            <TextBlock Grid.Column="0" Text="Issues raised by the fleet" FontSize="11"
+                       Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" Text="{Binding FilterSummary}" FontSize="9" Margin="0,0,8,0"
+                       Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+            <Button Grid.Column="2" Content="Refresh" FontSize="10" Padding="6,1"
+                    Command="{Binding RefreshCommand}" />
+          </Grid>
+          <TextBox Watermark="Search issues…" Text="{Binding SearchText, Mode=TwoWay}"
+                   FontSize="10" MinHeight="25" />
+          <Grid ColumnDefinitions="*,*,*" ColumnSpacing="4">
+            <ComboBox Grid.Column="0" ItemsSource="{Binding StatusFilters}"
+                      SelectedItem="{Binding StatusFilter}" FontSize="10" MinHeight="24" />
+            <ComboBox Grid.Column="1" ItemsSource="{Binding SeverityFilters}"
+                      SelectedItem="{Binding SeverityFilter}" FontSize="10" MinHeight="24" />
+            <ComboBox Grid.Column="2" ItemsSource="{Binding Areas}"
+                      SelectedItem="{Binding AreaFilter}" FontSize="10" MinHeight="24" />
+          </Grid>
+        </StackPanel>
       </Border>
 
       <!-- Empty state -->

@@ -1792,6 +1792,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(MaxFleet));
         OnPropertyChanged(nameof(MaxDepth));
         OnPropertyChanged(nameof(FleetHudText));
+        Issues?.Dispose();
         Issues = new IssuesViewModel(project.IssuesDir, OpenDocumentByPath);
 
         // Start (or restart) the RouterHost whenever a project is attached so the coordinator
@@ -2655,10 +2656,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         return primary;
     }
 
-    /// <summary>Selects a pane so its terminal document is brought to front in the centre dock.</summary>
+    /// <summary>Expands/collapses the row and brings its terminal document to front.</summary>
     [RelayCommand]
     private void SelectPane(AgentPaneViewModel pane)
     {
+        pane.IsRosterExpanded = !pane.IsRosterExpanded;
+        if (pane.IsRosterExpanded) pane.TickRelativeTimes();
         SelectedPane = pane;
         ActivateDocumentFor(pane);
     }
@@ -3385,8 +3388,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // every second for a visual that is not being rendered. Turning it back on binds the current value
         // immediately, then ticks resume.
         var now = DateTimeOffset.UtcNow;
-        if (ShowRosterLastOutput)
-            foreach (var pane in Panes) pane.TickRelativeTimes();
+        foreach (var pane in Panes)
+            if (ShowRosterLastOutput || pane.IsRosterExpanded)
+                pane.TickRelativeTimes();
         RefreshActiveAgentLayoutOnTick(now);
         _ = CheckAutoDehydrateAsync(now);
 
@@ -3721,6 +3725,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             _dockFactory.ActiveDockableChanged -= OnActiveDockableChanged;
 
         _busViewModel?.Dispose();
+        Issues?.Dispose();
         _searchIndex.Dispose();
 
         // Tear down every federated repo instance: its bus feed + its own hooks channel (and temp dir).

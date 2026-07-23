@@ -36,6 +36,8 @@
             <Border Grid.Column="0" Background="{Binding BorderColorHex}" Width="4" />
             <StackPanel Grid.Column="1" Margin="8,6" Spacing="2">
               <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="{Binding RosterExpansionGlyph}" FontSize="10"
+                           Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
                 <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="12"
                            Foreground="{Binding BorderColorHex}" />
                 <!-- Hidden marker: the agent is off-screen but still running (Fix F) -->
@@ -71,17 +73,17 @@
                            Foreground="{Binding HookStateColorHex}"
                            TextTrimming="CharacterEllipsis" />
               </StackPanel>
-              <!-- Relative "last output Ns" readout; hidden until the first hook event -->
-              <TextBlock Text="{Binding LastOutputText}" FontSize="9"
-                         Foreground="{DynamicResource MutedTextBrush}"
-                         IsVisible="{Binding Host.ShowRosterLastOutput}" />
-              <!-- Runtime selection resolved for this job: agent · model · effort. -->
-              <TextBlock Text="{Binding AgentSelectionText}" FontSize="9"
-                         Foreground="{DynamicResource MutedTextBrush}"
-                         IsVisible="{Binding Host.ShowRosterModel}" />
-              <!-- Context stays useful in compact rows: a thin pressure bar instead of another text line. -->
+              <!-- Full metadata remains on every row; compact by default, expanded by clicking the row. -->
+              <StackPanel Name="RosterDetails" Spacing="1" IsVisible="{Binding IsRosterExpanded}">
+                <TextBlock Text="{Binding LastOutputText}" FontSize="9"
+                           Foreground="{DynamicResource MutedTextBrush}" />
+                <TextBlock Text="{Binding AgentSelectionText}" FontSize="9"
+                           Foreground="{DynamicResource MutedTextBrush}" />
+                <TextBlock Text="{Binding UsageText}" FontSize="9"
+                           Foreground="{DynamicResource MutedTextBrush}" />
+              </StackPanel>
+              <!-- Context pressure remains visible even while the rest of the row is compact. -->
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6" Height="10"
-                    IsVisible="{Binding Host.ShowRosterContext}"
                     ToolTip.Tip="{Binding UsageText}">
                 <ProgressBar Name="ContextUsageBar" Grid.Column="0" Minimum="0" Maximum="1"
                              Value="{Binding ContextFraction}" Height="4" VerticalAlignment="Center" />
@@ -152,12 +154,6 @@
             </StackPanel>
           </StackPanel>
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-            <ToggleButton Content="Age" FontSize="8" Padding="3,1" ToolTip.Tip="Show last-output age"
-                          IsChecked="{Binding ShowRosterLastOutput, Mode=TwoWay}" />
-            <ToggleButton Content="Model" FontSize="8" Padding="3,1" ToolTip.Tip="Show runtime, model and effort"
-                          IsChecked="{Binding ShowRosterModel, Mode=TwoWay}" />
-            <ToggleButton Content="Ctx" FontSize="8" Padding="3,1" ToolTip.Tip="Show context-pressure bar"
-                          IsChecked="{Binding ShowRosterContext, Mode=TwoWay}" />
             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
                         IsVisible="{Binding WaitingCount, Converter={x:Static conv:CountToBoolConverter.Instance}}">
               <TextBlock Text="{Binding AttentionHudText}" FontSize="10" Foreground="{DynamicResource AttentionBrush}" VerticalAlignment="Center" />

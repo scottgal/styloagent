@@ -302,7 +302,8 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
             : HookStateMachine.Next(HookState, e);
         LastActivityAt = DateTimeOffset.UtcNow;
         OnPropertyChanged(nameof(LastActivityAt));
-        if (Host?.ShowRosterLastOutput != false) OnPropertyChanged(nameof(LastOutputText));
+        if (Host?.ShowRosterLastOutput != false || IsRosterExpanded)
+            OnPropertyChanged(nameof(LastOutputText));
         if (!hadActivity) OnPropertyChanged(nameof(HasActivityMeta));
 
         if (!string.IsNullOrEmpty(e.SessionId)) _sessionId = e.SessionId;
@@ -543,6 +544,13 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     /// </summary>
     [ObservableProperty]
     private bool _isHidden;
+
+    /// <summary>Whether this agent's full roster metadata is expanded. Rows start compact.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RosterExpansionGlyph))]
+    private bool _isRosterExpanded;
+
+    public string RosterExpansionGlyph => IsRosterExpanded ? "▾" : "▸";
 
     /// <summary>Recomputes the git badge for this pane's worktree (no-op if it has none).</summary>
     public async Task RefreshGitStatusAsync(IGitService git)

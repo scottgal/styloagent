@@ -88,4 +88,30 @@ public class IssuesViewModelTests
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); }
     }
+
+    [Fact]
+    public void Filters_by_text_status_severity_and_area()
+    {
+        var dir = NewDir();
+        try
+        {
+            var high = IssueStore.Write(dir, "router-", "SSH lockout", "staging login failed", "high", DateTimeOffset.UtcNow);
+            IssueStore.Write(dir, "docs-", "Typo", "manual wording", "low", DateTimeOffset.UtcNow.AddMinutes(-1));
+            IssueStore.Resolve(dir, high.Id);
+            var vm = new IssuesViewModel(dir);
+
+            vm.StatusFilter = "all";
+            Assert.Equal(2, vm.Issues.Count);
+            vm.AreaFilter = "router-";
+            Assert.Single(vm.Issues);
+            vm.AreaFilter = "all";
+            vm.SeverityFilter = "low";
+            Assert.Single(vm.Issues);
+            vm.SeverityFilter = "all";
+            vm.SearchText = "staging";
+            Assert.Single(vm.Issues);
+            Assert.Equal("SSH lockout", vm.Issues[0].Title);
+        }
+        finally { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); }
+    }
 }

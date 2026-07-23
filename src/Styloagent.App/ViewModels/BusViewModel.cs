@@ -464,6 +464,7 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
     {
         if (thread is null || thread.Key.Length == 0) return;
         thread.IsOperatorArchived = true;      // in-place → DONE immediately
+        MoveThread(thread, ActionedThreads);
         _viewState.Archive(thread.Key);        // persist; Changed → reload re-sections into Archive
     }
 
@@ -472,6 +473,8 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
     private void MarkThreadSeen(BusThreadItem thread)
     {
         if (thread.Key.Length == 0) return;
+        if (AttentionThreads.Contains(thread))
+            MoveThread(thread, ReadThreads);
         _viewState.MarkSeen(thread.Key, thread.LastActivity);
     }
 
@@ -479,7 +482,20 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
     private void MarkSeenByKey(string key, DateTimeOffset? lastActivity)
     {
         if (string.IsNullOrEmpty(key)) return;
+        var thread = AttentionThreads.FirstOrDefault(t =>
+            string.Equals(t.Key, key, StringComparison.OrdinalIgnoreCase));
+        if (thread is not null) MoveThread(thread, ReadThreads);
         _viewState.MarkSeen(key, lastActivity);
+    }
+
+    /// <summary>Moves a thread between visible lifecycle collections immediately; persistence/reprojection
+    /// follows asynchronously, but the active list never appears append-only after an operator action.</summary>
+    private void MoveThread(BusThreadItem thread, ObservableCollection<BusThreadItem> destination)
+    {
+        AttentionThreads.Remove(thread);
+        ReadThreads.Remove(thread);
+        ActionedThreads.Remove(thread);
+        if (!destination.Contains(thread)) destination.Insert(0, thread);
     }
 
     private BusMessageItem BuildMessageItem(

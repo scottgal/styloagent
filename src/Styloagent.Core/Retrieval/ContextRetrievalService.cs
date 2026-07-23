@@ -40,7 +40,7 @@ public static class ContextRetrievalService
         }
         if (requested.Contains("docs"))
         {
-            var docs = DocLibraryReader.Read(projectRoot, null).Where(d => d.Source == DocSource.Repo);
+            var docs = DocLibraryReader.Read(projectRoot, null).Where(d => d.Source == DocSource.Repo && IsStableDocument(d.FullPath));
             foreach (var doc in docs)
                 candidates.AddRange(ChunkDocument(doc));
             counts["docs"] = candidates.Count(c => c.Source == "docs");
@@ -111,6 +111,13 @@ public static class ContextRetrievalService
         }
     }
     private static IEnumerable<string> Tokens(string text) => Words.Matches(text.ToLowerInvariant()).Select(m => m.Value).Where(t => t.Length > 1).Distinct();
+    private static bool IsStableDocument(string path)
+    {
+        var normalized = path.Replace('\\', '/');
+        return !normalized.Contains("/.styloagent/channel/", StringComparison.OrdinalIgnoreCase)
+               && !normalized.Contains("/.styloagent/issues/", StringComparison.OrdinalIgnoreCase)
+               && !normalized.Contains("/.styloagent/logs/", StringComparison.OrdinalIgnoreCase);
+    }
     private static long FileStamp(string path) { try { return File.GetLastWriteTimeUtc(path).Ticks; } catch { return 0; } }
     private static string Trim(string text, int max) => text.Length <= max ? text : text[..max].TrimEnd() + "…";
     private sealed record Candidate(string Source, string Title, string Path, string State, string Content, double Salience, long Freshness);

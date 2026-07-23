@@ -64,9 +64,10 @@
           </Button>
         </StackPanel>
 
-        <!-- Document search (Lucene autosuggest) — type to suggest, click a result to open it -->
-        <AutoCompleteBox Grid.Column="1" Width="280" Margin="16,0" VerticalAlignment="Center"
-                         Watermark="Search documents…"
+        <!-- Fast document navigation stays separate from the grounded Docs chat. -->
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="16,0" VerticalAlignment="Center">
+        <AutoCompleteBox Width="250"
+                         Watermark="Find a document…"
                          FilterMode="None"
                          MinimumPrefixLength="1"
                          Text="{Binding SearchQuery}"
@@ -86,6 +87,8 @@
             </DataTemplate>
           </AutoCompleteBox.ItemTemplate>
         </AutoCompleteBox>
+        <Button Command="{Binding OpenDocsChatCommand}" Padding="8,4" ToolTip.Tip="Chat with project documentation">Docs chat</Button>
+        </StackPanel>
 
         <!-- Centre: layout-mode segmented switch -->
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" HorizontalAlignment="Center"

@@ -2470,6 +2470,31 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             query ?? "", sources, limit, maxBytes);
     }
 
+    /// <summary>Opens a grounded local chat session over heading-sized project-document retrieval.</summary>
+    [RelayCommand]
+    private void OpenDocsChat()
+    {
+        OpenDocsChatInternal();
+    }
+
+    private void OpenDocsChatInternal()
+    {
+        var chat = new DocsChatViewModel(AskDocumentsAsync);
+        if (_dockFactory?.DocumentDock is null || _dockFactory.RootDock is null) return;
+        _dockFactory.AddDockable(_dockFactory.DocumentDock, chat);
+        _dockFactory.SetActiveDockable(chat);
+        _dockFactory.SetFocusedDockable(_dockFactory.RootDock, chat);
+    }
+
+    private Task<DocumentAnswer> AskDocumentsAsync(string question)
+    {
+        var root = _project?.Root ?? _repoRoot;
+        if (string.IsNullOrWhiteSpace(root))
+            return Task.FromResult(new DocumentAnswer("No project is open.", [], false));
+        var config = _project ?? ProjectConfig.For(root);
+        return DocumentQuestionService.AnswerAsync(config.Root, MemoryRagOptions.Read(config.Root, config.MemoryRagPath), question);
+    }
+
     // ── Workspace repos (multi-repo) ─────────────────────────────────────────
     private IReadOnlyList<RepoInfo> _repos = Array.Empty<RepoInfo>();
 

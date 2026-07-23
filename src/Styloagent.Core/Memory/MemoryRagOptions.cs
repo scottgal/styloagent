@@ -7,7 +7,8 @@ public sealed record MemoryRagOptions(
     string OllamaEndpoint,
     string EmbeddingModel,
     int MaxInjectedBytes = 6144,
-    int DefaultLimit = 8)
+    int DefaultLimit = 8,
+    string SynthesisModel = "gemma4:4b")
 {
     public static MemoryRagOptions Read(string projectRoot, string configPath)
     {
@@ -34,7 +35,8 @@ public sealed record MemoryRagOptions(
             values.GetValueOrDefault("ollamaEndpoint", "http://192.168.0.15:11434").TrimEnd('/'),
             values.GetValueOrDefault("embeddingModel", "nomic-embed-text"),
             Parse(values, "maxInjectedBytes", 6144, 1024, 32 * 1024),
-            Parse(values, "defaultLimit", 8, 1, 20));
+            Parse(values, "defaultLimit", 8, 1, 20),
+            values.GetValueOrDefault("synthesisModel", "gemma4:4b"));
     }
 
     private static int Parse(IReadOnlyDictionary<string, string> values, string name, int fallback, int min, int max)

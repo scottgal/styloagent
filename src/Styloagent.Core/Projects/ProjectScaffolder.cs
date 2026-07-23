@@ -27,6 +27,8 @@ public static class ProjectScaffolder
             File.WriteAllText(cfg.FleetPolicyPath, "maxFleet: 12\nmaxDepth: 3\n");
         if (!File.Exists(cfg.ModelPolicyPath))
             File.WriteAllText(cfg.ModelPolicyPath, DefaultTemplates.ModelPolicy);
+        if (!File.Exists(cfg.MemoryRagPath))
+            File.WriteAllText(cfg.MemoryRagPath, DefaultTemplates.MemoryRag);
         var environmentPolicy = Path.Combine(cfg.EnvironmentsRoot, "policy.yaml");
         if (!File.Exists(environmentPolicy))
             File.WriteAllText(environmentPolicy, "controlOwner: overview-\n");

@@ -3,6 +3,19 @@ namespace Styloagent.Core.Projects;
 /// <summary>Bundled defaults written into a fresh project's .styloagent folder.</summary>
 public static class DefaultTemplates
 {
+    public const string MemoryRag =
+"""
+# Local-first retrieval over hand-editable memory Markdown. The index below is disposable.
+# Set root to an absolute store path when migrating an existing memory corpus; otherwise it is
+# relative to this project (the default is .styloagent/memory).
+root: memory
+index: memory-rag.index.json
+ollamaEndpoint: http://192.168.0.15:11434
+embeddingModel: nomic-embed-text
+maxInjectedBytes: 6144
+defaultLimit: 8
+""";
+
     public const string ModelPolicy =
 """
 # The overview may revise this file as it learns which work benefits from deeper reasoning.
@@ -138,6 +151,9 @@ You have these MCP tools from the `styloagent` server:
 - `search_docs(query, limit)` — search the project's documents (Lucene, prefix, title-boosted) and get
   the top matches (title + path). Use it to find the protocol, design/lifecycle docs and plans and
   read only what's relevant — cheaper than scanning files.
+- `recall_memory(query, type, limit, maxBytes)` — retrieve only the relevant hand-editable memory files
+  (plus pinned ⭐ / `pin: true` hard rules), using local hybrid RRF with an offline BM25 fallback. Use it
+  at the start of a task instead of reading a flat `MEMORY.md`; returned context is deliberately bounded.
 - `spawn_agent(prefix, responsibility, dir, launchPrompt, worktree, missionDoc, runtime)` — launches a child
   agent under you. Set `worktree: true` **only** when the new agent's responsibility overlaps files an
   existing agent owns (so it works isolated on its own `agent/<prefix>` worktree); otherwise `false` to

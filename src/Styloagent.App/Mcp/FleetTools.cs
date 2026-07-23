@@ -270,6 +270,17 @@ public sealed class FleetTools
         return JsonSerializer.Serialize(_controller.SearchDocs(query, limit), Json);
     }
 
+    [McpServerTool, Description("Retrieve the small set of hand-editable memory Markdown files relevant to this task. Uses LucidRAG-style hybrid RRF (local Ollama embeddings when available, BM25 title/description matching, salience and freshness), always includes pin: true / ⭐ hard rules, and hard-caps returned context. The index is disposable and rebuilt from the memory files. Pass type to scope (feedback, project, reference, user), limit (default 8, max 20), and maxBytes (default project policy, max 32KB). No synthesis is performed.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> recall_memory(string query, string? type = null, int limit = 8, int maxBytes = 0)
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
+        var result = await _controller.RecallMemoryAsync(query, type, Math.Clamp(limit, 1, 20), Math.Clamp(maxBytes, 0, 32 * 1024));
+        return JsonSerializer.Serialize(result, Json);
+    }
+
     [McpServerTool, Description("List the repos in the open workspace: each repo's name, path, index, overview prefix (e.g. 'overview-' for the primary, 'lucidresume-'), identity colour, and whether it's the primary. A single repo returns one entry. Use this to see which repos you're coordinating across and how to address each repo's overview.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public string list_repos()

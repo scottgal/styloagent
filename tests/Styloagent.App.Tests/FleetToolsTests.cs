@@ -53,6 +53,8 @@ public class FleetToolsTests
         public IReadOnlyList<string> RecentFiles(int limit) => new[] { "/repo/Foo.cs — foss- (editing, 5s ago)" };
         public IReadOnlyList<Styloagent.Core.Docs.DocSearchHit> SearchDocs(string query, int limit) =>
             new[] { new Styloagent.Core.Docs.DocSearchHit("PROTOCOL", "/repo/.styloagent/PROTOCOL.md", Styloagent.Core.Docs.DocSource.Repo, ".styloagent/PROTOCOL.md") };
+        public Task<Styloagent.Core.Memory.MemoryRecallResult> RecallMemoryAsync(string query, string? type, int limit, int maxBytes) =>
+            Task.FromResult(new Styloagent.Core.Memory.MemoryRecallResult([], false, 0, 0));
         public IReadOnlyList<RepoInfo>? ReposOverride;   // open_document tests point this at a real temp root
         public IReadOnlyList<RepoInfo> ListRepos() => ReposOverride ?? new[]
         {

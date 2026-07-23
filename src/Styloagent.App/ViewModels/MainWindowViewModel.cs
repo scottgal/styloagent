@@ -19,6 +19,7 @@ using Styloagent.Core.Hooks;
 using Styloagent.Git;
 using Styloagent.Core.Mcp;
 using Styloagent.Core.Model;
+using Styloagent.Core.Memory;
 using Styloagent.Core.Projects;
 using Styloagent.Core.Seeding;
 using Styloagent.Core.Diagrams;
@@ -2441,6 +2442,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         limit = Math.Clamp(limit <= 0 ? 8 : limit, 1, 30);
         return _searchIndex.Search(query ?? "", limit);
+    }
+
+    /// <summary>Retrieves bounded, citeable memory blocks; Markdown remains authoritative and the index is disposable.</summary>
+    public Task<MemoryRecallResult> RecallMemoryAsync(string query, string? type, int limit, int maxBytes)
+    {
+        var root = _project?.Root ?? _repoRoot;
+        if (string.IsNullOrWhiteSpace(root)) return Task.FromResult(new MemoryRecallResult([], false, 0, 0));
+        var config = _project ?? ProjectConfig.For(root);
+        var options = MemoryRagOptions.Read(config.Root, config.MemoryRagPath);
+        return MemoryRecallService.RecallAsync(options, query ?? "", type, limit <= 0 ? null : limit,
+            maxBytes <= 0 ? null : maxBytes);
     }
 
     // ── Workspace repos (multi-repo) ─────────────────────────────────────────

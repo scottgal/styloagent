@@ -33,6 +33,8 @@ public class StyloagentMcpServerTests
         public IReadOnlyList<string> RecentFiles(int limit) => Array.Empty<string>();
         public IReadOnlyList<Styloagent.Core.Docs.DocSearchHit> SearchDocs(string query, int limit) =>
             Array.Empty<Styloagent.Core.Docs.DocSearchHit>();
+        public Task<Styloagent.Core.Memory.MemoryRecallResult> RecallMemoryAsync(string query, string? type, int limit, int maxBytes) =>
+            Task.FromResult(new Styloagent.Core.Memory.MemoryRecallResult([], false, 0, 0));
         public IReadOnlyList<RepoInfo> ListRepos() => Array.Empty<RepoInfo>();
         public IReadOnlyList<Styloagent.Core.Architecture.AuthorityViolation> LintAuthority() =>
             Array.Empty<Styloagent.Core.Architecture.AuthorityViolation>();

@@ -29,6 +29,7 @@ public interface IFleetController
     string WhoTouched(string path);
     IReadOnlyList<string> RecentFiles(int limit);
     IReadOnlyList<Docs.DocSearchHit> SearchDocs(string query, int limit);
+    Task<Memory.MemoryRecallResult> RecallMemoryAsync(string query, string? type, int limit, int maxBytes);
     IReadOnlyList<RepoInfo> ListRepos();
     IReadOnlyList<AuthorityViolation> LintAuthority();
 }

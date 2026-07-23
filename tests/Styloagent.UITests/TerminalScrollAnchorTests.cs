@@ -163,6 +163,30 @@ public class TerminalScrollAnchorTests
         });
     }
 
+    [Fact]
+    public Task WheelImmediatelyAfterPtyWrite_ReconcilesTheNewBufferBeforePainting()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var view = new TerminalControl();
+            var window = new Window { Width = 720, Height = 420, Content = view };
+            window.Show(); await Drain(); view.Attach(fake);
+            for (int i = 0; i < 300; i++) fake.FireOutput($"LINE_{i:0000} ABCDEFGHIJKLMNOPQRSTUVWXYZ\r\n");
+            await Drain();
+
+            // Deliberately do NOT drain: this is the production race where the VT state changed but the
+            // coalesced Render-priority rebuild has not run when the operator starts scrolling upward.
+            fake.FireOutput("LINE_0300 ABCDEFGHIJKLMNOPQRSTUVWXYZ\r\n");
+            Assert.True(view.HandleWheelScroll(3));
+            await Drain();
+
+            var screen = view.GetVisualDescendants().OfType<SelectableTextBlock>().First(t => t.Name == "ScreenText");
+            AssertWholeMarkerRows(InlineText(screen));
+            window.Close();
+        });
+    }
+
     private static void AssertWholeMarkerRows(string rendered)
     {
         foreach (var raw in rendered.Split('\n'))

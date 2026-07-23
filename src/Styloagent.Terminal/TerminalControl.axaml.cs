@@ -37,6 +37,10 @@ public sealed partial class TerminalControl : UserControl
     // render snapshot. Serialize every mutation, resize and buffer read so a wheel-triggered visible-slice
     // render can never combine rows/cells from different buffer generations (garbled scrollback).
     private readonly object _terminalGate = new();
+    // PTY output may change XTerm between a wheel event and its queued UI rebuild. Never paint a slice
+    // using the old row/YBase mapping against that newer buffer generation.
+    private long _bufferGeneration;
+    private long _renderGeneration;
     private readonly AvaloniaList<string> _rows = new();
     private IPtySession? _session;
 
@@ -418,7 +422,11 @@ public sealed partial class TerminalControl : UserControl
     {
         // Write to XTerm engine — Terminal.Write is safe to call from any thread. This is the VT-state
         // update and MUST stay eager and in-order; only the (expensive) rebuild is deferred/coalesced.
-        lock (_terminalGate) _terminal.Write(text);
+        lock (_terminalGate)
+        {
+            _terminal.Write(text);
+            _bufferGeneration++;
+        }
 
         // Coalesce the buffer rebuild. A streaming agent (its startup banner, a TUI redraw) fires Output
         // in a rapid burst; rebuilding the full transcript once PER CHUNK let the render queue outpace its
@@ -971,6 +979,7 @@ public sealed partial class TerminalControl : UserControl
 
         _rowCount = count;
         _cursorAbsRow = cursorAbsRow;
+        _renderGeneration = _bufferGeneration;
 
         // BOTTOM-ANCHOR: a terminal rests its last row on the bottom edge — output scrolls UP off the top and
         // a short buffer pads at the TOP, never floating in the middle/top of the pane. When the transcript
@@ -1013,7 +1022,17 @@ public sealed partial class TerminalControl : UserControl
     /// </summary>
     private void RenderVisibleSlice(bool forceRebuild = false)
     {
-        lock (_terminalGate) RenderVisibleSliceCore(forceRebuild);
+        lock (_terminalGate)
+        {
+            // A user scroll must not briefly render a newer XTerm buffer through stale extent/row state.
+            // Reconcile synchronously; the normal output path remains coalesced for performance.
+            if (_renderGeneration != _bufferGeneration)
+            {
+                RebuildRowsCore();
+                return;
+            }
+            RenderVisibleSliceCore(forceRebuild);
+        }
     }
 
     private void RenderVisibleSliceCore(bool forceRebuild = false)

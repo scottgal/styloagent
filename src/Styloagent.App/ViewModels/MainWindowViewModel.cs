@@ -2524,11 +2524,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public string GitSidebarTitle
         => _repos.Count > 1 && SelectedPane is not null ? $"Git · {RepoNameForPrefix(SelectedPane.Prefix)}" : "Git";
 
+    /// <summary>
+    /// Repository identity for the Git sidebar. This is deliberately presentation-only: Git operations
+    /// continue to use the selected pane's explicit worktree path in <see cref="RefreshGitPanelFor"/>.
+    /// Empty for a single-repository workspace, where showing the repo name adds no useful context.
+    /// </summary>
+    public string GitSidebarRepositoryName
+        => _repos.Count > 1 && SelectedPane is { } pane ? RepoNameForPrefix(pane.Prefix) : "";
+
     private void RaiseTitleChanged()
     {
         OnPropertyChanged(nameof(ProjectName));
         OnPropertyChanged(nameof(WindowTitle));
         OnPropertyChanged(nameof(GitSidebarTitle));
+        OnPropertyChanged(nameof(GitSidebarRepositoryName));
     }
 
     /// <summary>
@@ -2547,6 +2556,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         DocLibrary?.SetRepositoryRoots(roots.Repositories, roots.ChannelRoot, roots.LogsRoot);
         RebuildRoster();   // repo set changed → re-attribute + regroup the roster (BUG 3)
         RaiseTitleChanged();   // primary repo now known → refresh the title
+        OnPropertyChanged(nameof(GitSidebarRepositoryName));
     }
 
     /// <summary>
@@ -2560,6 +2570,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _repos = _repos.Append(RepoInfoFor(overview)).ToList();
         RebuildRoster();
         RaiseTitleChanged();
+        OnPropertyChanged(nameof(GitSidebarRepositoryName));
     }
 
     private static RepoInfo RepoInfoFor(Styloagent.Core.Workspace.RepoOverview o) => new(
@@ -2773,6 +2784,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (oldValue is not null) oldValue.IsSelected = false;
         if (newValue is not null) newValue.IsSelected = true;
         OnPropertyChanged(nameof(GitSidebarTitle));
+        OnPropertyChanged(nameof(GitSidebarRepositoryName));
         RefreshGitPanelFor(newValue);
     }
 

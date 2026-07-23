@@ -75,6 +75,28 @@ public sealed class MemoryRecallService
         return new MemoryRecallResult(hits, queryEmbedding is not null && dense.Count > 0, filtered.Count, used);
     }
 
+    /// <summary>Proactively refreshes changed/new vectors and removes deleted files from the disposable cache.</summary>
+    public static async Task RebuildAsync(MemoryRagOptions options, CancellationToken ct = default)
+    {
+        var docs = ReadDocuments(options.Root);
+        var cache = LoadCache(options.IndexPath);
+        var paths = docs.Select(d => d.Path).ToHashSet(StringComparer.Ordinal);
+        var changed = cache.Keys.Where(path => !paths.Contains(path)).ToList();
+        foreach (var path in changed) cache.Remove(path);
+        foreach (var doc in docs)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (cache.TryGetValue(doc.Path, out var current) && current.MtimeUtcTicks == doc.MtimeUtcTicks && current.Vector.Length > 0) continue;
+            try
+            {
+                var vector = await EmbedAsync(options, doc.Name + "\n" + doc.Description + "\n" + doc.Body, ct);
+                if (vector is not null) cache[doc.Path] = new CachedVector(doc.MtimeUtcTicks, vector);
+            }
+            catch { /* the next file event / retrieval retries; offline BM25 remains valid */ }
+        }
+        SaveCache(options.IndexPath, cache);
+    }
+
     private static Dictionary<MemoryDocument, double> Bm25(IReadOnlyList<MemoryDocument> docs, IReadOnlyList<string> query)
     {
         var terms = query.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();

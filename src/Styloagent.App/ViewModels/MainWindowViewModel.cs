@@ -697,6 +697,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // _project) so the Git panel can fall back to it for agents without their own worktree.
     private string? _repoRoot;
     private RouterHost? _routerHost;
+    private MemoryIndexWatcher? _memoryIndexWatcher;
 
     // Per-agent markdown log writer (session-'s AgentLogWriter, item-3 slice 1). Driven off the same
     // hook Stop stream as the badges; wired in AttachProject because the project root — which locates
@@ -1796,6 +1797,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(FleetHudText));
         Issues?.Dispose();
         Issues = new IssuesViewModel(project.IssuesDir, OpenDocumentByPath);
+        _memoryIndexWatcher?.Dispose();
+        _memoryIndexWatcher = new MemoryIndexWatcher(MemoryRagOptions.Read(project.Root, project.MemoryRagPath));
 
         // Start (or restart) the RouterHost whenever a project is attached so the coordinator
         // drives the ledger at project.RouterRoot.  Dispose the previous host first (idempotent).
@@ -3734,6 +3737,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         _routerHost?.Dispose();
         _routerHost = null;
+        _memoryIndexWatcher?.Dispose();
+        _memoryIndexWatcher = null;
 
         _gitWatcher?.Dispose();
         _gitWatcher = null;

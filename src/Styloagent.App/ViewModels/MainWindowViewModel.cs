@@ -20,6 +20,7 @@ using Styloagent.Git;
 using Styloagent.Core.Mcp;
 using Styloagent.Core.Model;
 using Styloagent.Core.Memory;
+using Styloagent.Core.Retrieval;
 using Styloagent.Core.Projects;
 using Styloagent.Core.Seeding;
 using Styloagent.Core.Diagrams;
@@ -2453,6 +2454,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var options = MemoryRagOptions.Read(config.Root, config.MemoryRagPath);
         return MemoryRecallService.RecallAsync(options, query ?? "", type, limit <= 0 ? null : limit,
             maxBytes <= 0 ? null : maxBytes);
+    }
+
+    public Task<ContextRetrievalResult> RetrieveContextAsync(string caller, string query, string[]? sources, int limit, int maxBytes)
+    {
+        var root = _project?.Root ?? _repoRoot;
+        if (string.IsNullOrWhiteSpace(root)) return Task.FromResult(new ContextRetrievalResult([], 0, new Dictionary<string, int>()));
+        var config = _project ?? ProjectConfig.For(root);
+        var memory = MemoryRagOptions.Read(config.Root, config.MemoryRagPath);
+        var prefixes = Panes.Select(p => p.Prefix).Append(caller).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        return ContextRetrievalService.RetrieveAsync(config.Root, config.ChannelRoot, config.IssuesDir, prefixes, memory, caller,
+            query ?? "", sources, limit, maxBytes);
     }
 
     // ── Workspace repos (multi-repo) ─────────────────────────────────────────

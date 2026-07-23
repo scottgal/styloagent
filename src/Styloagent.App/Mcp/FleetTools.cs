@@ -281,6 +281,20 @@ public sealed class FleetTools
         return JsonSerializer.Serialize(result, Json);
     }
 
+    [McpServerTool, Description("Build a bounded briefing pack for the current task from selected sources: memory, docs, bus, issues (all by default). Uses LucidRAG-style RRF over lexical relevance, source salience, and freshness. Bus returns active/recent threads only and boosts messages addressed to you; issues returns open only. Every result is a citeable source-sized block. Live fleet, environment and browser state are deliberately excluded: use their deterministic tools. No synthesis is performed.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> retrieve_context(string query, string[]? sources = null, int limit = 8, int maxBytes = 6144)
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        var caller = McpAuth.CallerPrefix(ctx);
+        if (caller is null) return "unauthorized: missing caller identity";
+        var allowed = new[] { "memory", "docs", "bus", "issues" };
+        var requested = (sources ?? []).Where(s => allowed.Contains(s, StringComparer.OrdinalIgnoreCase)).ToArray();
+        var result = await _controller.RetrieveContextAsync(caller, query, requested, Math.Clamp(limit, 1, 20), Math.Clamp(maxBytes, 1024, 32 * 1024));
+        return JsonSerializer.Serialize(result, Json);
+    }
+
     [McpServerTool, Description("List the repos in the open workspace: each repo's name, path, index, overview prefix (e.g. 'overview-' for the primary, 'lucidresume-'), identity colour, and whether it's the primary. A single repo returns one entry. Use this to see which repos you're coordinating across and how to address each repo's overview.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public string list_repos()

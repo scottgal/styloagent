@@ -87,6 +87,11 @@ public sealed class FleetController : IFleetController
             ? _vm.RecallMemoryAsync(query, type, limit, maxBytes)
             : Dispatcher.UIThread.InvokeAsync(() => _vm.RecallMemoryAsync(query, type, limit, maxBytes));
 
+    public Task<Styloagent.Core.Retrieval.ContextRetrievalResult> RetrieveContextAsync(string caller, string query, string[]? sources, int limit, int maxBytes)
+        => Dispatcher.UIThread.CheckAccess()
+            ? _vm.RetrieveContextAsync(caller, query, sources, limit, maxBytes)
+            : Dispatcher.UIThread.InvokeAsync(() => _vm.RetrieveContextAsync(caller, query, sources, limit, maxBytes));
+
     public IReadOnlyList<RepoInfo> ListRepos()
         => Dispatcher.UIThread.CheckAccess()
             ? _vm.BuildRepoList()

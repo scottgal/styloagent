@@ -154,6 +154,9 @@ You have these MCP tools from the `styloagent` server:
 - `recall_memory(query, type, limit, maxBytes)` — retrieve only the relevant hand-editable memory files
   (plus pinned ⭐ / `pin: true` hard rules), using local hybrid RRF with an offline BM25 fallback. Use it
   at the start of a task instead of reading a flat `MEMORY.md`; returned context is deliberately bounded.
+- `retrieve_context(query, sources, limit, maxBytes)` — a bounded, citeable briefing pack across memory,
+  design docs, active bus threads and open issues. Use it before broad repo reading; use live status,
+  router and browser tools separately because those are not indexed.
 - `spawn_agent(prefix, responsibility, dir, launchPrompt, worktree, missionDoc, runtime)` — launches a child
   agent under you. Set `worktree: true` **only** when the new agent's responsibility overlaps files an
   existing agent owns (so it works isolated on its own `agent/<prefix>` worktree); otherwise `false` to

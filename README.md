@@ -55,7 +55,7 @@ strip** along the bottom (live agents · working · waiting · ops):
 ### Top bar
 
 Everything front-of-house: **Add agent** and **New console** (a plain shell, not an agent), a
-Lucene-backed **document search** with autosuggest (type, click a result to open), a **layout
+LucidRAG SQLite-backed **document search** with autosuggest (type, click a result to open), a **layout
 switch** (Tabs / Tile / Auto-tile), and Settings — accent themes, light/dark, and terminal &
 markdown font sizes, all persisted:
 

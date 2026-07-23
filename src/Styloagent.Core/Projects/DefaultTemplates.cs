@@ -149,7 +149,7 @@ You have these MCP tools from the `styloagent` server:
   file another agent may own, so you coordinate instead of colliding — context beyond worktrees.
 - `recent_files(limit)` — the files most recently touched across the fleet: a quick map of where
   everyone is working.
-- `search_docs(query, limit)` — search the project's documents (Lucene, prefix, title-boosted) and get
+- `search_docs(query, limit)` — search the project's documents (LucidRAG SQLite FTS5, prefix, title-boosted) and get
   the top matches (title + path). Use it to find the protocol, design/lifecycle docs and plans and
   read only what's relevant — cheaper than scanning files.
 - `recall_memory(query, type, limit, maxBytes)` — retrieve only the relevant hand-editable memory files

@@ -70,7 +70,7 @@ The cockpit has three columns and two strips:
 
 | Region | What lives there |
 | --- | --- |
-| **Top bar** | **Add agent**, **New console** (a plain shell, not an agent), a Lucene-backed **document search** with autosuggest, a **layout switch** (Tabs / Tile / Auto-tile), and **Settings**. |
+| **Top bar** | **Add agent**, **New console** (a plain shell, not an agent), a LucidRAG SQLite-backed **document search** with autosuggest, a **layout switch** (Tabs / Tile / Auto-tile), and **Settings**. |
 | **Left column** | The **roster** of agents (colour-coded, with live state badges) above the **Signal Bus** (attention-first message threads). |
 | **Centre** | Dockable **agent terminals** — real `claude` (or any CLI) sessions over a PTY. Float them, tab them, or tile them. |
 | **Right panel** | A tabbed inspector: **Timeline · Documents · Issues · Git · Router**. |
@@ -246,7 +246,7 @@ lists, and real Naiad diagrams, all rendered natively rather than as flat text.
 
 ### Document search
 
-The top bar carries a **Lucene-backed document search** with autosuggest. Start typing and Styloagent
+The top bar carries a **LucidRAG SQLite-backed document search** with autosuggest. Start typing and Styloagent
 queries an index built from every library document's **title and content**, showing up to eight live
 suggestions. Click a suggestion to open that document; the box resets for the next search.
 

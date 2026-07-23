@@ -190,4 +190,24 @@ public class DocumentSearchIndexTests
         using var idx = new DocumentSearchIndex();
         Assert.Empty(idx.Search("anything"));
     }
+
+    [Fact]
+    public void Persistent_sqlite_index_survives_reopening_the_database()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"styloagent-search-{Guid.NewGuid():N}.db");
+        try
+        {
+            using (var writer = new DocumentSearchIndex(path))
+                writer.Build(new[] { Doc("SQLite RAG", "rag.md", "hybrid document retrieval") });
+
+            using (var reader = new DocumentSearchIndex(path))
+                Assert.Contains(reader.Search("hybrid"), h => h.Title == "SQLite RAG");
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path + "-wal")) File.Delete(path + "-wal");
+            if (File.Exists(path + "-shm")) File.Delete(path + "-shm");
+        }
+    }
 }

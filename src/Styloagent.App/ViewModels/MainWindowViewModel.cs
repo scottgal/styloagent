@@ -1996,13 +1996,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _ = console.StartAsync(_launcher, cwd);
     }
 
-    // ── Document search (Lucene, top-bar autosuggest) ────────────────────────
-    private readonly Styloagent.Core.Docs.DocumentSearchIndex _searchIndex = new();
+    // ── Document search (LucidRAG SQLite FTS5, top-bar autosuggest) ──────────
+    private Styloagent.Core.Docs.DocumentSearchIndex _searchIndex = new();
 
     /// <summary>Live document-search suggestions for the top-bar box (updated as the query changes).</summary>
     public ObservableCollection<Styloagent.Core.Docs.DocSearchHit> SearchResults { get; } = new();
 
-    /// <summary>The top-bar search text — each change re-queries the Lucene index for suggestions.</summary>
+    /// <summary>The top-bar search text — each change re-queries the SQLite FTS index for suggestions.</summary>
     [ObservableProperty]
     private string _searchQuery = "";
 
@@ -2031,12 +2031,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         });
     }
 
-    /// <summary>(Re)builds the document search index. Names+titles first (no file reads) so the doc
-    /// library's in-pane by-name box answers almost immediately, then the full-text content streams in.</summary>
+    /// <summary>(Re)builds the persistent LucidRAG SQLite index. Names+titles arrive first (no file reads),
+    /// then the full-text corpus replaces that lightweight pass.</summary>
     private void BuildSearchIndex(string? repoRoot, string? channelRoot)
     {
         try
         {
+            if (!string.IsNullOrWhiteSpace(repoRoot))
+            {
+                var dbPath = Path.Combine(repoRoot, ".styloagent", "rag", "documents.db");
+                var old = _searchIndex;
+                _searchIndex = new Styloagent.Core.Docs.DocumentSearchIndex(dbPath);
+                old.Dispose();
+            }
             var entries = Styloagent.Core.Docs.DocLibraryReader.Read(repoRoot, channelRoot);
             _searchIndex.BuildNames(entries);   // filename+title field live first — powers SearchByName
             _searchIndex.Build(entries.Select(e => (e, SafeReadFile(e.FullPath))));   // full-text streams in
@@ -2441,7 +2448,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             .ToList();
     }
 
-    /// <summary>Searches the document library (Lucene) — top matches so an agent reads only the relevant docs.</summary>
+    /// <summary>Searches the SQLite-backed document library — top matches so an agent reads only relevant docs.</summary>
     public IReadOnlyList<Styloagent.Core.Docs.DocSearchHit> SearchDocs(string query, int limit)
     {
         limit = Math.Clamp(limit <= 0 ? 8 : limit, 1, 30);

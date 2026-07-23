@@ -81,7 +81,7 @@ public class DocLibraryReaderTests : IDisposable
         Directory.CreateDirectory(logs);
         File.WriteAllText(Path.Combine(chan, "PROTOCOL.md"), "# protocol");
         File.WriteAllText(Path.Combine(logs, "session-.md"),
-            "# Agent log — session-\n\n## 2026-07-17 01:47:30 · assistant\nindexed by lucene\n");
+            "# Agent log — session-\n\n## 2026-07-17 01:47:30 · assistant\nindexed by sqlite\n");
         try
         {
             var entries = DocLibraryReader.Read(repoRoot: null, channelRoot: chan);
@@ -90,7 +90,7 @@ public class DocLibraryReaderTests : IDisposable
             // End-to-end: the log must be discoverable via the existing document search.
             using var idx = new DocumentSearchIndex();
             idx.Build(entries.Select(e => (e, File.ReadAllText(e.FullPath))));
-            var hits = idx.Search("lucene");
+            var hits = idx.Search("sqlite");
             Assert.Contains(hits, h => h.FullPath == Path.Combine(logs, "session-.md"));
         }
         finally { Directory.Delete(baseDir, recursive: true); }

@@ -1,4 +1,5 @@
 using Styloagent.Core.Channel;
+using Styloagent.Core.Docs;
 using Styloagent.Core.Issues;
 using Styloagent.Core.Memory;
 using Styloagent.Core.Retrieval;
@@ -19,6 +20,11 @@ public sealed class ContextRetrievalServiceTests : IDisposable
         var memory = Path.Combine(cfg, "memory");
         Directory.CreateDirectory(memory);
         await File.WriteAllTextAsync(Path.Combine(_root, "design.md"), "# Browser approval\n\nPlaywright runs need owner approval.");
+        // Agent worktrees are implementation state, not project documentation. In particular, scanning
+        // them can re-discover the same source document many times through nested worktree links.
+        var nestedWorktree = Path.Combine(_root, ".claude", "worktrees", "agent", "README.md");
+        Directory.CreateDirectory(Path.GetDirectoryName(nestedWorktree)!);
+        await File.WriteAllTextAsync(nestedWorktree, "# Browser approval\n\nDuplicate agent-worktree copy.");
         ChannelMessageWriter.Write(channel, "overview-", "worker-", "browser approval", "Approve the Playwright run.", "urgent", DateTimeOffset.UtcNow);
         ChannelMessageWriter.Write(channel, "overview-", "worker-", "old resolved", "This is historical.", "normal", DateTimeOffset.UtcNow.AddMinutes(-2));
         ChannelMessageWriter.Reply(channel, "worker-", "old resolved", "done", DateTimeOffset.UtcNow.AddMinutes(-1));
@@ -29,6 +35,7 @@ public sealed class ContextRetrievalServiceTests : IDisposable
         var result = await ContextRetrievalService.RetrieveAsync(_root, channel, issues, ["worker-"], options, "worker-",
             "browser approval playwright", ["docs", "bus", "issues", "memory"], 12, 12_000);
 
+        Assert.DoesNotContain(DocLibraryReader.Read(_root, null), d => d.FullPath == nestedWorktree);
         Assert.True(result.Candidates["docs"] > 0);
         Assert.Equal(1, result.Candidates["bus"]);
         Assert.Equal(1, result.Candidates["issues"]);

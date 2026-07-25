@@ -72,6 +72,13 @@ public static class ContextRetrievalService
             counts["issues"] = candidates.Count(c => c.Source == "issues");
         }
 
+        // Roots can overlap in a workspace (or contain filesystem links), so the same Markdown section
+        // may be discovered twice. Candidate is a value record; collapse exact repeats before using it as
+        // a dictionary key for the independent RRF rankings.
+        candidates = candidates.Distinct().ToList();
+        foreach (var source in requested)
+            if (counts.ContainsKey(source)) counts[source] = candidates.Count(c => c.Source == source);
+
         var terms = Tokens(query).ToArray();
         var fused = Fuse(candidates, terms);
         var chosen = new List<ContextHit>();

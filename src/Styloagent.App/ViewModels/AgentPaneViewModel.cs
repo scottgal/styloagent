@@ -102,6 +102,8 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     [NotifyPropertyChangedFor(nameof(NeedsYou))]
     [NotifyPropertyChangedFor(nameof(StatusHeadline))]
     [NotifyPropertyChangedFor(nameof(WaitingTooltip))]
+    [NotifyPropertyChangedFor(nameof(PaneStatusLabel))]
+    [NotifyPropertyChangedFor(nameof(PaneStatusDetail))]
     private AgentHookState _hookState = AgentHookState.Unknown;
 
     /// <summary>Short human label for the current hook state, shown in the roster.</summary>
@@ -122,6 +124,7 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusHeadline))]
     [NotifyPropertyChangedFor(nameof(WaitingTooltip))]
+    [NotifyPropertyChangedFor(nameof(PaneStatusDetail))]
     private string _activityDetail = "";
 
     /// <summary>
@@ -132,6 +135,22 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
         HookState == AgentHookState.Working && !string.IsNullOrEmpty(ActivityDetail)
             ? ActivityDetail
             : HookStateText;
+
+    /// <summary>Short, high-contrast status for the header directly above this agent's terminal.</summary>
+    public string PaneStatusLabel => IsThrottled ? "THROTTLED" : HookState switch
+    {
+        AgentHookState.WaitingForHuman => "WAITING FOR YOU",
+        AgentHookState.Working => "WORKING",
+        AgentHookState.Idle => "IDLE",
+        AgentHookState.Exited => "EXITED",
+        _ => "STARTING",
+    };
+
+    /// <summary>The specific blocker when available, otherwise the agent's current activity.</summary>
+    public string PaneStatusDetail => NeedsYou
+        ? (HasWaitingQuestion ? WaitingQuestion : "Open this terminal to respond.")
+        : IsThrottled ? ThrottleTooltip
+        : StatusHeadline;
 
     /// <summary>Wall-clock time of the most recent hook event from this agent (null before first).</summary>
     public DateTimeOffset? LastActivityAt { get; private set; }
@@ -194,6 +213,7 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasWaitingQuestion))]
     [NotifyPropertyChangedFor(nameof(WaitingTooltip))]
+    [NotifyPropertyChangedFor(nameof(PaneStatusDetail))]
     private string _waitingQuestion = "";
 
     /// <summary>True when a pending question is available to show in the tooltip.</summary>
@@ -463,16 +483,20 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     /// <summary>True while this agent is in a detected API-error / rate-limit episode — it looks alive but is
     /// stalled. Drives the amber ⏳ roster badge so the operator reads it as throttled, not "working".</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PaneStatusLabel))]
+    [NotifyPropertyChangedFor(nameof(PaneStatusDetail))]
     private bool _isThrottled;
 
     /// <summary>The signature that opened the current throttle episode (e.g. "429", "overloaded").</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ThrottleTooltip))]
+    [NotifyPropertyChangedFor(nameof(PaneStatusDetail))]
     private string? _lastThrottleSignature;
 
     /// <summary>When the current throttle episode began (null when not throttled).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ThrottleTooltip))]
+    [NotifyPropertyChangedFor(nameof(PaneStatusDetail))]
     private DateTimeOffset? _throttledSince;
 
     /// <summary>Tooltip for the throttle badge — the matched signature + how long it's been throttled.</summary>

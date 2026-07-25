@@ -219,6 +219,17 @@ public class AgentPaneViewModelTests
     }
 
     [Fact]
+    public void Pane_status_surfaces_the_exact_waiting_question_above_the_terminal()
+    {
+        var vm = MakeVm();
+
+        vm.ApplyHookEvent(new HookEvent("foss", "Notification", "permission_prompt", "Allow network access for the deploy?", null, null));
+
+        Assert.Equal("WAITING FOR YOU", vm.PaneStatusLabel);
+        Assert.Equal("Allow network access for the deploy?", vm.PaneStatusDetail);
+    }
+
+    [Fact]
     public void SelectionBrushHex_IsIdentityColorWhenSelected_TransparentOtherwise()
     {
         var vm = MakeVm(borderColor: "#ABCDEF");

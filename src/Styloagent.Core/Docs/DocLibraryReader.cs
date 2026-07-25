@@ -25,7 +25,7 @@ public static class DocLibraryReader
 {
     private static readonly HashSet<string> ExcludedDirs = new(StringComparer.OrdinalIgnoreCase)
     {
-        "bin", "obj", ".git", "node_modules", ".vs", ".idea", ".superpowers",
+        "bin", "obj", ".git", "node_modules", ".vs", ".idea", ".superpowers", ".claude",
         // .styloagent/logs/.cursors/ holds the agent-log writer's per-agent cursor sidecars
         // (<prefix>.json) — machine state, never documents. Excluded so the log index never pulls it in.
         ".cursors",

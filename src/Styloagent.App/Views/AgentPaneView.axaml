@@ -10,18 +10,38 @@
           BorderThickness="1.5"
           CornerRadius="4"
           BoxShadow="0 2 8 0 #44000000">
-    <Grid ColumnDefinitions="3,*">
+    <Grid ColumnDefinitions="3,*" RowDefinitions="Auto,*">
 
       <!-- Left accent stripe -->
       <Border Name="AccentStripe"
-              Grid.Column="0"
+              Grid.Column="0" Grid.RowSpan="2"
               Background="{Binding BorderColorHex}"
               CornerRadius="4,0,0,4" />
 
-      <!-- The pane header chrome (name + ⋯ actions + zoom + theme) moved ONTO the dock tab header
-           (cockpit-, DockTabStyles.axaml), so the terminal now fills the whole pane — no header row. -->
+      <!-- Context and state live with the terminal, so tiled panes cannot be visually mismatched with
+           a separate roster row. The detail becomes the precise pending question when the agent waits. -->
+      <Border Grid.Column="1" Grid.Row="0"
+              Background="{DynamicResource PanelHeaderBgBrush}"
+              BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1"
+              Padding="8,4">
+        <Grid ColumnDefinitions="Auto,*,150" ColumnSpacing="8">
+          <TextBlock Text="{Binding PaneStatusLabel}" FontSize="9" FontWeight="SemiBold"
+                     Foreground="{Binding HookStateColorHex}" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="1" Text="{Binding PaneStatusDetail}" FontSize="10"
+                     Foreground="{DynamicResource PrimaryTextBrush}" TextTrimming="CharacterEllipsis"
+                     VerticalAlignment="Center" ToolTip.Tip="{Binding WaitingTooltip}" />
+          <Grid Grid.Column="2" ColumnDefinitions="*,Auto" ColumnSpacing="6"
+                ToolTip.Tip="{Binding UsageText}" VerticalAlignment="Center">
+            <ProgressBar Name="PaneContextUsageBar" Minimum="0" Maximum="1" Height="5"
+                         Value="{Binding ContextFraction}" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" Text="{Binding ContextPercentText}" FontSize="9"
+                       Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+          </Grid>
+        </Grid>
+      </Border>
+
       <terminal:TerminalControl Name="Terminal"
-                                Grid.Column="1"
+                                Grid.Column="1" Grid.Row="1"
                                 ZoomLevel="{Binding ZoomLevel, Mode=TwoWay}" />
     </Grid>
   </Border>

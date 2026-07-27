@@ -95,4 +95,21 @@ public class ChannelMessageWriterTests
         }
         finally { Directory.Delete(root, recursive: true); }
     }
+
+    [Fact]
+    public async Task Reply_removes_the_thread_from_the_live_bus_section()
+    {
+        var root = TempChannel();
+        try
+        {
+            ChannelMessageWriter.Write(root, "foss-", "router-", "Need a review", "Please review.", "normal", DateTimeOffset.Now);
+            ChannelMessageWriter.Reply(root, "router-", "Need a review", "Reviewed.", DateTimeOffset.Now);
+
+            var thread = (await new ChannelProjection().ReadAsync(root, Prefixes)).Single();
+            var view = BusThreadClassifier.Classify(thread);
+
+            Assert.Equal(BusThreadSection.Archive, view.Section);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
 }

@@ -90,4 +90,25 @@ public class ChannelProjectionTests
 
         Assert.Empty(threads);
     }
+
+    [Fact]
+    public async Task Same_subject_for_two_recipients_stays_in_two_threads_and_one_reply_only_completes_its_recipient()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "bus-collision-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "inbox"));
+        Directory.CreateDirectory(Path.Combine(root, "outbox"));
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "inbox", "foss-status.md"), "**From:** ops\n\n# status\n");
+            File.WriteAllText(Path.Combine(root, "inbox", "overview-status.md"), "**From:** ops\n\n# status\n");
+            File.WriteAllText(Path.Combine(root, "outbox", "status.reply.md"), "**From:** foss-\n\n# status\nDone.\n");
+
+            var threads = await new ChannelProjection().ReadAsync(root, KnownPrefixes);
+
+            Assert.Equal(2, threads.Count);
+            Assert.Equal(BusMessageState.Replied, threads.Single(t => t.Prefixes.Contains("foss-")).Messages.Single(m => m.Kind == BusMessageKind.Inbox).State);
+            Assert.Equal(BusMessageState.New, threads.Single(t => t.Prefixes.Contains("overview-")).Messages.Single(m => m.Kind == BusMessageKind.Inbox).State);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
 }

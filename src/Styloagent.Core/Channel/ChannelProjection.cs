@@ -57,40 +57,42 @@ public sealed class ChannelProjection
             }
         }
 
-        // Historical replies are named either <thread>.reply.md (the documented form) or
-        // <sender>-<thread>.reply.md. Resolve both against the actual inbox slugs before we classify;
-        // otherwise a reply becomes an unrelated thread and its original note remains queued forever.
-        var inboxSlugs = allMessages.Where(m => m.Kind == BusMessageKind.Inbox)
-            .Select(m => m.Slug).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        allMessages = allMessages.Select(m =>
+        // Thread identity is recipient-prefix + slug. Slugs are human-friendly subjects and routinely
+        // collide ("status", "review", ...); grouping on a slug alone lets one recipient's completion
+        // mark another recipient's task done. Replies are associated with the inbox addressed to their
+        // **From:** agent, with legacy filename-prefix matching as a fallback.
+        var inboxes = allMessages.Where(m => m.Kind == BusMessageKind.Inbox).ToList();
+        var keys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var completed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var message in allMessages)
         {
-            if (m.Kind is not (BusMessageKind.Reply or BusMessageKind.BroadcastReply)) return m;
-            var raw = ReplyBaseName(m.FilePath);
+            if (message.Kind is not (BusMessageKind.Reply or BusMessageKind.BroadcastReply))
+            {
+                keys[message.FilePath] = ThreadKey(message.RoutingPrefix, message.Slug);
+                continue;
+            }
+
+            var raw = ReplyBaseName(message.FilePath);
             var stripped = StripKnownPrefix(raw, knownPrefixes);
-            var resolved = inboxSlugs.Contains(raw) ? raw : inboxSlugs.Contains(stripped) ? stripped : m.Slug;
-            return m with { Slug = resolved };
-        }).ToList();
+            var candidates = inboxes.Where(i =>
+                    (i.Slug.Equals(raw, StringComparison.OrdinalIgnoreCase) || i.Slug.Equals(stripped, StringComparison.OrdinalIgnoreCase))
+                    && (!string.IsNullOrWhiteSpace(message.From)
+                        ? i.RoutingPrefix.Equals(message.From, StringComparison.OrdinalIgnoreCase)
+                        : i.RoutingPrefix.Equals(message.RoutingPrefix, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+            var inbox = candidates.Count == 1 ? candidates[0] : null;
+            var key = inbox is null ? ThreadKey(message.RoutingPrefix, message.Slug) : ThreadKey(inbox.RoutingPrefix, inbox.Slug);
+            keys[message.FilePath] = key;
+            if (inbox is not null) completed.Add(key);
+        }
 
-        // Determine Replied state: inbox messages whose slug has a reply anywhere
-        var replySlugs = allMessages
-            .Where(m => m.Kind is BusMessageKind.Reply or BusMessageKind.BroadcastReply)
-            .Select(m => m.Slug)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        allMessages = allMessages.Select(m =>
+            m.Kind == BusMessageKind.Inbox && m.State == BusMessageState.New && completed.Contains(keys[m.FilePath])
+                ? m with { State = BusMessageState.Replied }
+                : m).ToList();
 
-        allMessages = allMessages
-            .Select(m =>
-                m.Kind == BusMessageKind.Inbox && m.State == BusMessageState.New && replySlugs.Contains(m.Slug)
-                    ? m with { State = BusMessageState.Replied }
-                    : m)
-            .ToList();
-
-        // Group by slug into threads.
-        // NOTE: threads are keyed on SLUG alone (cross-prefix), which assumes slugs are
-        // unique per topic across all routing prefixes.  This is intentional — the
-        // file-drop protocol guarantees slug uniqueness per topic so that inbox, outbox,
-        // and reply files for the same conversation always collapse into one thread.
         var threads = allMessages
-            .GroupBy(m => m.Slug, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(m => keys[m.FilePath], StringComparer.OrdinalIgnoreCase)
             .Select(g =>
             {
                 var messages = g
@@ -103,7 +105,7 @@ public sealed class ChannelProjection
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToList();
 
-                return new BusThread(g.Key, messages, prefixes);
+                return new BusThread(messages[0].Slug, messages, prefixes) { Key = g.Key };
             })
             .OrderByDescending(t =>
                 t.Messages
@@ -152,10 +154,19 @@ public sealed class ChannelProjection
             // Best-effort: up to (and including) the first '-'
             var dashIdx = baseName.IndexOf('-');
             if (dashIdx < 0)
-                return null; // can't parse
-
-            routingPrefix = baseName[..(dashIdx + 1)];
-            remainder = baseName[(dashIdx + 1)..];
+            {
+                // A documented reply is <thread>.reply.md. A one-word thread ("status") has no
+                // routing dash at all, but its **From:** header identifies the recipient inbox during
+                // reply resolution above. Dropping it here made that completion stay ACTIVE forever.
+                if (!isReply) return null;
+                routingPrefix = string.Empty;
+                remainder = baseName;
+            }
+            else
+            {
+                routingPrefix = baseName[..(dashIdx + 1)];
+                remainder = baseName[(dashIdx + 1)..];
+            }
         }
 
         // Strip follow-up- / redirect- markers from remainder to get slug
@@ -232,6 +243,9 @@ public sealed class ChannelProjection
             .OrderByDescending(p => p.Length)
             .Select(p => value[p.Length..])
             .FirstOrDefault() ?? value;
+
+    private static string ThreadKey(string prefix, string slug)
+        => $"{prefix.Trim().ToLowerInvariant()}\u001f{slug.Trim().ToLowerInvariant()}";
 
     /// <summary>
     /// Maps a <c>**Priority:**</c> header value to a <see cref="MessagePriority"/>. Case-insensitive

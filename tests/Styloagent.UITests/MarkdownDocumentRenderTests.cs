@@ -56,6 +56,7 @@ public class MarkdownDocumentRenderTests : IDisposable
             }
 
             Assert.True(TextEls() >= 1, "LucidMarkdownView should render markdown into text blocks");
+            Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "readme.md");
 
             await ScreenshotCapture.CaptureControlAsync(window, view, path);
             window.Close();

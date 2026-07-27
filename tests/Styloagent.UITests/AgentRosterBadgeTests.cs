@@ -70,8 +70,8 @@ public class AgentRosterBadgeTests
                 Assert.True(vm.ShowRosterContext);
 
                 var template = (IDataTemplate)new AgentsView().Resources["AgentRowTemplate"]!;
-                var host = new ContentControl { Width = 240, Height = 140, ContentTemplate = template, Content = pane };
-                window = new Window { Width = 260, Height = 160, Content = host };
+                var host = new ContentControl { Width = 280, Height = 140, ContentTemplate = template, Content = pane };
+                window = new Window { Width = 300, Height = 160, Content = host };
                 window.Show();
                 await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
 

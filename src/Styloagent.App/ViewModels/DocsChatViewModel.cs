@@ -17,7 +17,7 @@ public sealed partial class DocsChatViewModel : Document, global::Dock.Controls.
 
     [ObservableProperty] private string _draft = "";
     [ObservableProperty] private bool _isThinking;
-    public string Status => IsThinking ? "Searching project documents…" : "Grounded in project documentation · gemma4:4b";
+    public string Status => IsThinking ? "Searching and synthesizing with the local model…" : "Grounded in project documentation · gemma4:4b";
     partial void OnIsThinkingChanged(bool value) => OnPropertyChanged(nameof(Status));
 
     public DocsChatViewModel(Func<string, Task<DocumentAnswer>> answer)

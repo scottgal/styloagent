@@ -1472,7 +1472,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         var docRepoRoot = repoRoot ?? Environment.GetEnvironmentVariable("STYLOAGENT_REPO") ?? Directory.GetCurrentDirectory();
         vm.DocLibrary = new DocLibraryViewModel(docRepoRoot, channelRoot, vm.OpenMarkdownDocument,
-            nameSearch: term => vm._searchIndex.SearchByName(term, 200))
+            nameSearch: term => vm.SearchIndex(index => index.SearchByName(term, 200)))
         {
             ShowSystemMapCommand = vm.ShowSystemMapCommand,
             ShowBusSequenceCommand = vm.ShowBusSequenceCommand,
@@ -1958,20 +1958,25 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Writes an immutable completion report for a thread, which makes the bus projection mark it DONE.</summary>
-    public Task<MessageOutcome> ReplyToBusThreadAsync(string callerPrefix, string thread, string body)
+    public async Task<MessageOutcome> ReplyToBusThreadAsync(string callerPrefix, string thread, string body)
     {
-        if (_channelRoot is null) return Task.FromResult(MessageOutcome.Fail("no active channel"));
-        if (string.IsNullOrWhiteSpace(thread)) return Task.FromResult(MessageOutcome.Fail("thread is required"));
+        if (_channelRoot is null) return MessageOutcome.Fail("no active channel");
+        if (string.IsNullOrWhiteSpace(thread)) return MessageOutcome.Fail("thread is required");
         try
         {
             var path = ChannelMessageWriter.Reply(_channelRoot, callerPrefix, thread, body ?? string.Empty, DateTimeOffset.Now);
             var color = Panes.FirstOrDefault(p => p.Prefix == callerPrefix)?.BorderColorHex ?? "#8888AA";
             Timeline.Add(DateTimeOffset.Now, callerPrefix, $"completed · {thread}", color);
-            return Task.FromResult(MessageOutcome.Ok(path));
+            // Do not wait for FileSystemWatcher delivery here. A completion is a lifecycle transition: the
+            // source inbox message must leave ACTIVE immediately, even on filesystems that coalesce/drop
+            // the outbox create event.
+            if (_busViewModel is not null)
+                await _busViewModel.LoadAsync().ConfigureAwait(false);
+            return MessageOutcome.Ok(path);
         }
         catch (Exception ex)
         {
-            return Task.FromResult(MessageOutcome.Fail(ex.Message));
+            return MessageOutcome.Fail(ex.Message);
         }
     }
 
@@ -1998,6 +2003,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     // ── Document search (LucidRAG SQLite FTS5, top-bar autosuggest) ──────────
     private Styloagent.Core.Docs.DocumentSearchIndex _searchIndex = new();
+    private readonly object _searchIndexGate = new();
 
     /// <summary>Live document-search suggestions for the top-bar box (updated as the query changes).</summary>
     public ObservableCollection<Styloagent.Core.Docs.DocSearchHit> SearchResults { get; } = new();
@@ -2010,7 +2016,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         SearchResults.Clear();
         if (string.IsNullOrWhiteSpace(value)) return;
-        foreach (var hit in _searchIndex.Search(value, 8))
+        foreach (var hit in SearchIndex(index => index.Search(value, 8)))
             SearchResults.Add(hit);
     }
 
@@ -2037,16 +2043,21 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         try
         {
-            if (!string.IsNullOrWhiteSpace(repoRoot))
+            var dbPath = string.IsNullOrWhiteSpace(repoRoot)
+                ? null
+                : Path.Combine(repoRoot, ".styloagent", "rag", "documents.db");
+            var next = new Styloagent.Core.Docs.DocumentSearchIndex(dbPath);
+            var entries = Styloagent.Core.Docs.DocLibraryReader.Read(repoRoot, channelRoot);
+            next.BuildNames(entries);
+            next.Build(entries.Select(e => (e, SafeReadFile(e.FullPath))));
+            Styloagent.Core.Docs.DocumentSearchIndex old;
+            lock (_searchIndexGate)
             {
-                var dbPath = Path.Combine(repoRoot, ".styloagent", "rag", "documents.db");
-                var old = _searchIndex;
-                _searchIndex = new Styloagent.Core.Docs.DocumentSearchIndex(dbPath);
+                old = _searchIndex;
+                _searchIndex = next;
+                next = null!;
                 old.Dispose();
             }
-            var entries = Styloagent.Core.Docs.DocLibraryReader.Read(repoRoot, channelRoot);
-            _searchIndex.BuildNames(entries);   // filename+title field live first — powers SearchByName
-            _searchIndex.Build(entries.Select(e => (e, SafeReadFile(e.FullPath))));   // full-text streams in
         }
         catch (Exception ex)
         {
@@ -2058,6 +2069,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         try { return File.Exists(path) ? File.ReadAllText(path) : ""; }
         catch { return ""; }
+    }
+
+    private T SearchIndex<T>(Func<Styloagent.Core.Docs.DocumentSearchIndex, T> search)
+    {
+        lock (_searchIndexGate)
+            return search(_searchIndex);
     }
 
     /// <summary>
@@ -2452,7 +2469,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public IReadOnlyList<Styloagent.Core.Docs.DocSearchHit> SearchDocs(string query, int limit)
     {
         limit = Math.Clamp(limit <= 0 ? 8 : limit, 1, 30);
-        return _searchIndex.Search(query ?? "", limit);
+        return SearchIndex(index => index.Search(query ?? "", limit));
     }
 
     /// <summary>Retrieves bounded, citeable memory blocks; Markdown remains authoritative and the index is disposable.</summary>
@@ -2726,14 +2743,23 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         return primary;
     }
 
-    /// <summary>Expands/collapses the row and brings its terminal document to front.</summary>
+    /// <summary>Brings an agent's terminal document to front without changing the roster row's detail state.</summary>
     [RelayCommand]
     private void SelectPane(AgentPaneViewModel pane)
     {
-        pane.IsRosterExpanded = !pane.IsRosterExpanded;
-        if (pane.IsRosterExpanded) pane.TickRelativeTimes();
         SelectedPane = pane;
         ActivateDocumentFor(pane);
+    }
+
+    /// <summary>Expands/collapses roster metadata without selecting or activating the agent tab.</summary>
+    [RelayCommand]
+    private void ToggleRosterDetails(AgentPaneViewModel pane)
+    {
+        // This is a real operator interaction, but deliberately does not change SelectedPane: the arrow
+        // is the "details only" action and remains distinct from SelectPane.
+        _interaction.RecordInput();
+        pane.IsRosterExpanded = !pane.IsRosterExpanded;
+        if (pane.IsRosterExpanded) pane.TickRelativeTimes();
     }
 
     /// <summary>
@@ -3799,7 +3825,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         _busViewModel?.Dispose();
         Issues?.Dispose();
-        _searchIndex.Dispose();
+        lock (_searchIndexGate) _searchIndex.Dispose();
 
         // Tear down every federated repo instance: its bus feed + its own hooks channel (and temp dir).
         foreach (var inst in _repoInstances)

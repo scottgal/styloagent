@@ -2,24 +2,44 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Styloagent.App.ViewModels"
              xmlns:rag="using:Styloagent.Core.Retrieval"
+             xmlns:lucid="clr-namespace:Mostlylucid.LucidView.Markdown;assembly=Mostlylucid.LucidView.Markdown"
              x:Class="Styloagent.App.Views.DocsChatView"
              x:DataType="vm:DocsChatViewModel">
   <Grid RowDefinitions="Auto,*,Auto" Background="{DynamicResource AppBackgroundBrush}">
     <Border Padding="18,12" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
-      <StackPanel Spacing="2"><TextBlock Text="Docs chat" FontWeight="SemiBold" FontSize="16"/><TextBlock Text="{Binding Status}" FontSize="11" Foreground="{DynamicResource MutedTextBrush}"/></StackPanel>
+      <StackPanel Spacing="2"><TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="16"/><TextBlock Text="{Binding Status}" FontSize="11" Foreground="{DynamicResource MutedTextBrush}"/></StackPanel>
     </Border>
-    <ScrollViewer Grid.Row="1" Margin="18,14">
+    <ScrollViewer Grid.Row="1" Margin="18,14" VerticalScrollBarVisibility="Auto">
       <ItemsControl ItemsSource="{Binding Messages}">
         <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:DocsChatMessage">
-          <Border MaxWidth="800" Margin="0,0,0,12" Padding="12,9" CornerRadius="8">
-            <Border.Styles><Style Selector="Border"><Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/></Style></Border.Styles>
-            <StackPanel Spacing="7"><TextBlock Text="{Binding Text}" TextWrapping="Wrap"/><ItemsControl ItemsSource="{Binding Sources}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="rag:ContextHit"><TextBlock Text="{Binding Title}" FontSize="11" Foreground="{DynamicResource MutedTextBrush}"/></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></StackPanel>
-          </Border>
+          <Grid ColumnDefinitions="*,*" Margin="0,0,0,12">
+            <Border Grid.Column="0" MaxWidth="760" HorizontalAlignment="Left" Padding="12,9" CornerRadius="10"
+                    Background="{DynamicResource SurfaceBrush}" IsVisible="{Binding !IsUser}">
+              <StackPanel Spacing="7">
+                <TextBlock Text="Docs assistant" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource MutedTextBrush}"/>
+                <lucid:LucidMarkdownView Markdown="{Binding Text}" Foreground="{DynamicResource PrimaryTextBrush}" />
+                <ItemsControl ItemsSource="{Binding Sources}">
+                  <ItemsControl.ItemTemplate><DataTemplate x:DataType="rag:ContextHit">
+                    <TextBlock Text="{Binding Title}" FontSize="11" Foreground="{DynamicResource MutedTextBrush}" TextTrimming="CharacterEllipsis"/>
+                  </DataTemplate></ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+            <Border Grid.Column="1" MaxWidth="620" HorizontalAlignment="Right" Padding="12,9" CornerRadius="10"
+                    Background="#213452" IsVisible="{Binding IsUser}">
+              <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Foreground="{DynamicResource PrimaryTextBrush}"/>
+            </Border>
+          </Grid>
         </DataTemplate></ItemsControl.ItemTemplate>
       </ItemsControl>
     </ScrollViewer>
     <Border Grid.Row="2" Padding="14" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0">
-      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8"><TextBox Text="{Binding Draft}" Watermark="Ask about the docs…"/><Button Grid.Column="1" Command="{Binding SendCommand}" Content="Send"/></Grid>
+      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+        <TextBox Text="{Binding Draft}" Watermark="Ask about the docs…" IsEnabled="{Binding !IsThinking}"/>
+        <ProgressBar Grid.Column="1" Width="42" Height="4" IsIndeterminate="True" VerticalAlignment="Center"
+                     IsVisible="{Binding IsThinking}" ToolTip.Tip="Searching and synthesizing…"/>
+        <Button Grid.Column="2" Command="{Binding SendCommand}" Content="Send" IsEnabled="{Binding !IsThinking}"/>
+      </Grid>
     </Border>
   </Grid>
 </UserControl>

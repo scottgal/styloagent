@@ -17,27 +17,32 @@
     <!-- One roster row. Extracted to a resource so it can be rendered on a single control in a
          screenshot test (a headless ItemsControl doesn't materialize its item containers). -->
     <DataTemplate x:Key="AgentRowTemplate" DataType="vm:AgentPaneViewModel">
-      <Button HorizontalAlignment="Stretch"
-              HorizontalContentAlignment="Stretch"
-              Background="Transparent"
-              BorderThickness="0"
-              Padding="0"
-              Margin="0,1,0,0"
-              Command="{Binding DataContext.SelectPaneCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-              CommandParameter="{Binding}">
-        <Border Background="{Binding RowHighlightHex}"
-                BorderBrush="{Binding SelectionBrushHex}"
-                BorderThickness="1"
-                CornerRadius="2"
-                Classes.needsYou="{Binding NeedsYou}"
-                Margin="{Binding Depth, Converter={x:Static conv:DepthToMarginConverter.Instance}}">
-          <Grid ColumnDefinitions="4,*,Auto">
+      <Border Background="{Binding RowHighlightHex}"
+              BorderBrush="{Binding SelectionBrushHex}"
+              BorderThickness="1"
+              CornerRadius="2"
+              Classes.needsYou="{Binding NeedsYou}"
+              Margin="{Binding Depth, Converter={x:Static conv:DepthToMarginConverter.Instance}}">
+          <Grid ColumnDefinitions="4,Auto,*,Auto">
             <!-- Per-agent identity colour (same as its terminal accent) -->
             <Border Grid.Column="0" Background="{Binding BorderColorHex}" Width="4" />
-            <StackPanel Grid.Column="1" Margin="8,6" Spacing="2">
+            <!-- Expansion is a deliberate, separate affordance. Selecting a tab must not also expand it. -->
+            <Button x:Name="RosterExpander" Grid.Column="1" Width="26" Padding="0" Background="Transparent" BorderThickness="0"
+                    ToolTip.Tip="Show agent details"
+                    Command="{Binding DataContext.ToggleRosterDetailsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                    CommandParameter="{Binding}">
+              <TextBlock Text="{Binding RosterExpansionGlyph}" FontSize="10"
+                         Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center"
+                         HorizontalAlignment="Center" />
+            </Button>
+            <Button x:Name="AgentTabSelector" Grid.Column="2" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                    VerticalAlignment="Stretch" VerticalContentAlignment="Top"
+                    Background="Transparent" BorderThickness="0" Padding="0"
+                    ToolTip.Tip="Select this agent tab"
+                    Command="{Binding DataContext.SelectPaneCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                    CommandParameter="{Binding}">
+            <StackPanel Margin="0,6" Spacing="2">
               <StackPanel Orientation="Horizontal" Spacing="6">
-                <TextBlock Text="{Binding RosterExpansionGlyph}" FontSize="10"
-                           Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
                 <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="12"
                            Foreground="{Binding BorderColorHex}" />
                 <!-- Hidden marker: the agent is off-screen but still running (Fix F) -->
@@ -82,17 +87,20 @@
                 <TextBlock Text="{Binding UsageText}" FontSize="9"
                            Foreground="{DynamicResource MutedTextBrush}" />
               </StackPanel>
-              <!-- Context pressure remains visible even while the rest of the row is compact. -->
-              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6" Height="10"
+              <!-- This aligns to the selected tab's title column, not the expander/action columns. -->
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" Height="12"
                     ToolTip.Tip="{Binding UsageText}">
-                <ProgressBar Name="ContextUsageBar" Grid.Column="0" Minimum="0" Maximum="1"
+                <TextBlock Text="Context" FontSize="8" Foreground="{DynamicResource MutedTextBrush}"
+                           VerticalAlignment="Center" />
+                <ProgressBar Name="ContextUsageBar" Grid.Column="1" Minimum="0" Maximum="1"
                              Value="{Binding ContextFraction}" Height="4" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="1" Text="{Binding ContextPercentText}" FontSize="8"
+                <TextBlock Grid.Column="2" Text="{Binding ContextPercentText}" FontSize="8"
                            Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
               </Grid>
             </StackPanel>
+            </Button>
             <!-- Quick Approve + per-agent management menu + identity dot (amber when the agent needs you) -->
-            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4"
                         VerticalAlignment="Center" Margin="0,0,8,0">
               <!-- One-click: send "Yes" to a waiting agent's permission prompt (hover = the question) -->
               <Button Content="Approve" FontSize="9" Padding="6,1" VerticalAlignment="Center"
@@ -136,8 +144,7 @@
               <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{Binding HookStateColorHex}" />
             </StackPanel>
           </Grid>
-        </Border>
-      </Button>
+      </Border>
     </DataTemplate>
   </UserControl.Resources>
 

@@ -293,7 +293,7 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                     var built = threads.Select(t =>
                     {
                         var view = BusThreadClassifier.Classify(t);
-                        string key = t.Slug;
+                        string key = t.Key;
                         var lastActivity = view.LastActivity;
                         bool seen = _viewState.IsSeen(key, lastActivity);
                         bool archived = _viewState.IsArchived(key);

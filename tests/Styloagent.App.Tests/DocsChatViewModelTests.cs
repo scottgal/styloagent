@@ -19,4 +19,21 @@ public sealed class DocsChatViewModelTests
         Assert.Equal("Answer [S1]", vm.Messages[2].Text);
         Assert.Single(vm.Messages[2].Sources!);
     }
+
+    [Fact]
+    public async Task Send_exposes_thinking_state_until_local_synthesis_completes()
+    {
+        var pending = new TaskCompletionSource<DocumentAnswer>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var vm = new DocsChatViewModel(_ => pending.Task) { Draft = "Summarise the design" };
+
+        var sending = vm.SendCommand.ExecuteAsync(null);
+        Assert.True(vm.IsThinking);
+        Assert.Contains("synthesizing", vm.Status, StringComparison.OrdinalIgnoreCase);
+
+        pending.SetResult(new DocumentAnswer("Synthesised answer", [], true));
+        await sending;
+
+        Assert.False(vm.IsThinking);
+        Assert.Equal("Synthesised answer", vm.Messages[^1].Text);
+    }
 }

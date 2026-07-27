@@ -365,9 +365,10 @@ public class MainWindowViewModelTests : IDisposable
     public async Task SelectPane_MarksOnlyTheSelectedPaneAsSelected()
     {
         var root = MakeTwoAgentChannel();
+        MainWindowViewModel? vm = null;
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(
+            vm = await MainWindowViewModel.InitializeAsync(
                 root, new FakeLauncher(), new FakeWatcher());
 
             // The first pane is selected on init.
@@ -386,7 +387,11 @@ public class MainWindowViewModelTests : IDisposable
             Assert.True(first.IsSelected);
             Assert.False(second.IsSelected);
         }
-        finally { Directory.Delete(root, recursive: true); }
+        finally
+        {
+            vm?.Dispose();
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]
@@ -429,9 +434,10 @@ public class MainWindowViewModelTests : IDisposable
         File.WriteAllText(promptFile, promptContent);
 
         var launcher = new FakeLauncher();
+        MainWindowViewModel? vm = null;
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(
+            vm = await MainWindowViewModel.InitializeAsync(
                 _channelRoot,
                 launcher,
                 new FakeWatcher(),
@@ -453,6 +459,7 @@ public class MainWindowViewModelTests : IDisposable
         }
         finally
         {
+            vm?.Dispose();
             Directory.Delete(repoRoot, recursive: true);
             File.Delete(promptFile);
         }

@@ -69,7 +69,11 @@ public class ChangesWriteViewTests(HeadlessAvaloniaFixture fx) : IDisposable
     {
         public Task<GitResult<IReadOnlyList<GitBranch>>> ListBranchesAsync(string w, CancellationToken ct = default)
             => Task.FromResult(GitResult<IReadOnlyList<GitBranch>>.Success(
-                new List<GitBranch> { new GitBranch("main", IsCurrent: true) }));
+                new List<GitBranch>
+                {
+                    new GitBranch("main", IsCurrent: true, IsMerged: true),
+                    new GitBranch("feature/release", IsCurrent: false, IsMerged: false),
+                }));
 
         public Task<GitResult> CreateBranchAsync(string w, string name, CancellationToken ct = default)
             => Task.FromResult(GitResult.Success());
@@ -93,6 +97,21 @@ public class ChangesWriteViewTests(HeadlessAvaloniaFixture fx) : IDisposable
         }
     }
 
+    private sealed class FakeTags : IGitTag
+    {
+        public Task<GitResult<IReadOnlyList<GitTag>>> ListTagsAsync(string w, CancellationToken ct = default)
+        {
+            IReadOnlyList<GitTag> tags = new[] { new GitTag("v1.2.3", "deadbeef") };
+            return Task.FromResult(GitResult<IReadOnlyList<GitTag>>.Success(tags));
+        }
+
+        public Task<GitResult> CreateAnnotatedTagAsync(string w, string name, string message, CancellationToken ct = default)
+            => Task.FromResult(GitResult.Success());
+
+        public Task<GitResult> PushTagsAsync(string w, CancellationToken ct = default)
+            => Task.FromResult(GitResult.Success());
+    }
+
     public void Dispose() { }
 
     // ── render test ──────────────────────────────────────────────────────────
@@ -102,7 +121,7 @@ public class ChangesWriteViewTests(HeadlessAvaloniaFixture fx) : IDisposable
     {
         return fx.DispatchAsync(async () =>
         {
-            var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash());
+            var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash(), new FakeTags());
             await vm.LoadAsync("/wt");
 
             var view   = new ChangesView { DataContext = vm };
@@ -122,6 +141,8 @@ public class ChangesWriteViewTests(HeadlessAvaloniaFixture fx) : IDisposable
             // File paths
             Assert.Contains(texts, s => s.Contains("unstaged.txt"));
             Assert.Contains(texts, s => s.Contains("staged.txt"));
+            Assert.Contains(texts, s => s.Contains("1 unmerged"));
+            Assert.Contains(texts, s => s.Contains("v1.2.3"));
 
             // Stage button exists
             var buttons = window.GetVisualDescendants().OfType<Button>()
@@ -134,6 +155,7 @@ public class ChangesWriteViewTests(HeadlessAvaloniaFixture fx) : IDisposable
             Assert.Contains(buttons, b => b == "Pull");
             Assert.Contains(buttons, b => b == "Stash");
             Assert.Contains(buttons, b => b == "Pop");
+            Assert.Contains(buttons, b => b == "Push tags");
 
             await ScreenshotCapture.CaptureControlAsync(window, view, "/tmp/styloagent-changes.png");
             window.Close();

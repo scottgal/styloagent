@@ -1,4 +1,7 @@
 namespace Styloagent.Core.Git;
 
-/// <summary>A local git branch and whether it is the currently checked-out branch.</summary>
-public sealed record GitBranch(string Name, bool IsCurrent);
+/// <summary>A local git branch, whether it is checked out, and whether it is already reachable from HEAD.</summary>
+public sealed record GitBranch(string Name, bool IsCurrent, bool IsMerged = false)
+{
+    public string MergeState => IsCurrent ? "current" : IsMerged ? "merged" : "unmerged";
+}

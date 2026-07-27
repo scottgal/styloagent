@@ -105,12 +105,20 @@ public sealed class GitService : IGitService, IGitLog, IGitDiff, IGitWrite, IGit
         var r = await RunAsync(worktreePath, ct, "for-each-ref", "--format=%(refname:short)", "refs/heads").ConfigureAwait(false);
         if (!r.Ok) return GitResult<IReadOnlyList<GitBranch>>.Fail(r.Stderr);
 
+        // The operator needs to see work that still needs integration, not merely every local name.
+        // `branch --merged <current>` is deterministic for the checked-out worktree and includes HEAD.
+        var mergeBase = string.IsNullOrEmpty(currentName) ? "HEAD" : currentName;
+        var mergedResult = await RunAsync(worktreePath, ct, "branch", "--format=%(refname:short)", "--merged", mergeBase).ConfigureAwait(false);
+        if (!mergedResult.Ok) return GitResult<IReadOnlyList<GitBranch>>.Fail(mergedResult.Stderr);
+        var merged = mergedResult.Stdout.Split('\n').Select(x => x.Trim()).Where(x => x.Length > 0)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var branches = new List<GitBranch>();
         foreach (var raw in r.Stdout.Split('\n'))
         {
             var name = raw.Trim();
             if (name.Length == 0) continue;
-            branches.Add(new GitBranch(name, name == currentName));
+            branches.Add(new GitBranch(name, name == currentName, merged.Contains(name)));
         }
         return GitResult<IReadOnlyList<GitBranch>>.Success(branches);
     }

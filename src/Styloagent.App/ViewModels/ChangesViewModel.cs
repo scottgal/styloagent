@@ -49,11 +49,15 @@ public sealed partial class ChangesViewModel : ObservableObject
 
     public bool HasWriteError => !string.IsNullOrEmpty(WriteError);
     public bool HasTagging => _tags is not null;
+    public string UnmergedBranchSummary => Branches.Count(b => !b.IsCurrent && !b.IsMerged) is var count && count > 0
+        ? $"{count} unmerged" : "all merged";
+    public string ExistingTagsText => Tags.Count == 0 ? "No tags" : string.Join(", ", Tags.TakeLast(4).Select(t => t.Name));
 
     public ObservableCollection<GitChange> Files        { get; } = new();
     public ObservableCollection<GitChange> StagedFiles  { get; } = new();
     public ObservableCollection<GitChange> UnstagedFiles { get; } = new();
     public ObservableCollection<GitBranch> Branches     { get; } = new();
+    public ObservableCollection<GitTag> Tags             { get; } = new();
     public ObservableCollection<string>    Stashes      { get; } = new();
 
     public DiffViewModel Diff { get; } = new();
@@ -91,8 +95,11 @@ public sealed partial class ChangesViewModel : ObservableObject
         {
             SelectedBranch = null;
             Branches.Clear();
+            Tags.Clear();
         }
         finally { _loadingBranches = false; }
+        OnPropertyChanged(nameof(UnmergedBranchSummary));
+        OnPropertyChanged(nameof(ExistingTagsText));
         Files.Clear();
         StagedFiles.Clear();
         UnstagedFiles.Clear();
@@ -140,7 +147,10 @@ public sealed partial class ChangesViewModel : ObservableObject
         if (_tags is null || string.IsNullOrEmpty(_worktreePath)) return;
         var result = await _tags.ListTagsAsync(_worktreePath);
         if (!result.Ok || result.Value is null) return;
+        Tags.Clear();
+        foreach (var tag in result.Value.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)) Tags.Add(tag);
         SuggestedTag = SuggestNextTag(result.Value.Select(t => t.Name));
+        OnPropertyChanged(nameof(ExistingTagsText));
     }
 
     [RelayCommand]
@@ -196,13 +206,14 @@ public sealed partial class ChangesViewModel : ObservableObject
         try
         {
             Branches.Clear();
-            foreach (var b in r.Value)
+            foreach (var b in r.Value.OrderBy(b => b.IsCurrent ? 0 : b.IsMerged ? 2 : 1).ThenBy(b => b.Name, StringComparer.OrdinalIgnoreCase))
                 Branches.Add(b);
 
             CurrentBranch  = Branches.FirstOrDefault(b => b.IsCurrent)?.Name;
             SelectedBranch = Branches.FirstOrDefault(b => b.IsCurrent);
         }
         finally { _loadingBranches = false; }
+        OnPropertyChanged(nameof(UnmergedBranchSummary));
     }
 
     /// <summary>Fires a branch switch when the user selects a non-current branch; no-ops during data load.</summary>

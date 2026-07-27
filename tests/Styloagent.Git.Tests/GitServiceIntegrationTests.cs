@@ -90,6 +90,34 @@ public class GitServiceIntegrationTests
     }
 
     [Fact]
+    public async Task Existing_tags_can_be_listed_created_and_pushed_to_a_local_bare_remote()
+    {
+        if (!GitAvailable()) return;
+        var root = Path.Combine(Path.GetTempPath(), "gittags-" + Guid.NewGuid().ToString("N"));
+        var bare = Path.Combine(root, "remote.git");
+        var work = Path.Combine(root, "work");
+        Directory.CreateDirectory(bare); Directory.CreateDirectory(work);
+        try
+        {
+            Run(bare, "init --bare -b main");
+            Run(work, "init -b main"); Run(work, "config user.email t@t.t"); Run(work, "config user.name t");
+            File.WriteAllText(Path.Combine(work, "a.txt"), "one\n"); Run(work, "add -A"); Run(work, "commit -m init");
+            Run(work, $"remote add origin \"{bare}\""); Run(work, "push -u origin main");
+            Run(work, "tag v1.2.3");
+
+            var git = new Styloagent.Git.GitService();
+            var existing = await git.ListTagsAsync(work);
+            Assert.Contains(existing.Value!, t => t.Name == "v1.2.3");
+
+            Assert.True((await git.CreateAnnotatedTagAsync(work, "v1.2.4", "Release 1.2.4")).Ok);
+            Assert.True((await git.PushTagsAsync(work)).Ok);
+            Run(bare, "show-ref --verify refs/tags/v1.2.3");
+            Run(bare, "show-ref --verify refs/tags/v1.2.4");
+        }
+        finally { TryDeleteRepo(root); }
+    }
+
+    [Fact]
     public async Task GetDiff_reports_an_unstaged_change()
     {
         if (!GitAvailable()) return;
@@ -154,6 +182,18 @@ public class GitServiceIntegrationTests
             Assert.True((await git.SwitchBranchAsync(repo, "main")).Ok);
             var after = await git.ListBranchesAsync(repo);
             Assert.Contains(after.Value!, b => b.Name == "main" && b.IsCurrent);
+            Assert.Contains(after.Value!, b => b.Name == "feature" && b.IsMerged);
+
+            Assert.True((await git.SwitchBranchAsync(repo, "feature")).Ok);
+            File.WriteAllText(Path.Combine(repo, "feature.txt"), "feature\n");
+            Run(repo, "add -A"); Run(repo, "commit -m feature");
+            Assert.True((await git.SwitchBranchAsync(repo, "main")).Ok);
+            var diverged = await git.ListBranchesAsync(repo);
+            Assert.Contains(diverged.Value!, b => b.Name == "feature" && !b.IsMerged);
+
+            Run(repo, "merge --no-ff feature -m merge-feature");
+            var merged = await git.ListBranchesAsync(repo);
+            Assert.Contains(merged.Value!, b => b.Name == "feature" && b.IsMerged);
         }
         finally { TryDeleteRepo(repo); }
     }

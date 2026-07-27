@@ -11,7 +11,7 @@
 
       <!-- ── Branch bar ─────────────────────────────────────────────────────── -->
       <Border Grid.Row="0" Background="{DynamicResource PanelHeaderBgBrush}" Padding="6,4">
-        <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
           <!-- Current-branch label -->
           <TextBlock Grid.Column="0"
                      Text="Branch:"
@@ -29,15 +29,19 @@
                     MinWidth="150"
                     MaxWidth="280"
                     x:Name="BranchComboBox">
-            <ComboBox.ItemTemplate>
-              <DataTemplate DataType="git:GitBranch">
-                <TextBlock Text="{Binding Name}"
-                           FontSize="11" />
-              </DataTemplate>
-            </ComboBox.ItemTemplate>
+          <ComboBox.ItemTemplate>
+            <DataTemplate DataType="git:GitBranch">
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <TextBlock Text="{Binding Name}" FontSize="11" />
+                <TextBlock Text="{Binding MergeState}" FontSize="9" Foreground="{DynamicResource MutedTextBrush}" />
+              </StackPanel>
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
           </ComboBox>
+          <TextBlock Grid.Column="2" Text="{Binding UnmergedBranchSummary}" FontSize="10"
+                     Foreground="{DynamicResource AttentionBrush}" VerticalAlignment="Center" Margin="6,0,0,0" />
           <!-- New branch text box -->
-          <TextBox Grid.Column="2"
+          <TextBox Grid.Column="3"
                    Text="{Binding NewBranchName}"
                    Watermark="new branch"
                    FontSize="11"
@@ -45,7 +49,7 @@
                    Width="110"
                    Margin="6,0,0,0" />
           <!-- Create branch button -->
-          <Button Grid.Column="3"
+          <Button Grid.Column="4"
                   Content="+"
                   FontSize="11"
                   Padding="6,2"
@@ -134,7 +138,7 @@
       </ListBox>
 
       <!-- ── Commit bar + push/pull/stash actions ─────────────────────────── -->
-      <Grid Grid.Row="5" RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
+      <Grid Grid.Row="5" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*">
 
         <!-- Error banner -->
         <Border Grid.Row="0"
@@ -195,8 +199,12 @@
           <Button Grid.Column="4" Content="Push tags" FontSize="11" Padding="7,3" Command="{Binding PushTagsCommand}" />
         </Grid>
 
+        <TextBlock Grid.Row="4" Text="{Binding ExistingTagsText}" FontSize="9"
+                   Foreground="{DynamicResource MutedTextBrush}" TextTrimming="CharacterEllipsis" Margin="6,2,6,0"
+                   IsVisible="{Binding HasTagging}" />
+
         <!-- Stash row -->
-        <Grid Grid.Row="4" ColumnDefinitions="Auto,Auto,*" Margin="6,4,6,6">
+        <Grid Grid.Row="5" ColumnDefinitions="Auto,Auto,*" Margin="6,4,6,6">
           <Button Grid.Column="0"
                   Content="Stash"
                   FontSize="11" Padding="8,4"
@@ -223,7 +231,7 @@
         </Grid>
 
         <!-- Diff panel -->
-        <views:DiffView Grid.Row="5" DataContext="{Binding Diff}" />
+        <views:DiffView Grid.Row="6" DataContext="{Binding Diff}" />
 
       </Grid>
 

@@ -290,6 +290,16 @@ public class ChangesViewModelTests
         Assert.Equal("main", vm.CurrentBranch);
     }
 
+    [Fact]
+    public async Task LoadAsync_surfaces_unmerged_branches_before_merged_branches()
+    {
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash());
+        await vm.LoadAsync("/wt");
+
+        Assert.Equal("1 unmerged", vm.UnmergedBranchSummary);
+        Assert.False(vm.Branches.Single(b => b.Name == "feature").IsMerged);
+    }
+
     // ── Branch: SwitchAsync delegates to IGitBranch ──────────────────────────
 
     [Fact]

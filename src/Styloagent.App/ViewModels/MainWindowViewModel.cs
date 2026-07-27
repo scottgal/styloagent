@@ -1481,7 +1481,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // Build the (content) search index OFF the startup critical path — it reads every doc's full text,
         // which was a big chunk of the "show everything is slow" cost. With the doc library now lazy, the
         // index is no longer needed to populate the tree, so it can finish in the background.
-        _ = Task.Run(() => vm.BuildSearchIndex(docRepoRoot, channelRoot));
+        vm._searchIndexBuildTask = Task.Run(() => vm.BuildSearchIndex(docRepoRoot, channelRoot, vm._lifetimeCts.Token));
         vm.Timeline.OpenSource = vm.OpenSourceDocument;
         vm.Timeline.OpenDiff = vm.OpenDiffDocument;
 
@@ -2004,6 +2004,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // ── Document search (LucidRAG SQLite FTS5, top-bar autosuggest) ──────────
     private Styloagent.Core.Docs.DocumentSearchIndex _searchIndex = new();
     private readonly object _searchIndexGate = new();
+    private readonly CancellationTokenSource _lifetimeCts = new();
+    private Task? _searchIndexBuildTask;
 
     /// <summary>Live document-search suggestions for the top-bar box (updated as the query changes).</summary>
     public ObservableCollection<Styloagent.Core.Docs.DocSearchHit> SearchResults { get; } = new();
@@ -2039,29 +2041,43 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     /// <summary>(Re)builds the persistent LucidRAG SQLite index. Names+titles arrive first (no file reads),
     /// then the full-text corpus replaces that lightweight pass.</summary>
-    private void BuildSearchIndex(string? repoRoot, string? channelRoot)
+    private void BuildSearchIndex(string? repoRoot, string? channelRoot, CancellationToken ct)
     {
+        Styloagent.Core.Docs.DocumentSearchIndex? next = null;
         try
         {
+            ct.ThrowIfCancellationRequested();
             var dbPath = string.IsNullOrWhiteSpace(repoRoot)
                 ? null
                 : Path.Combine(repoRoot, ".styloagent", "rag", "documents.db");
-            var next = new Styloagent.Core.Docs.DocumentSearchIndex(dbPath);
+            next = new Styloagent.Core.Docs.DocumentSearchIndex(dbPath);
             var entries = Styloagent.Core.Docs.DocLibraryReader.Read(repoRoot, channelRoot);
+            ct.ThrowIfCancellationRequested();
             next.BuildNames(entries);
+            ct.ThrowIfCancellationRequested();
             next.Build(entries.Select(e => (e, SafeReadFile(e.FullPath))));
+            ct.ThrowIfCancellationRequested();
             Styloagent.Core.Docs.DocumentSearchIndex old;
             lock (_searchIndexGate)
             {
+                ct.ThrowIfCancellationRequested();
                 old = _searchIndex;
                 _searchIndex = next;
                 next = null!;
                 old.Dispose();
             }
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The cockpit is closing; never publish a background index after its owner has gone away.
+        }
         catch (Exception ex)
         {
             System.Diagnostics.Trace.WriteLine($"[MainWindowViewModel] search index build failed: {ex}");
+        }
+        finally
+        {
+            next?.Dispose();
         }
     }
 
@@ -3805,6 +3821,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     public void Dispose()
     {
+        _lifetimeCts.Cancel();
+        var searchIndexBuild = _searchIndexBuildTask;
+        if (searchIndexBuild is not null && !searchIndexBuild.IsCompleted)
+        {
+            try { searchIndexBuild.GetAwaiter().GetResult(); }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"[MainWindowViewModel] search index shutdown failed: {ex}"); }
+        }
+        _lifetimeCts.Dispose();
+
         _routerHost?.Dispose();
         _routerHost = null;
         _memoryIndexWatcher?.Dispose();

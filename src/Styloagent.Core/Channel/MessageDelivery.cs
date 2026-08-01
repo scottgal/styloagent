@@ -27,8 +27,9 @@ public static class MessageDelivery
                 ? DeliveryAction.InjectWithBreak
                 : DeliveryAction.Inject,
 
-            // Deliver at the next natural boundary: inject if already idle, otherwise wait for idle.
-            DeliveryMode.NextPrompt => recipientState == AgentHookState.Idle
+            // Deliver at the next natural boundary: inject if already idle or hooks are unknown. Unknown
+            // recipients have no reliable idle transition, so deferring would leave their messages stranded.
+            DeliveryMode.NextPrompt => recipientState is AgentHookState.Idle or AgentHookState.Unknown
                 ? DeliveryAction.Inject
                 : DeliveryAction.DeferUntilIdle,
 

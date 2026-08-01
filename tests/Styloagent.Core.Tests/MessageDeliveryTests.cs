@@ -17,6 +17,7 @@ public class MessageDeliveryTests
     [InlineData(DeliveryMode.Interrupt, AgentHookState.WaitingForHuman, DeliveryAction.Inject)]
     [InlineData(DeliveryMode.Interrupt, AgentHookState.Exited, DeliveryAction.None)]
     [InlineData(DeliveryMode.NextPrompt, AgentHookState.Idle, DeliveryAction.Inject)]
+    [InlineData(DeliveryMode.NextPrompt, AgentHookState.Unknown, DeliveryAction.Inject)]
     [InlineData(DeliveryMode.NextPrompt, AgentHookState.Working, DeliveryAction.DeferUntilIdle)]
     [InlineData(DeliveryMode.NextPrompt, AgentHookState.WaitingForHuman, DeliveryAction.DeferUntilIdle)]
     [InlineData(DeliveryMode.NextPrompt, AgentHookState.Exited, DeliveryAction.None)]
@@ -216,7 +217,7 @@ public class MessageDeliveryTests
     }
 
     [Fact]
-    public async Task Unknown_recipient_falls_back_to_injection_even_with_pending_configured()
+    public async Task Normal_to_unknown_recipient_injects_even_with_pending_configured()
     {
         var inj = new FakeInjector();
         var pending = TempPending();
@@ -224,7 +225,7 @@ public class MessageDeliveryTests
 
         // Hooks not yet wired (just spawned) → the injector is the safety net, and nothing is queued for a
         // hook that may never drain.
-        var action = await svc.DeliverAsync(Msg(MessagePriority.Urgent), "beta-", AgentHookState.Unknown);
+        var action = await svc.DeliverAsync(Msg(MessagePriority.Normal), "beta-", AgentHookState.Unknown);
 
         Assert.Equal(DeliveryAction.Inject, action);
         Assert.Single(inj.Calls);

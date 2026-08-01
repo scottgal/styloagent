@@ -99,18 +99,11 @@
               </Grid>
             </StackPanel>
             </Button>
-            <!-- Quick Approve + per-agent management menu + identity dot (amber when the agent needs you) -->
+            <!-- Per-agent management menu + identity dot + Approve (rightmost so it doesn't jump siblings) -->
             <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4"
                         VerticalAlignment="Center" Margin="0,0,8,0">
-              <!-- One-click: send "Yes" to a waiting agent's permission prompt (hover = the question) -->
-              <Button Content="Approve" FontSize="9" Padding="6,1" VerticalAlignment="Center"
-                      Background="#5A4A00" Foreground="#FFE9A8"
-                      IsVisible="{Binding NeedsYou}"
-                      Command="{Binding Host.ApprovePermissionCommand}"
-                      CommandParameter="{Binding}"
-                      ToolTip.Tip="{Binding WaitingTooltip}" />
-              <!-- Manage: every pane/tab action in one menu (Fix: tabs weren't functional).
-                   Flyout items bind via Host (the popup is outside the visual tree, so ancestor bindings fail). -->
+              <!-- Manage: every pane/tab action in one menu. Flyout items bind via Host
+                   (the popup is outside the visual tree, so ancestor bindings fail). -->
               <Button Content="⋯" FontSize="13" Padding="6,0" VerticalAlignment="Center"
                       ToolTip.Tip="Manage this agent">
                 <Button.Flyout>
@@ -142,6 +135,13 @@
                 </Button.Flyout>
               </Button>
               <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{Binding HookStateColorHex}" />
+              <!-- One-click Approve — rightmost so appearing doesn't shift ⋯ or ● -->
+              <Button Content="Approve" FontSize="9" Padding="6,1" VerticalAlignment="Center"
+                      Background="#5A4A00" Foreground="#FFE9A8"
+                      IsVisible="{Binding NeedsYou}"
+                      Command="{Binding Host.ApprovePermissionCommand}"
+                      CommandParameter="{Binding}"
+                      ToolTip.Tip="{Binding WaitingTooltip}" />
             </StackPanel>
           </Grid>
       </Border>

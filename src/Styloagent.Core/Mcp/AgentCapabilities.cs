@@ -58,6 +58,12 @@ public sealed record AgentCapabilities(IReadOnlyList<AgentRuntimeCapabilities> A
             new AgentCapability("gpt-5-codex", "GPT-5 Codex", new[] { "default", "low", "medium", "high", "xhigh" }),
             new AgentCapability("gpt-5", "GPT-5", new[] { "default", "low", "medium", "high", "xhigh" }),
         }),
+        new AgentRuntimeCapabilities("deepcode", new[]
+        {
+            new AgentCapability("default", "CLI default (deepseek-v4-pro)", new[] { "default", "low", "medium", "high" }),
+            new AgentCapability("deepseek-v4-pro", "DeepSeek V4 Pro", new[] { "default", "low", "medium", "high" }),
+            new AgentCapability("deepseek-v4-flash", "DeepSeek V4 Flash", new[] { "default", "low", "medium", "high" }),
+        }),
     };
 
     private sealed class AgentCapabilitiesFile

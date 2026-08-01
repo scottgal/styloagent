@@ -22,4 +22,14 @@ public class DefaultTemplatesTests
         Assert.Contains(text, DefaultTemplates.SystemPrompt);
         Assert.Contains(text, DefaultTemplates.Protocol);
     }
+
+    [Theory]
+    [InlineData("## Per-agent saved-context (required)")]
+    [InlineData("## Fleet roster and scope adjacency")]
+    [InlineData("Never put secret values")]
+    [InlineData("closest")]
+    public void Protocol_seeds_saved_context_discipline_and_roster_adjacency(string text)
+    {
+        Assert.Contains(text, DefaultTemplates.Protocol);
+    }
 }

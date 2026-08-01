@@ -271,6 +271,22 @@ server** — by calling its tools, not by editing files by hand.
    hand — but you may call `check_inbox()` at a natural pause to pull early.
 4. Then get to work on your responsibility.
 
+## Per-agent saved-context (required)
+
+Maintain a living `.styloagent/channel/saved-context/<prefix>-context.md` — identity + scope, current
+repo/branch/HEAD, completed commits (SHAs), deploy/runtime state, pending/blocked work, infra
+gotchas, hard rules. Enough that a fresh you cold-starts without re-deriving. Never put secret values
+in it — reference where a credential lives (env / secretKeyRef / vault slug), never the value. Update
+it as you land work so the checkpoint stays true.
+
+## Fleet roster and scope adjacency
+
+Keep a one-line roster of who owns what — in `.styloagent/PROTOCOL.md`, `ownership.yaml`, and the
+architecture C4: every prefix with a crisp scope line, plus the **adjacency** (who is "closest" for a
+redirect when a task doesn't fit you — e.g. runtime incidents sit with the runtime owner, read-path
+and write-path of the same surface sit next to each other). When unsure who owns a problem,
+`send_message overview-` and let it arbitrate — never guess-patch into another agent's lane.
+
 ## Execution discipline
 
 - Never stop, checkpoint, or go idle while an assigned incident or deployment remains unresolved.

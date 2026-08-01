@@ -155,6 +155,10 @@ public sealed class PortaPtySession : IPtySession
     {
         var buffer = new byte[4096];
         var token = _cts.Token;
+        // UTF-8 decoder with state so multi-byte characters (braille spinners, box-drawing, CJK)
+        // that are split across PTY read boundaries aren't replaced by U+FFFD replacement chars.
+        var decoder = Encoding.UTF8.GetDecoder();
+        var charBuffer = new char[4096];
 
         // DIAGNOSTIC (spawn-exit blocker): remember claude's own output so ReadLoop EXIT can dump what it
         // printed right before dying — that tail carries the actual reason for an exit-1. Remove with SpawnDiag.
@@ -191,7 +195,11 @@ public sealed class PortaPtySession : IPtySession
             }
 
             Volatile.Write(ref _lastOutputTicks, DateTime.UtcNow.Ticks);
-            var text = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+
+            // Decode incrementally: flush:false holds partial multi-byte characters until the
+            // next read completes them, preventing shredded UTF-8 from becoming U+FFFD garbage.
+            int charsDecoded = decoder.GetChars(buffer, 0, bytesRead, charBuffer, 0, flush: false);
+            var text = new string(charBuffer, 0, charsDecoded);
 
             // DIAGNOSTIC: capture claude's first bytes (banner/immediate error) and keep a rolling tail.
             if (!diagLoggedFirst)
@@ -210,6 +218,18 @@ public sealed class PortaPtySession : IPtySession
                 if (_backlog.Length > BacklogCap)
                     _backlog.Remove(0, _backlog.Length - BacklogCap);
                 _output?.Invoke(text);
+            }
+        }
+
+        // Flush any partial UTF-8 bytes buffered in the decoder on exit.
+        int flushChars = decoder.GetChars(buffer, 0, 0, charBuffer, 0, flush: true);
+        if (flushChars > 0)
+        {
+            var tail = new string(charBuffer, 0, flushChars);
+            lock (_outputGate)
+            {
+                _backlog.Append(tail);
+                _output?.Invoke(tail);
             }
         }
     }

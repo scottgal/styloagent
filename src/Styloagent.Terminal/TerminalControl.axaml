@@ -16,7 +16,7 @@
   <ScrollViewer Name="ScrollArea"
                 Background="#0C0C0C"
                 Padding="12,4,6,4"
-                HorizontalScrollBarVisibility="Auto"
+                HorizontalScrollBarVisibility="Disabled"
                 VerticalScrollBarVisibility="Auto">
     <Canvas Name="Surface" Background="#0C0C0C">
       <SelectableTextBlock Name="ScreenText"

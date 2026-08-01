@@ -160,7 +160,8 @@ public sealed partial class TerminalControl : UserControl
             if (h > 1.0) _cellH = h;
             ScreenText.LineHeight = _cellH;   // render at the measured line height → no vertical overlap
         }
-        catch { /* font system not ready — keep the last-known-good cell */ }
+        catch (InvalidOperationException) { /* font system not ready — keep the last-known-good cell */ }
+        catch (ArgumentException) { /* typeface not yet available — keep last-known-good */ }
     }
 
     // ── App-wide terminal font size ──────────────────────────────────────────
@@ -350,6 +351,7 @@ public sealed partial class TerminalControl : UserControl
         lock (_terminalGate)
         {
             _terminal.DataReceived -= OnTerminalDataReceived;   // stop the discarded engine forwarding to the PTY
+            _terminal.Buffer.Trimmed -= OnBufferTrimmed;       // stop the discarded engine's trim events
             System.Threading.Interlocked.Exchange(ref _pendingTrimmedLines, 0);   // fresh engine → no carried-over trims
             _terminal = BuildEngine(_terminal.Cols, _terminal.Rows);
         }
@@ -395,6 +397,7 @@ public sealed partial class TerminalControl : UserControl
         _session.Exited -= OnSessionExited;
         OperatorInputState.Clear(_session);   // operator can't be composing in a detached pane
         _session = null;
+        _brushCache.Clear();                  // release per-session colour brushes
     }
 
     /// <inheritdoc />
@@ -442,6 +445,9 @@ public sealed partial class TerminalControl : UserControl
     private readonly object _rebuildGate = new();
     private bool _renderDirty;
     private bool _rebuildScheduled;
+    /// <summary>True while <see cref="RebuildRowsCore"/> is executing on the UI thread — used by
+    /// <see cref="OnScrollChanged"/> to skip rendering during a rebuild (the rebuild itself renders).</summary>
+    private bool _rebuilding;
 
     /// <summary>
     /// True only while <see cref="Attach"/> is replaying the session backlog into the VT engine. During that
@@ -513,8 +519,12 @@ public sealed partial class TerminalControl : UserControl
             if (!_renderDirty) return;
             _renderDirty = false;
         }
+        // Capture before rebuild — Surface.Height changes during RebuildRowsCore fire OnScrollChanged,
+        // which recomputes _followTail from a stale scroll offset and can clear it. Use the pre-rebuild
+        // value to decide whether to post ScrollToTail, so a tail-following view stays following.
+        bool wasFollowing = _followTail;
         RebuildRows();
-        if (_followTail)
+        if (wasFollowing)
             Dispatcher.UIThread.Post(ScrollToTail, DispatcherPriority.Loaded);
     }
 
@@ -535,6 +545,12 @@ public sealed partial class TerminalControl : UserControl
     {
         double max = ScrollArea.Extent.Height - ScrollArea.Viewport.Height;
         _followTail = ScrollArea.Offset.Y >= max - _cellH;   // within one row of the bottom counts as "at bottom"
+
+        // During a rebuild the Surface extent is being resized and the scroll offset is stale — rendering
+        // the visible slice here would use a stale scroll position against the new extent, and recomputing
+        // _followTail from the stale offset can clear it, which prevents ScrollToTail from posting. Skip
+        // rendering; RebuildRowsCore itself renders the slice after setting the new extent.
+        if (_rebuilding) return;
 
         // Virtualize on scroll: render the rows that just came into view. Re-rendering the slice changes only
         // the inlines and the text block's Canvas.Top — not the surface extent or the scroll offset — so this
@@ -563,7 +579,7 @@ public sealed partial class TerminalControl : UserControl
         if (_humanComposing) return;
 
         // Fix 1: route through shared fire-and-forget helper so exceptions are never silently lost.
-        FireAndForgetWrite(e.Data);
+        _ = FireAndForgetWrite(e.Data);
     }
 
     // ── Keyboard input ───────────────────────────────────────────────────────
@@ -606,7 +622,7 @@ public sealed partial class TerminalControl : UserControl
 
         if (vtSequence is null) return;
         NoteHumanInput(vtSequence);   // opens/closes the compose window that gates device-query answers
-        FireAndForgetWrite(vtSequence);
+        _ = FireAndForgetWrite(vtSequence);
     }
 
     /// <summary>
@@ -631,7 +647,7 @@ public sealed partial class TerminalControl : UserControl
         e.Handled = true;
         NoteHumanInput(vtSequence);   // opens/closes the compose window that gates device-query answers
         // Fix 1: route through shared fire-and-forget helper so exceptions are never silently lost.
-        FireAndForgetWrite(vtSequence);
+        _ = FireAndForgetWrite(vtSequence);
     }
 
     // ── Clipboard (copy / paste / cut) ───────────────────────────────────────
@@ -724,7 +740,7 @@ public sealed partial class TerminalControl : UserControl
         string payload;
         lock (_terminalGate)
             payload = _terminal.BracketedPasteMode ? "\u001b[200~" + text + "\u001b[201~" : text;
-        FireAndForgetWrite(payload);
+        _ = FireAndForgetWrite(payload);
     }
 
     private void OnDragOver(object? sender, DragEventArgs e)
@@ -826,7 +842,7 @@ public sealed partial class TerminalControl : UserControl
         if (_session is not null && !string.IsNullOrEmpty(e.Text))
         {
             NoteHumanInput(e.Text);   // printable text opens the compose window that gates device-query answers
-            FireAndForgetWrite(e.Text);
+            _ = FireAndForgetWrite(e.Text);
             e.Handled = true;
         }
         base.OnTextInput(e);
@@ -856,7 +872,7 @@ public sealed partial class TerminalControl : UserControl
     ///   TODO: route write failures to a real error surface (status bar, error event) once the
     ///   shell has an appropriate error channel.
     /// </summary>
-    private async void FireAndForgetWrite(string data)
+    private async Task FireAndForgetWrite(string data)
     {
         if (_session is null) return;
         try
@@ -932,6 +948,19 @@ public sealed partial class TerminalControl : UserControl
 
     private void RebuildRowsCore()
     {
+        _rebuilding = true;
+        try
+        {
+            RebuildRowsCoreInner();
+        }
+        finally
+        {
+            _rebuilding = false;
+        }
+    }
+
+    private void RebuildRowsCoreInner()
+    {
         RebuildCount++;
         TerminalBuffer buffer = _terminal.Buffer;
 
@@ -970,7 +999,7 @@ public sealed partial class TerminalControl : UserControl
         // Plain-text rows — kept for RenderedText and test assertions. Cheap (strings only), so the FULL
         // transcript stays here for scrollback search/copy even though the coloured render is virtualized.
         while (_rows.Count < count) _rows.Add(string.Empty);
-        while (_rows.Count > count) _rows.RemoveAt(_rows.Count - 1);
+        if (_rows.Count > count) _rows.RemoveRange(count, _rows.Count - count);
         for (int r = 0; r < count; r++)
         {
             BufferLine? l = SafeLine(buffer, r);
@@ -994,7 +1023,7 @@ public sealed partial class TerminalControl : UserControl
         // viewport makes each rebuild O(visible rows). The surface is at least the viewport tall (so the
         // bottom-anchor top-pad has room and the last row can sit on the bottom edge).
         Surface.Height = Math.Max(contentH + _topPad, vpH);
-        Surface.Width  = Math.Max(_terminal.Cols * _cellW + PadX, ScrollArea.Viewport.Width);
+        Surface.Width  = _terminal.Cols * _cellW + PadX;
 
         // SCROLL ANCHOR: once scrollback hits its cap, each new line EVICTS the oldest, so every remaining
         // line's absolute row index — and thus its pixel offset in the surface — shifts UP by the evicted
@@ -1170,7 +1199,8 @@ public sealed partial class TerminalControl : UserControl
     private static BufferLine? SafeLine(TerminalBuffer buffer, int index)
     {
         try { return buffer.Lines[index]; }
-        catch { return null; }
+        catch (ArgumentOutOfRangeException) { return null; }
+        catch (IndexOutOfRangeException) { return null; }
     }
 
     /// <summary>

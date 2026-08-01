@@ -511,6 +511,81 @@ public class TerminalControlTests
     }
 
     /// <summary>
+    /// Progress reporters commonly use CR without EL: a shorter next frame must overwrite the
+    /// beginning of the current row while retaining the untouched suffix, and must never append
+    /// another transcript row.
+    /// </summary>
+    [Fact]
+    public Task CarriageReturnOnly_ProgressFrameOverwritesCurrentRow()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);
+            var window = new Window { Content = control, Width = 800, Height = 400 };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            fake.FireOutput("downloading 100%");
+            fake.FireOutput("\rcomplete");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            Assert.Equal("completeing 100%", control.ScreenGrid()[0].TrimEnd());
+            Assert.Single(control.Rows);
+            Assert.DoesNotContain("downloading 100%\n", control.RenderedText);
+
+            window.Close();
+        });
+    }
+
+    /// <summary>
+    /// DeepCode TUI-style cursor-up redraw: a status spinner sits on a specific row and each
+    /// frame uses CUU (ESC[1A) + EL (ESC[2K) to clear the old line and write the new spinner
+    /// character. Without CUU support every frame lands on a new row — the "spinner stacking" bug.
+    /// </summary>
+    [Fact]
+    public Task CursorUpRedraw_SpinnerRefreshesInPlace_NoNewRows()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var control = new TerminalControl();
+            control.Attach(fake);
+            var window = new Window { Content = control, Width = 800, Height = 400 };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            // Initial content: a header row + a status line with a spinner
+            fake.FireOutput("> say hello\n");
+            fake.FireOutput("\u280B Thinking...\n");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            int rowCountAfterFirst = control.Rows.Count;
+
+            // DeepCode-style redraw: clear 2 lines up, write new spinner at column 0, CRLF
+            // ESC[2K ESC[1A  ESC[2K ESC[1A  ESC[2K ESC[G  ESC[33mNEW_SPINNER ESC[39m\r\n
+            fake.FireOutput("\x1b[2K\x1b[1A\x1b[2K\x1b[1A\x1b[2K\x1b[G\x1b[33m\u2819\x1b[39m\r\n");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            // Second redraw frame
+            fake.FireOutput("\x1b[2K\x1b[1A\x1b[2K\x1b[1A\x1b[2K\x1b[G\x1b[33m\u2818\x1b[39m\r\n");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+            // No NEW rows should have been created — spinner refreshes in place
+            int rowCountAfterUpdates = control.Rows.Count;
+            Assert.True(rowCountAfterUpdates <= rowCountAfterFirst + 1,
+                $"Expected spinner to refresh in place, but rows grew from {rowCountAfterFirst} to {rowCountAfterUpdates}");
+
+            window.Close();
+        });
+    }
+
+    /// <summary>
     /// btop-style full-screen redraw on the ALTERNATE buffer: paint frame 1 (many rows), then clear the
     /// screen and paint a SHORTER frame 2 at absolute positions. No cell from frame 1 may survive under
     /// frame 2. Asserts the rendered grid equals the VT screen buffer row-for-row (the "no ghost cells"

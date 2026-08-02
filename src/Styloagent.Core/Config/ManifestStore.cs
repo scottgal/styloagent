@@ -47,7 +47,13 @@ public sealed class ManifestStore
                 RestartPrompt = e.RestartPromptPath,
                 SavedContext = e.SavedContextPath,
                 Transport = e.Transport.Kind == TransportKind.Ssh ? "ssh" : "local",
-                Runtime = e.Runtime == AgentRuntimeKind.Codex ? "codex" : "claude",
+                Runtime = e.Runtime switch
+                {
+                    AgentRuntimeKind.Codex => "codex",
+                    AgentRuntimeKind.DeepCode => "deepcode",
+                    AgentRuntimeKind.ClaudeDeepSeek => "claude-deepseek",
+                    _ => "claude",
+                },
                 Model = e.Model,
                 Effort = e.Effort,
                 AutoStartPrompt = e.AutoStartPrompt,
@@ -75,7 +81,11 @@ public sealed class ManifestStore
                 : AgentTransport.Local,
             string.Equals(r.Runtime, "codex", StringComparison.OrdinalIgnoreCase)
                 ? AgentRuntimeKind.Codex
-                : AgentRuntimeKind.Claude,
+                : string.Equals(r.Runtime, "deepcode", StringComparison.OrdinalIgnoreCase)
+                    ? AgentRuntimeKind.DeepCode
+                    : string.Equals(r.Runtime, "claude-deepseek", StringComparison.OrdinalIgnoreCase)
+                        ? AgentRuntimeKind.ClaudeDeepSeek
+                        : AgentRuntimeKind.Claude,
             r.Model,
             r.Effort,
             r.AutoStartPrompt)).ToList();

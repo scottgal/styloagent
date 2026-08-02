@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text.Json;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -550,7 +551,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private void ApprovePermission(AgentPaneViewModel? pane)
     {
         if (pane?.CurrentPty is not { } pty) return;
-        _ = pty.WriteAsync(pane.Runtime == AgentRuntimeKind.Codex ? "\r" : "1\r");
+        _ = pty.WriteAsync(pane.Runtime is AgentRuntimeKind.Codex or AgentRuntimeKind.DeepCode ? "\r" : "1\r");
         if (pane.NoteTerminalInteraction()) RefreshAttention();
         Timeline.Add(DateTimeOffset.Now, pane.DisplayName, "approved prompt", pane.BorderColorHex);
     }
@@ -838,6 +839,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             _mcpServer = await StyloagentMcpServer.StartAsync(new FleetController(this),
                 new RouterController(this, browserController), _hookChannel?.HooksDirectory,
                 _operatorQuestionHub, _documentOpenHub, browserController).ConfigureAwait(false);
+
+            // Write the dynamic MCP URL into .deepcode/settings.json so DeepCode CLI agents
+            // (which rely on settings.json rather than --mcp-config) always reach THIS instance.
+            if (_repoRoot is not null)
+                WriteDeepCodeSettings(_mcpServer.BaseUrl, _mcpServer.Token, _repoRoot);
         }
         catch (Exception ex)
         {
@@ -855,6 +861,52 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     private IReadOnlyList<string> CodexMcpArgsFor(string prefix)
         => _mcpServer is { IsRunning: true } s ? s.CodexMcpConfigArgs(prefix) : Array.Empty<string>();
+
+    /// <summary>
+    /// Writes <c>.deepcode/settings.json</c> in <paramref name="repoRoot"/> with the live MCP URL
+    /// and token, so DeepCode CLI agents (which read settings.json rather than --mcp-config) always
+    /// reach THIS cockpit instance. Preserves any existing non-MCP settings the user may have added.
+    /// </summary>
+    private static readonly JsonSerializerOptions _writeSettingsJsonOptions = new() { WriteIndented = true };
+
+    private static void WriteDeepCodeSettings(Uri baseUrl, string token, string repoRoot)
+    {
+        try
+        {
+            var dir = Path.Combine(repoRoot, ".deepcode");
+            Directory.CreateDirectory(dir);
+            var path = Path.Combine(dir, "settings.json");
+
+            // Read existing settings (if any) to preserve user customisations.
+            var root = File.Exists(path)
+                ? JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(File.ReadAllText(path))
+                : null;
+            root ??= new Dictionary<string, JsonElement>();
+
+            var bridgePath = Path.Combine(repoRoot, ".agents", "scripts", "styloagent-mcp-bridge.py");
+            var mcpServer = new Dictionary<string, object?>
+            {
+                ["command"] = "python3",
+                ["args"] = new[] { bridgePath },
+                ["env"] = new Dictionary<string, string>
+                {
+                    ["STYLOAGENT_MCP_URL"] = baseUrl.ToString(),
+                    ["STYLOAGENT_MCP_AGENT"] = "overview-",
+                    ["STYLOAGENT_MCP_TOKEN"] = token,
+                },
+            };
+            root["mcpServers"] = JsonSerializer.SerializeToElement(
+                new Dictionary<string, object> { ["styloagent"] = mcpServer });
+
+            var json = JsonSerializer.Serialize(root, _writeSettingsJsonOptions);
+            File.WriteAllText(path, json);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine(
+                $"[Styloagent] Failed to write .deepcode/settings.json: {ex.Message}");
+        }
+    }
 
     /// <summary>Returns the router root directory for the active project, or null when no project is loaded.</summary>
     public string? RouterRootOrNull => _project?.RouterRoot;
@@ -1420,7 +1472,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         string firstHookId = vm.ReserveHookId(first.Prefix);
         var session = new AgentSession(first, launcher, watcher,
-            vm.LaunchArgsFor(firstHookId, first, vm._overviewSystemPromptArgs));
+            vm.LaunchArgsFor(firstHookId, first, vm._overviewSystemPromptArgs),
+            BuildEnv(first, repoRoot));
 
         vm.Pane = new AgentPaneViewModel(
             session,
@@ -1503,6 +1556,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public void AddCodex() => AddAgent(AgentRuntimeKind.Codex);
 
+    [RelayCommand]
+    public void AddDeepCode() => AddAgent(AgentRuntimeKind.DeepCode);
+
+    [RelayCommand]
+    public void AddClaudeDeepSeek() => AddAgent(AgentRuntimeKind.ClaudeDeepSeek);
+
     private void AddAgent(AgentRuntimeKind? runtimeOverride)
     {
         if (_dockFactory is null || _launcher is null || _watcher is null)
@@ -1549,13 +1608,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 Prefix: prefix,
                 DisplayName: runtimeOverride is null
                     ? prefix.TrimEnd('-')
-                    : runtimeOverride is AgentRuntimeKind.Codex ? "New Codex" : "New Claude",
+                    : runtimeOverride switch
+                    {
+                        AgentRuntimeKind.Codex => "New Codex",
+                        AgentRuntimeKind.DeepCode => "New DeepCode",
+                        AgentRuntimeKind.ClaudeDeepSeek => "New Claude+DeepSeek",
+                        _ => "New Claude",
+                    },
                 BorderColorHex: PresentationStore.DefaultColorFor(prefix));
         }
 
         entry = WithWorkingDir(entry);
         string hookId = ReserveHookId(entry.Prefix);
-        var session = new AgentSession(entry, _launcher, _watcher, LaunchArgsFor(hookId, entry));
+        var session = new AgentSession(entry, _launcher, _watcher, LaunchArgsFor(hookId, entry),
+            BuildEnv(entry, _repoRoot));
         var owner = OverviewPane();   // the overview owns agents added to its fleet
         var paneVm = new AgentPaneViewModel(
             session,
@@ -1631,7 +1697,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         string hookId = ReserveHookId(entry.Prefix);
         var session = new AgentSession(entry, _launcher, _watcher,
-            LaunchArgsFor(hookId, entry, hooks, channelRoot, repoRoot, protocolPath, systemPromptArgs));
+            LaunchArgsFor(hookId, entry, hooks, channelRoot, repoRoot, protocolPath, systemPromptArgs),
+            BuildEnv(entry, repoRoot));
 
         var paneVm = new AgentPaneViewModel(session, entry, overview.Prefix.TrimEnd('-'), overview.ColorHex)
         {
@@ -1967,6 +2034,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             var path = ChannelMessageWriter.Reply(_channelRoot, callerPrefix, thread, body ?? string.Empty, DateTimeOffset.Now);
             var color = Panes.FirstOrDefault(p => p.Prefix == callerPrefix)?.BorderColorHex ?? "#8888AA";
             Timeline.Add(DateTimeOffset.Now, callerPrefix, $"completed · {thread}", color);
+            // Move the thread's inbox/outbox files to archive so the channel stays glanceable and
+            // the projection naturally classifies it as Archived on the next read.
+            Styloagent.Core.Channel.ChannelArchiver.ArchiveThread(_channelRoot, thread);
             // Do not wait for FileSystemWatcher delivery here. A completion is a lifecycle transition: the
             // source inbox message must leave ACTIVE immediately, even on filesystems that coalesce/drop
             // the outbox create event.
@@ -2276,7 +2346,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             RemainingTokens: p.RemainingTokens,
             RemainingFraction: p.RemainingFraction,
             Pressure: p.ContextPressure,
-            Runtime: p.Runtime.ToString().ToLowerInvariant(),
+            Runtime: RuntimeName(p.Runtime),
             Model: p.SelectedModel,
             Effort: p.SelectedEffort,
             Name: p.DisplayName)).ToList();
@@ -2695,7 +2765,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         string hookId = ReserveHookId(entry.Prefix);
         var session = new AgentSession(entry, _launcher, _watcher,
-            LaunchArgsFor(hookId, entry));
+            LaunchArgsFor(hookId, entry),
+            BuildEnv(entry, _repoRoot));
         var paneVm = new AgentPaneViewModel(
             session,
             entry,
@@ -2980,6 +3051,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         var runtime = AgentRuntimeProfile.For(entry.Runtime);
         var selectionArgs = ModelEffortArgs(entry);
+
+        // DeepCode: the CLI accepts NO flags other than -p/-r/-v/-h — model, effort, hooks and MCP
+        // are all read from settings.json layers (WriteDeepCodeSettings keeps .deepcode/settings.json
+        // pointed at THIS cockpit instance), so spawn with a bare argv. Passing --config (Codex-style)
+        // makes deepcode abort with "Unknown argument: config".
+        if (entry.Runtime == AgentRuntimeKind.DeepCode)
+            return Array.Empty<string>();
+
         if (entry.Runtime == AgentRuntimeKind.Codex)
         {
             var args = new List<string>();
@@ -3012,26 +3091,51 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             .ToArray();
     }
 
+    /// <summary>
+    /// Returns the DeepSeek environment variables for a ClaudeDeepSeek agent, or null for
+    /// other runtimes. Loads from <c>~/.styloagent/deepseek.env</c> with an optional per-project
+    /// override at <c>.styloagent/deepseek.env</c>.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string>? BuildEnv(AgentManifestEntry entry, string? repoRoot)
+    {
+        if (entry.Runtime != AgentRuntimeKind.ClaudeDeepSeek)
+            return null;
+        var vars = Core.Sessions.DeepSeekEnv.Load(repoRoot);
+        return vars.Count > 0 ? vars : null;
+    }
+
     private static IReadOnlyList<string> ModelEffortArgs(AgentManifestEntry entry)
     {
+        // DeepCode: model and effort are configured via settings.json, not CLI flags.
+        // ClaudeDeepSeek uses the `claude` CLI so it takes --model and --effort flags like Claude.
+        if (entry.Runtime == AgentRuntimeKind.DeepCode)
+            return Array.Empty<string>();
+
+        var profile = AgentRuntimeProfile.For(entry.Runtime);
         var args = new List<string>();
-        if (!string.IsNullOrWhiteSpace(entry.Model))
+        var model = !string.IsNullOrWhiteSpace(entry.Model)
+            ? entry.Model
+            : profile.DefaultModel;
+        if (!string.IsNullOrWhiteSpace(model))
         {
             args.Add("--model");
-            args.Add(entry.Model!);
+            args.Add(model!);
         }
-        if (!string.IsNullOrWhiteSpace(entry.Effort) &&
-            !entry.Effort.Equals("default", StringComparison.OrdinalIgnoreCase))
+        var effort = !string.IsNullOrWhiteSpace(entry.Effort) &&
+                     !entry.Effort.Equals("default", StringComparison.OrdinalIgnoreCase)
+            ? entry.Effort
+            : null;
+        if (!string.IsNullOrWhiteSpace(effort))
         {
             if (entry.Runtime == AgentRuntimeKind.Codex)
             {
                 args.Add("--config");
-                args.Add($"model_reasoning_effort={TomlString(entry.Effort!)}");
+                args.Add($"model_reasoning_effort={TomlString(effort!)}");
             }
             else
             {
                 args.Add("--effort");
-                args.Add(entry.Effort!);
+                args.Add(effort!);
             }
         }
         return args;
@@ -3067,12 +3171,22 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private AgentRuntimeKind RuntimeFromRequest(string? runtime)
         => string.Equals(runtime, "codex", StringComparison.OrdinalIgnoreCase)
             ? AgentRuntimeKind.Codex
-            : string.Equals(runtime, "claude", StringComparison.OrdinalIgnoreCase)
-                ? AgentRuntimeKind.Claude
-                : _defaultAgentRuntime;
+            : string.Equals(runtime, "deepcode", StringComparison.OrdinalIgnoreCase)
+                ? AgentRuntimeKind.DeepCode
+                : string.Equals(runtime, "claude-deepseek", StringComparison.OrdinalIgnoreCase)
+                    ? AgentRuntimeKind.ClaudeDeepSeek
+                    : string.Equals(runtime, "claude", StringComparison.OrdinalIgnoreCase)
+                        ? AgentRuntimeKind.Claude
+                        : _defaultAgentRuntime;
 
     private static string RuntimeName(AgentRuntimeKind runtime)
-        => runtime == AgentRuntimeKind.Codex ? "codex" : "claude";
+        => runtime switch
+        {
+            AgentRuntimeKind.Codex => "codex",
+            AgentRuntimeKind.DeepCode => "deepcode",
+            AgentRuntimeKind.ClaudeDeepSeek => "claude-deepseek",
+            _ => "claude",
+        };
 
     private static IReadOnlyList<string> CodexDeveloperInstructionArgs(IEnumerable<string>? claudeOnlyArgs)
     {

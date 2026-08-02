@@ -9,6 +9,7 @@ public sealed class AgentSession
     private readonly IPtyLauncher _launcher;
     private readonly IFileWatcher _watcher;
     private readonly IReadOnlyList<string> _launchArgs;
+    private readonly IReadOnlyDictionary<string, string>? _env;
     private readonly AgentRuntimeProfile _runtime;
     private IPtySession? _pty;
 
@@ -47,9 +48,10 @@ public sealed class AgentSession
         AgentManifestEntry manifest,
         IPtyLauncher launcher,
         IFileWatcher watcher,
-        IReadOnlyList<string>? launchArgs = null)
-        => (_manifest, _launcher, _watcher, _launchArgs, _runtime)
-            = (manifest, launcher, watcher, launchArgs ?? Array.Empty<string>(), AgentRuntimeProfile.For(manifest.Runtime));
+        IReadOnlyList<string>? launchArgs = null,
+        IReadOnlyDictionary<string, string>? env = null)
+        => (_manifest, _launcher, _watcher, _launchArgs, _env, _runtime)
+            = (manifest, launcher, watcher, launchArgs ?? Array.Empty<string>(), env, AgentRuntimeProfile.For(manifest.Runtime));
 
     public SessionState State { get; private set; } = SessionState.Unspawned;
 
@@ -76,7 +78,7 @@ public sealed class AgentSession
         }
         _pty = await _launcher.SpawnAsync(new PtySpawnOptions(
             Command: _runtime.Command, Args: ArgsForPrompt(launchPrompt),
-            WorkingDirectory: _manifest.Worktree, Env: null, Cols: _initialCols, Rows: _initialRows), ct);
+            WorkingDirectory: _manifest.Worktree, Env: _env, Cols: _initialCols, Rows: _initialRows), ct);
         _pty.Output += OnOutput;
         var promptMode = _runtime.SupportsInitialPromptArgument ? "passing prompt as CLI argument" : "injecting prompt";
         SpawnDiag.Log($"AgentSession.SpawnAsync launched prefix={_manifest.Prefix}; {promptMode} ({launchPrompt?.Length ?? 0} chars, settle={InjectSettleDelay.TotalMilliseconds}ms retry={InjectEnterRetryDelay.TotalMilliseconds}ms)");
@@ -158,7 +160,7 @@ public sealed class AgentSession
     {
         if (State != SessionState.Dehydrated) return;
         _pty = await _launcher.SpawnAsync(new PtySpawnOptions(
-            _runtime.Command, ArgsForPrompt(restartPrompt), _manifest.Worktree, null, _initialCols, _initialRows), ct);
+            _runtime.Command, ArgsForPrompt(restartPrompt), _manifest.Worktree, _env, _initialCols, _initialRows), ct);
         _pty.Output += OnOutput;
         if (!_runtime.SupportsInitialPromptArgument)
             await InjectPromptAsync(_pty, restartPrompt, ct);
@@ -170,7 +172,14 @@ public sealed class AgentSession
     private void OnOutput(string chunk) => Output?.Invoke(chunk);
 
     private IReadOnlyList<string> ArgsForPrompt(string prompt)
-        => _runtime.SupportsInitialPromptArgument && !string.IsNullOrEmpty(prompt)
-            ? _launchArgs.Concat(new[] { prompt ?? string.Empty }).ToArray()
-            : _launchArgs;
+    {
+        if (!_runtime.SupportsInitialPromptArgument || string.IsNullOrEmpty(prompt))
+            return _launchArgs;
+
+        // DeepCode needs `-p <prompt>`; Codex takes a bare positional prompt.
+        if (_runtime.Kind == AgentRuntimeKind.DeepCode)
+            return _launchArgs.Concat(new[] { "-p", prompt }).ToArray();
+
+        return _launchArgs.Concat(new[] { prompt }).ToArray();
+    }
 }

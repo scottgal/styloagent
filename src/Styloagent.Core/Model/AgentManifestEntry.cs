@@ -1,6 +1,6 @@
 namespace Styloagent.Core.Model;
 
-public enum AgentRuntimeKind { Claude, Codex }
+public enum AgentRuntimeKind { Claude, Codex, DeepCode, ClaudeDeepSeek }
 
 public sealed record AgentManifestEntry(
     string Prefix,

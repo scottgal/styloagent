@@ -37,20 +37,24 @@
           <Border Width="1" Margin="0,2,8,2" Background="{DynamicResource MutedTextBrush}"
                   IsVisible="{Binding ProjectName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
           <Button x:Name="NewClaudeButton"
-                  Command="{Binding AddClaudeCommand}" Padding="10,4" FontSize="13"
+                  Command="{Binding AddClaudeCommand}" Padding="6,4"
                   ToolTip.Tip="Open a new Claude agent">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <ic:SymbolIcon Symbol="Add" FontSize="16" />
-              <TextBlock Text="New Claude" VerticalAlignment="Center" />
-            </StackPanel>
+            <ic:SymbolIcon Symbol="Sparkle" FontSize="18" />
           </Button>
           <Button x:Name="NewCodexButton"
-                  Command="{Binding AddCodexCommand}" Padding="10,4" FontSize="13"
+                  Command="{Binding AddCodexCommand}" Padding="6,4"
                   ToolTip.Tip="Open a new Codex agent">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <ic:SymbolIcon Symbol="Bot" FontSize="16" />
-              <TextBlock Text="New Codex" VerticalAlignment="Center" />
-            </StackPanel>
+            <ic:SymbolIcon Symbol="BotSparkle" FontSize="18" />
+          </Button>
+          <Button x:Name="NewDeepCodeButton"
+                  Command="{Binding AddDeepCodeCommand}" Padding="6,4"
+                  ToolTip.Tip="Open a new DeepCode agent">
+            <ic:SymbolIcon Symbol="BrainCircuit" FontSize="18" />
+          </Button>
+          <Button x:Name="NewClaudeDeepSeekButton"
+                  Command="{Binding AddClaudeDeepSeekCommand}" Padding="6,4"
+                  ToolTip.Tip="Open a new Claude agent with DeepSeek models">
+            <ic:SymbolIcon Symbol="Cloud" FontSize="18" />
           </Button>
           <Button x:Name="NewConsoleButton" Command="{Binding NewConsoleCommand}" Padding="7,4"
                   ToolTip.Tip="Open a plain shell terminal (not an agent)"

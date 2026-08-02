@@ -317,7 +317,7 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     public void ApplyHookEvent(HookEvent e)
     {
         bool hadActivity = LastActivityAt is not null;
-        HookState = Runtime == AgentRuntimeKind.Codex && e.EventName == "Stop"
+        HookState = Runtime is AgentRuntimeKind.Codex or AgentRuntimeKind.DeepCode && e.EventName == "Stop"
             ? AgentHookState.Idle
             : HookStateMachine.Next(HookState, e);
         LastActivityAt = DateTimeOffset.UtcNow;
@@ -422,7 +422,7 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
         {
             try
             {
-                var usage = _manifest.Runtime == AgentRuntimeKind.Codex
+                var usage = _manifest.Runtime is AgentRuntimeKind.Codex or AgentRuntimeKind.DeepCode
                     ? Styloagent.Core.Transcripts.CodexTranscriptReader.ReadLatestForSession(sid)
                     : Styloagent.Core.Transcripts.TranscriptReader.ReadLatest(
                         Styloagent.Core.Transcripts.TranscriptReader.PathFor(cwd, sid));
@@ -521,11 +521,22 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     public AgentRuntimeKind Runtime => _manifest.Runtime;
 
     /// <summary>The resolved runtime/model/effort selection shown in the agent roster.</summary>
-    public string SelectedModel => string.IsNullOrWhiteSpace(_manifest.Model) ? "default" : _manifest.Model;
+    public string SelectedModel =>
+        string.IsNullOrWhiteSpace(_manifest.Model)
+            ? AgentRuntimeProfile.For(_manifest.Runtime).DefaultModel ?? "default"
+            : _manifest.Model;
     public string SelectedEffort => string.IsNullOrWhiteSpace(_manifest.Effort) ? "default" : _manifest.Effort;
 
     public string AgentSelectionText
-        => $"{Runtime.ToString().ToLowerInvariant()} · {SelectedModel} · effort {SelectedEffort}";
+        => $"{RuntimeName()} · {SelectedModel} · effort {SelectedEffort}";
+
+    private string RuntimeName() => _manifest.Runtime switch
+    {
+        AgentRuntimeKind.Codex => "codex",
+        AgentRuntimeKind.DeepCode => "deepcode",
+        AgentRuntimeKind.ClaudeDeepSeek => "claude-deepseek",
+        _ => "claude",
+    };
 
     /// <summary>Prefix of the parent (owner) agent, or null for root-level panes. Settable so a roster
     /// reparent can re-owner the agent (drag-drop v2a).</summary>
@@ -666,7 +677,7 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
 
     private string DefaultLaunchPrompt() => !_manifest.AutoStartPrompt
         ? string.Empty
-        : _manifest.Runtime == AgentRuntimeKind.Codex
+        : _manifest.Runtime is AgentRuntimeKind.Codex or AgentRuntimeKind.DeepCode
         ? $"You are the '{_manifest.Prefix}' Styloagent workspace agent. Read .styloagent/PROTOCOL.md and your mission doc if present, check the fleet inbox, then carry out your assigned task."
         : $"You are agent '{_manifest.Prefix}'. Begin your work.";
 

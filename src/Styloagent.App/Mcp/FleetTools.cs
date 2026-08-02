@@ -53,7 +53,7 @@ public sealed class FleetTools
              documentOpen ?? new DocumentOpenHub());
 
 #pragma warning disable CA1707 // Identifiers should not contain underscores — tool names are MCP contract and must match the wire protocol
-    [McpServerTool, Description("Launch a child agent under you. prefix is a short lowercase tag ending in '-'. Set runtime to 'claude' or 'codex' to make a mixed fleet; model and effort select from agent_capabilities (leave blank for defaults). Set worktree=true when this agent's work overlaps files another agent owns, so it runs isolated on its own git worktree/branch; otherwise false to share the repo. Keep launchPrompt SHORT (identity + 'read your mission doc'); pass the full brief as missionDoc — Styloagent writes it to .styloagent/missions/<prefix>.md in the new agent's tree and tells the agent to read it. Leave missionDoc empty to inject launchPrompt alone.")]
+    [McpServerTool, Description("Launch a child agent under you. prefix is a short lowercase tag ending in '-'. runtime is 'claude', 'codex', 'deepcode', or 'claude-deepseek' — call agent_capabilities first to see the available models and reasoning-effort levels for each runtime, then pass model and effort from that list (leave blank for defaults). Set worktree=true when this agent's work overlaps files another agent owns, so it runs isolated on its own git worktree/branch; otherwise false to share the repo. Keep launchPrompt SHORT (identity + 'read your mission doc'); pass the full brief as missionDoc — Styloagent writes it to .styloagent/missions/<prefix>.md in the new agent's tree and tells the agent to read it. Leave missionDoc empty to inject launchPrompt alone.")]
     public async Task<string> spawn_agent(string prefix, string responsibility, string dir, string launchPrompt,
         bool worktree, string missionDoc = "", string runtime = "", string model = "", string effort = "")
     {
@@ -82,7 +82,7 @@ public sealed class FleetTools
         return await _controller.RenameAgentAsync(prefix, name);
     }
 
-    [McpServerTool, Description("Return the live model and effort choices for each supported agent runtime. The list is reloaded from .styloagent/agent-capabilities.json for each call, so agents can use the same current choices as spawn_agent without restarting Styloagent.")]
+    [McpServerTool, Description("Return the live model and reasoning-effort choices for every supported agent runtime (claude, codex, deepcode, claude-deepseek). Each runtime lists its available models with human-readable labels and the effort levels each model accepts (low, medium, high, etc.). Use this BEFORE calling spawn_agent so you pass a valid runtime/model/effort combination. Reloaded from .styloagent/agent-capabilities.json on every call, so the list stays current without restarting Styloagent.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public string agent_capabilities()
     {
@@ -92,7 +92,7 @@ public sealed class FleetTools
         return JsonSerializer.Serialize(_controller.AgentCapabilities(), Json);
     }
 
-    [McpServerTool, Description("Return the overview's live job-type model policy, including runtime, model, effort, and the human-readable reasoning for every choice. Reloaded from .styloagent/model-policy.yaml on each call so the overview can adapt it without restarting.")]
+    [McpServerTool, Description("Return the overview's live job-type model policy from .styloagent/model-policy.yaml: the runtime, model, and reasoning effort assigned to each job type, plus the human-readable rationale for every choice. Use this to see what runtime/model/effort to pick for a given kind of work (use agent_capabilities to see the valid choices). Reloaded on every call so the overview can adapt policy without restarting.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public string agent_model_policy()
     {
@@ -240,7 +240,7 @@ public sealed class FleetTools
         return (repos.FirstOrDefault(r => r.Primary) ?? repos[0]).Path;
     }
 
-    [McpServerTool, Description("Rich live status of the whole fleet: each agent's stable prefix, display name, runtime/model/effort, responsibility, state (working | idle | needs-you | exited), current activity, seconds since its last output, remaining context tokens and pressure, and whether it has a git worktree — plus working/waiting counts and the paused flag.")]
+    [McpServerTool, Description("Rich live status of the whole fleet: each agent's stable prefix, display name, runtime (claude/codex/deepcode), model, reasoning effort, responsibility, state (working | idle | needs-you | exited), current activity, seconds since its last output, remaining context tokens and pressure (normal | elevated | high | critical), and whether it has a git worktree — plus working/waiting counts and the paused flag. Use this to see which agents are at what effort level before spawning more.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public string fleet_status()
     {

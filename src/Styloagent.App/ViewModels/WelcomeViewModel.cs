@@ -26,10 +26,14 @@ public sealed partial class WelcomeViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsClaudeFirst))]
     [NotifyPropertyChangedFor(nameof(IsCodexFirst))]
+    [NotifyPropertyChangedFor(nameof(IsDeepCodeFirst))]
+    [NotifyPropertyChangedFor(nameof(IsClaudeDeepSeekFirst))]
     private AgentRuntimeKind _selectedRuntime = AgentRuntimeKind.Claude;
 
     public bool IsClaudeFirst => SelectedRuntime == AgentRuntimeKind.Claude;
     public bool IsCodexFirst => SelectedRuntime == AgentRuntimeKind.Codex;
+    public bool IsDeepCodeFirst => SelectedRuntime == AgentRuntimeKind.DeepCode;
+    public bool IsClaudeDeepSeekFirst => SelectedRuntime == AgentRuntimeKind.ClaudeDeepSeek;
 
     public WelcomeViewModel(RecentProjectsStore recents, string recentsPath, IFolderPicker picker,
         Action<string> onProjectChosen)
@@ -52,7 +56,11 @@ public sealed partial class WelcomeViewModel : ObservableObject
     {
         SelectedRuntime = string.Equals(mode, "Codex", StringComparison.OrdinalIgnoreCase)
             ? AgentRuntimeKind.Codex
-            : AgentRuntimeKind.Claude;
+            : string.Equals(mode, "DeepCode", StringComparison.OrdinalIgnoreCase)
+                ? AgentRuntimeKind.DeepCode
+                : string.Equals(mode, "ClaudeDeepSeek", StringComparison.OrdinalIgnoreCase)
+                    ? AgentRuntimeKind.ClaudeDeepSeek
+                    : AgentRuntimeKind.Claude;
     }
 
     [RelayCommand]

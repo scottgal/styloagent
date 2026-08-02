@@ -353,6 +353,7 @@ public sealed partial class TerminalControl : UserControl
             _terminal.DataReceived -= OnTerminalDataReceived;   // stop the discarded engine forwarding to the PTY
             _terminal.Buffer.Trimmed -= OnBufferTrimmed;       // stop the discarded engine's trim events
             System.Threading.Interlocked.Exchange(ref _pendingTrimmedLines, 0);   // fresh engine → no carried-over trims
+            _lastRebuiltCount = 0;                              // fresh engine → rebuild from row 0
             _terminal = BuildEngine(_terminal.Cols, _terminal.Rows);
         }
     }
@@ -476,6 +477,10 @@ public sealed partial class TerminalControl : UserControl
     private const int OverscanRows = 8;
     /// <summary>Full transcript height in rows (drives the scroll surface extent); the plain <see cref="_rows"/> hold their text.</summary>
     private int _rowCount;
+    /// <summary>Row count at the END of the previous rebuild — the next rebuild only re-reads rows from here
+    /// onward (minus a one-row overlap), avoiding an O(scrollback) scan of every buffer row on every output
+    /// batch that would pin the UI thread for longer sessions.</summary>
+    private int _lastRebuiltCount;
     /// <summary>Absolute buffer row of the cursor, captured at the last rebuild (for the block-cursor draw).</summary>
     private int _cursorAbsRow;
     /// <summary>The [first,last) transcript slice currently built into inlines — a scroll that doesn't move it skips the rebuild.</summary>
@@ -996,15 +1001,20 @@ public sealed partial class TerminalControl : UserControl
             count = Math.Max(1, lastRow + 1);
         }
 
-        // Plain-text rows — kept for RenderedText and test assertions. Cheap (strings only), so the FULL
-        // transcript stays here for scrollback search/copy even though the coloured render is virtualized.
+        // Plain-text rows — kept for RenderedText and test assertions. Only re-read rows that could have
+        // changed since the last rebuild: new rows (append-only terminal output is the common case) plus a
+        // one-row overlap (the cursor row from last time may have been overwritten). This avoids an O(N)
+        // scan of every scrollback row on every output batch, which caused the UI to feel "sticky" once
+        // sessions grew past a few thousand lines.
         while (_rows.Count < count) _rows.Add(string.Empty);
         if (_rows.Count > count) _rows.RemoveRange(count, _rows.Count - count);
-        for (int r = 0; r < count; r++)
+        int rebuildFrom = Math.Max(0, _lastRebuiltCount - 1);
+        for (int r = rebuildFrom; r < count; r++)
         {
             BufferLine? l = SafeLine(buffer, r);
             _rows[r] = l is null ? string.Empty : l.TranslateToString(true, 0, l.Length);
         }
+        _lastRebuiltCount = count;
 
         _rowCount = count;
         _cursorAbsRow = cursorAbsRow;
@@ -1055,7 +1065,11 @@ public sealed partial class TerminalControl : UserControl
         {
             // A user scroll must not briefly render a newer XTerm buffer through stale extent/row state.
             // Reconcile synchronously; the normal output path remains coalesced for performance.
-            if (_renderGeneration != _bufferGeneration)
+            // Also rebuild when scrollback eviction (Trimmed) shifted buffer indices but no output batch
+            // has triggered a rebuild yet — otherwise _rowCount is stale and pixel→row mapping is wrong,
+            // producing garbled scrollback content.
+            if (_renderGeneration != _bufferGeneration
+                || System.Threading.Volatile.Read(ref _pendingTrimmedLines) > 0)
             {
                 RebuildRowsCore();
                 return;

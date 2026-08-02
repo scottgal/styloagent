@@ -220,6 +220,62 @@ public class MainWindowViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task AddDeepCodeCommand_AddsPaneAndLaunchesDeepCodeWithoutIllegalFlags()
+    {
+        var root = MakeTwoAgentChannel();
+        try
+        {
+            var launcher = new FakeLauncher();
+            var vm = await MainWindowViewModel.InitializeAsync(
+                root, launcher, new FakeWatcher());
+
+            vm.AddDeepCodeCommand.Execute(null);
+            await WaitUntil(() => launcher.Options.Count >= 2);
+
+            Assert.Equal(2, vm.Panes.Count);
+            Assert.Equal(AgentRuntimeKind.DeepCode, vm.Panes[1].Runtime);
+            Assert.StartsWith("agent-", vm.Panes[1].Prefix);
+            Assert.Equal("New DeepCode", vm.Panes[1].DisplayName);
+            Assert.Equal("deepcode", launcher.Options[1].Command);
+            // The deepcode CLI (v0.1.34) accepts ONLY -p/-r/-v/-h — anything else (e.g. the
+            // Codex-style --config MCP args) aborts the launch with "Unknown argument: config".
+            // DeepCode reads model/effort/hooks/MCP from settings.json layers instead.
+            Assert.DoesNotContain(launcher.Options[1].Args, a => a.StartsWith("--config", StringComparison.Ordinal));
+            Assert.DoesNotContain(launcher.Options[1].Args, a => a == "--settings");
+            Assert.DoesNotContain(launcher.Options[1].Args, a => a == "--mcp-config");
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task AddClaudeDeepSeekCommand_AddsPaneAndLaunchesClaudeWithDeepSeekFlags()
+    {
+        var root = MakeTwoAgentChannel();
+        try
+        {
+            var launcher = new FakeLauncher();
+            var vm = await MainWindowViewModel.InitializeAsync(
+                root, launcher, new FakeWatcher());
+
+            vm.AddClaudeDeepSeekCommand.Execute(null);
+            await WaitUntil(() => launcher.Options.Count >= 2);
+
+            Assert.Equal(2, vm.Panes.Count);
+            Assert.Equal(AgentRuntimeKind.ClaudeDeepSeek, vm.Panes[1].Runtime);
+            Assert.StartsWith("agent-", vm.Panes[1].Prefix);
+            Assert.Equal("New Claude+DeepSeek", vm.Panes[1].DisplayName);
+            // ClaudeDeepSeek uses the `claude` CLI (NOT `deepcode`), so it gets the same
+            // --settings, --mcp-config, and --model flags as regular Claude.
+            Assert.Equal("claude", launcher.Options[1].Command);
+            Assert.Contains(launcher.Options[1].Args, a => a == "--model");
+            Assert.Contains(launcher.Options[1].Args, a => a == "deepseek-v4-pro[1m]");
+            // DeepCode-only restrictions must NOT apply — ClaudeDeepSeek IS the claude CLI.
+            Assert.DoesNotContain(launcher.Options[1].Args, a => a == "-p");
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
     public async Task AddClaudeCommand_opens_blank_generic_agent_without_inheriting_seeded_name()
     {
         var root = MakeTwoAgentChannel();

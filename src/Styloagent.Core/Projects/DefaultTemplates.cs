@@ -11,8 +11,8 @@ public static class DefaultTemplates
 root: memory
 index: memory-rag.index.json
 ollamaEndpoint: http://192.168.0.15:11434
-embeddingModel: nomic-embed-text
-synthesisModel: gemma4:4b
+embeddingModel: gemma3:1b
+synthesisModel: gemma4:e4b
 maxInjectedBytes: 6144
 defaultLimit: 8
 """;

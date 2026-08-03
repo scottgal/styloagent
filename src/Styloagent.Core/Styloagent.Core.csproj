@@ -9,6 +9,11 @@
   <ItemGroup>
     <PackageReference Include="VYaml" Version="1.4.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.5" />
+    <PackageReference Include="Markdig" Version="0.39.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../../Projects/src/SeekStorm.Bindings/SeekStorm.Bindings.csproj" />
   </ItemGroup>
 
 </Project>

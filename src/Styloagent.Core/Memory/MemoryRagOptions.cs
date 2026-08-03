@@ -8,7 +8,7 @@ public sealed record MemoryRagOptions(
     string EmbeddingModel,
     int MaxInjectedBytes = 6144,
     int DefaultLimit = 8,
-    string SynthesisModel = "gemma4:4b")
+    string SynthesisModel = "gemma4:e4b")
 {
     public static MemoryRagOptions Read(string projectRoot, string configPath)
     {
@@ -32,8 +32,8 @@ public sealed record MemoryRagOptions(
         return new MemoryRagOptions(
             Resolve("root", "memory"),
             Resolve("index", "memory-rag.index.json"),
-            values.GetValueOrDefault("ollamaEndpoint", "http://192.168.0.15:11434").TrimEnd('/'),
-            values.GetValueOrDefault("embeddingModel", "nomic-embed-text"),
+            values.GetValueOrDefault("ollamaEndpoint", "http://localhost:11434").TrimEnd('/'),
+            values.GetValueOrDefault("embeddingModel", "gemma3:1b"),
             Parse(values, "maxInjectedBytes", 6144, 1024, 32 * 1024),
             Parse(values, "defaultLimit", 8, 1, 20),
             values.GetValueOrDefault("synthesisModel", "gemma4:4b"));

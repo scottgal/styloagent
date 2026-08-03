@@ -24,5 +24,9 @@ publish/
 # Per-project runtime state the app scaffolds when a repo is opened (channel/router/issues/config)
 .styloagent/
 
+# DeepCode/Codex bridge files — contain per-instance credentials, never commit
+.deepcode/
+.agents/
+
 # Local multi-repo workspace config (machine-specific absolute repo paths)
 .styloagent-workspace/

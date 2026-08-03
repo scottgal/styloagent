@@ -12,10 +12,11 @@ public static class DocumentQuestionService
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(45) };
 
     public static async Task<DocumentAnswer> AnswerAsync(string projectRoot, MemoryRagOptions options, string question,
-        CancellationToken ct = default)
+        IReadOnlyCollection<string>? sources = null, CancellationToken ct = default)
     {
+        var requestedSources = sources is { Count: > 0 } ? sources : new[] { "docs" };
         var result = await ContextRetrievalService.RetrieveAsync(projectRoot, Path.Combine(projectRoot, ".styloagent", "channel"),
-            Path.Combine(projectRoot, ".styloagent", "issues"), [], options, "", question, ["docs"], 8, 10_000, ct);
+            Path.Combine(projectRoot, ".styloagent", "issues"), [], options, "", question, requestedSources, 8, 10_000, ct);
         if (result.Hits.Count == 0)
             return new DocumentAnswer("## No matching documents\n\nI could not find relevant project documentation.", [], false);
 
@@ -41,8 +42,20 @@ Evidence:
                     return new DocumentAnswer($"## {question}\n\n{payload.Response.Trim()}\n\n---\n### Sources\n{Sources(result.Hits)}", result.Hits, true);
             }
         }
-        catch { /* return useful grounded retrieval if Ollama is unavailable */ }
-        return new DocumentAnswer($"## {question}\n\n_Local synthesis is unavailable; these are the retrieved passages._\n\n{string.Join("\n\n", result.Hits.Select((h, i) => $"### [S{i + 1}] {h.Title}\n{h.Content}"))}\n\n---\n### Sources\n{Sources(result.Hits)}", result.Hits, false);
+        catch (Exception ex)
+        {
+            var why = ex is HttpRequestException or TaskCanceledException
+                ? $"Ollama is not reachable at {options.OllamaEndpoint} — is it running?"
+                : ex.Message;
+            return new DocumentAnswer(
+                $"## {question}\n\n_Synthesis unavailable: {why}_\n\nThese are the retrieved passages:\n\n{string.Join("\n\n", result.Hits.Select((h, i) => $"### [S{i + 1}] {h.Title}\n{h.Content}"))}\n\n---\n### Sources\n{Sources(result.Hits)}",
+                result.Hits, false);
+        }
+
+        // Ollama responded but returned no text — degrade to retrieval-only.
+        return new DocumentAnswer(
+            $"## {question}\n\n_Synthesis returned empty — these are the retrieved passages._\n\n{string.Join("\n\n", result.Hits.Select((h, i) => $"### [S{i + 1}] {h.Title}\n{h.Content}"))}\n\n---\n### Sources\n{Sources(result.Hits)}",
+            result.Hits, false);
     }
 
     private static string Sources(IReadOnlyList<ContextHit> hits) => string.Join("\n", hits.Select((h, i) => $"- [S{i + 1}] `{h.Path}` — {h.Title}"));

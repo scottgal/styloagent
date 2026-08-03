@@ -2,12 +2,12 @@ using Styloagent.Core.Hooks;
 
 namespace Styloagent.Core.Tests;
 
-public class CodexHookSettingsTests
+public class ConfigHookSettingsTests
 {
     [Fact]
     public void BuildConfigArgs_emits_codex_hook_config_for_observed_events()
     {
-        var args = CodexHookSettings.BuildConfigArgs("agent/one-", "/tmp/stylo hooks");
+        var args = ConfigHookSettings.BuildConfigArgs("agent/one-", "/tmp/stylo hooks");
 
         Assert.Contains("--dangerously-bypass-hook-trust", args);
         Assert.Contains("--config", args);
@@ -23,7 +23,7 @@ public class CodexHookSettingsTests
     [Fact]
     public void BuildConfigArgs_wires_hydration_delivery_and_ownership_gate()
     {
-        var args = CodexHookSettings.BuildConfigArgs(
+        var args = ConfigHookSettings.BuildConfigArgs(
             "foss-", "/tmp/hooks", "/tmp/hooks/foss.hydrate.json",
             "'dotnet' 'Styloagent.App.dll'", "/repo", "foss-");
         var joined = string.Join("\n", args);

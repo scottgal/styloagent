@@ -52,16 +52,7 @@ public sealed partial class WelcomeViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void SetRuntimeMode(string? mode)
-    {
-        SelectedRuntime = string.Equals(mode, "Codex", StringComparison.OrdinalIgnoreCase)
-            ? AgentRuntimeKind.Codex
-            : string.Equals(mode, "DeepCode", StringComparison.OrdinalIgnoreCase)
-                ? AgentRuntimeKind.DeepCode
-                : string.Equals(mode, "ClaudeDeepSeek", StringComparison.OrdinalIgnoreCase)
-                    ? AgentRuntimeKind.ClaudeDeepSeek
-                    : AgentRuntimeKind.Claude;
-    }
+    private void SetRuntimeMode(string? mode) => SelectedRuntime = AgentRuntime.Parse(mode);
 
     [RelayCommand]
     private async Task OpenFolder()

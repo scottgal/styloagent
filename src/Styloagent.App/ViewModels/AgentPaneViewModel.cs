@@ -317,7 +317,8 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     public void ApplyHookEvent(HookEvent e)
     {
         bool hadActivity = LastActivityAt is not null;
-        HookState = Runtime is AgentRuntimeKind.Codex or AgentRuntimeKind.DeepCode && e.EventName == "Stop"
+        var profile = AgentRuntimeProfile.For(Runtime);
+        HookState = profile.SkipHookStateMachine && e.EventName == "Stop"
             ? AgentHookState.Idle
             : HookStateMachine.Next(HookState, e);
         LastActivityAt = DateTimeOffset.UtcNow;
@@ -422,7 +423,8 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
         {
             try
             {
-                var usage = _manifest.Runtime is AgentRuntimeKind.Codex or AgentRuntimeKind.DeepCode
+                var profile = AgentRuntimeProfile.For(_manifest.Runtime);
+                var usage = profile.UseCodexTranscriptReader
                     ? Styloagent.Core.Transcripts.CodexTranscriptReader.ReadLatestForSession(sid)
                     : Styloagent.Core.Transcripts.TranscriptReader.ReadLatest(
                         Styloagent.Core.Transcripts.TranscriptReader.PathFor(cwd, sid));
@@ -530,13 +532,7 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     public string AgentSelectionText
         => $"{RuntimeName()} · {SelectedModel} · effort {SelectedEffort}";
 
-    private string RuntimeName() => _manifest.Runtime switch
-    {
-        AgentRuntimeKind.Codex => "codex",
-        AgentRuntimeKind.DeepCode => "deepcode",
-        AgentRuntimeKind.ClaudeDeepSeek => "claude-deepseek",
-        _ => "claude",
-    };
+    private string RuntimeName() => AgentRuntime.Name(_manifest.Runtime);
 
     /// <summary>Prefix of the parent (owner) agent, or null for root-level panes. Settable so a roster
     /// reparent can re-owner the agent (drag-drop v2a).</summary>
@@ -677,9 +673,7 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
 
     private string DefaultLaunchPrompt() => !_manifest.AutoStartPrompt
         ? string.Empty
-        : _manifest.Runtime is AgentRuntimeKind.Codex or AgentRuntimeKind.DeepCode
-        ? $"You are the '{_manifest.Prefix}' Styloagent workspace agent. Read .styloagent/PROTOCOL.md and your mission doc if present, check the fleet inbox, then carry out your assigned task."
-        : $"You are agent '{_manifest.Prefix}'. Begin your work.";
+        : AgentRuntimeProfile.For(_manifest.Runtime).DefaultLaunchPrompt(_manifest.Prefix);
 
     /// <summary>
     /// Requests the session to dehydrate.  If the watcher does not ack in time

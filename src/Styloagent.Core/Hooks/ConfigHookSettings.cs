@@ -1,13 +1,13 @@
 namespace Styloagent.Core.Hooks;
 
 /// <summary>
-/// Builds Codex CLI hook configuration for one spawned agent. Codex reads hooks from config layers, and
-/// accepts inline config via repeated <c>--config key=value</c> arguments, so Styloagent can attach
-/// per-pane hook drops without writing user or project Codex files.
+/// Builds CLI hook configuration via <c>--config key=value</c> arguments for runtimes that use
+/// config-layer hooks (Codex, DeepCode). Styloagent attaches per-pane hook drops without writing
+/// user or project config files.
 /// </summary>
-public static class CodexHookSettings
+public static class ConfigHookSettings
 {
-    /// <summary>The Codex lifecycle events Styloagent observes through the shared hook drop directory.</summary>
+    /// <summary>The lifecycle events Styloagent observes through the shared hook drop directory.</summary>
     private static readonly string[] ObservedEvents =
     {
         "SessionStart",
@@ -23,7 +23,7 @@ public static class CodexHookSettings
     };
 
     /// <summary>
-    /// Builds repeated <c>--config hooks.Event=[...]</c> arguments for Codex. Each hook writes raw stdin JSON
+    /// Builds repeated <c>--config hooks.Event=[...]</c> arguments. Each hook writes raw stdin JSON
     /// into <paramref name="hooksDir"/> using the same filename convention consumed by <see cref="HookChannel"/>.
     /// </summary>
     public static IReadOnlyList<string> BuildConfigArgs(string agentId, string hooksDir, string? hydrationFile = null,
@@ -79,7 +79,7 @@ public static class CodexHookSettings
 
     private static string ShQuote(string? s) => "'" + (s ?? string.Empty).Replace("'", "'\\''") + "'";
 
-    /// <summary>Escapes a value as a TOML basic string for Codex <c>--config</c> values.</summary>
+    /// <summary>Escapes a value as a TOML basic string for <c>--config</c> values.</summary>
     private static string TomlString(string value)
     {
         return "\"" + value

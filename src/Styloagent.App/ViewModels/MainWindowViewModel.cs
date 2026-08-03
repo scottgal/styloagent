@@ -551,7 +551,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private void ApprovePermission(AgentPaneViewModel? pane)
     {
         if (pane?.CurrentPty is not { } pty) return;
-        _ = pty.WriteAsync(pane.Runtime is AgentRuntimeKind.Codex or AgentRuntimeKind.DeepCode ? "\r" : "1\r");
+        _ = pty.WriteAsync(AgentRuntimeProfile.For(pane.Runtime).PtyWakeString);
         if (pane.NoteTerminalInteraction()) RefreshAttention();
         Timeline.Add(DateTimeOffset.Now, pane.DisplayName, "approved prompt", pane.BorderColorHex);
     }
@@ -1617,13 +1617,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 Prefix: prefix,
                 DisplayName: runtimeOverride is null
                     ? prefix.TrimEnd('-')
-                    : runtimeOverride switch
-                    {
-                        AgentRuntimeKind.Codex => "New Codex",
-                        AgentRuntimeKind.DeepCode => "New DeepCode",
-                        AgentRuntimeKind.ClaudeDeepSeek => "New Claude+DeepSeek",
-                        _ => "New Claude",
-                    },
+                    : $"New {AgentRuntimeProfile.For(runtimeOverride.Value).DisplayName}",
                 BorderColorHex: PresentationStore.DefaultColorFor(prefix));
         }
 
@@ -3065,28 +3059,24 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         string? protocolPath, IEnumerable<string>? claudeOnlyArgs = null)
     {
         var runtime = AgentRuntimeProfile.For(entry.Runtime);
-        var selectionArgs = ModelEffortArgs(entry);
 
-        // DeepCode: the CLI accepts NO flags other than -p/-r/-v/-h — model, effort, hooks and MCP
-        // are all read from settings.json layers (WriteDeepCodeSettings keeps .deepcode/settings.json
-        // pointed at THIS cockpit instance), so spawn with a bare argv. Passing --config (Codex-style)
-        // makes deepcode abort with "Unknown argument: config".
+        // DeepCode: reads ALL config from .deepcode/settings.json — no CLI flags allowed.
         if (entry.Runtime == AgentRuntimeKind.DeepCode)
             return Array.Empty<string>();
 
-        if (entry.Runtime == AgentRuntimeKind.Codex)
+        // Codex: --config hooks.*=, --config mcp_servers.*=, --sandbox, positional prompt
+        if (runtime.UsesConfigLayerHooks)
         {
             var args = new List<string>();
-            args.AddRange(selectionArgs);
+            args.AddRange(runtime.ModelEffortArgs(entry.Model, entry.Effort));
             if (hooks is not null)
             {
                 var hydration = Styloagent.Core.Hooks.HydrationText.For(
                     entry.Prefix,
                     string.IsNullOrWhiteSpace(entry.SavedContextPath) ? null : entry.SavedContextPath,
-                    protocolPath,
-                    channelRoot);
+                    protocolPath, channelRoot);
                 var file = hooks.WriteHydrationFile(hookId, hydration);
-                args.AddRange(Styloagent.Core.Hooks.CodexHookSettings.BuildConfigArgs(
+                args.AddRange(ConfigHookSettings.BuildConfigArgs(
                     hookId, hooks.HooksDirectory, file,
                     Styloagent.Core.Hooks.HookSettings.DefaultGateInvocation(), repoRoot, entry.Prefix));
             }
@@ -3096,20 +3086,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             return args;
         }
 
+        // Claude / ClaudeDeepSeek: --settings hooks.json, --mcp-config, --effort, --model
         if (!runtime.SupportsClaudeSettingsHooks)
             return runtime.PermissionArgs(PermissionMode);
 
         return HookArgs(hookId, entry, hooks, channelRoot, repoRoot, protocolPath)
             .Concat(claudeOnlyArgs ?? Array.Empty<string>())
             .Concat(McpArgsFor(entry.Prefix))
-            .Concat(selectionArgs)
+            .Concat(runtime.ModelEffortArgs(entry.Model, entry.Effort))
             .ToArray();
     }
 
     /// <summary>
     /// Returns the DeepSeek environment variables for a ClaudeDeepSeek agent, or null for
-    /// other runtimes. Loads from <c>~/.styloagent/deepseek.env</c> with an optional per-project
-    /// override at <c>.styloagent/deepseek.env</c>.
+    /// other runtimes.
     /// </summary>
     private static IReadOnlyDictionary<string, string>? BuildEnv(AgentManifestEntry entry, string? repoRoot)
     {
@@ -3117,43 +3107,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             return null;
         var vars = Core.Sessions.DeepSeekEnv.Load(repoRoot);
         return vars.Count > 0 ? vars : null;
-    }
-
-    private static IReadOnlyList<string> ModelEffortArgs(AgentManifestEntry entry)
-    {
-        // DeepCode: model and effort are configured via settings.json, not CLI flags.
-        // ClaudeDeepSeek uses the `claude` CLI so it takes --model and --effort flags like Claude.
-        if (entry.Runtime == AgentRuntimeKind.DeepCode)
-            return Array.Empty<string>();
-
-        var profile = AgentRuntimeProfile.For(entry.Runtime);
-        var args = new List<string>();
-        var model = !string.IsNullOrWhiteSpace(entry.Model)
-            ? entry.Model
-            : profile.DefaultModel;
-        if (!string.IsNullOrWhiteSpace(model))
-        {
-            args.Add("--model");
-            args.Add(model!);
-        }
-        var effort = !string.IsNullOrWhiteSpace(entry.Effort) &&
-                     !entry.Effort.Equals("default", StringComparison.OrdinalIgnoreCase)
-            ? entry.Effort
-            : null;
-        if (!string.IsNullOrWhiteSpace(effort))
-        {
-            if (entry.Runtime == AgentRuntimeKind.Codex)
-            {
-                args.Add("--config");
-                args.Add($"model_reasoning_effort={TomlString(effort!)}");
-            }
-            else
-            {
-                args.Add("--effort");
-                args.Add(effort!);
-            }
-        }
-        return args;
     }
 
     /// <summary>
@@ -3184,24 +3137,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     private AgentRuntimeKind RuntimeFromRequest(string? runtime)
-        => string.Equals(runtime, "codex", StringComparison.OrdinalIgnoreCase)
-            ? AgentRuntimeKind.Codex
-            : string.Equals(runtime, "deepcode", StringComparison.OrdinalIgnoreCase)
-                ? AgentRuntimeKind.DeepCode
-                : string.Equals(runtime, "claude-deepseek", StringComparison.OrdinalIgnoreCase)
-                    ? AgentRuntimeKind.ClaudeDeepSeek
-                    : string.Equals(runtime, "claude", StringComparison.OrdinalIgnoreCase)
-                        ? AgentRuntimeKind.Claude
-                        : _defaultAgentRuntime;
+        => string.IsNullOrWhiteSpace(runtime) ? _defaultAgentRuntime : AgentRuntime.Parse(runtime);
 
-    private static string RuntimeName(AgentRuntimeKind runtime)
-        => runtime switch
-        {
-            AgentRuntimeKind.Codex => "codex",
-            AgentRuntimeKind.DeepCode => "deepcode",
-            AgentRuntimeKind.ClaudeDeepSeek => "claude-deepseek",
-            _ => "claude",
-        };
+    private static string RuntimeName(AgentRuntimeKind runtime) => AgentRuntime.Name(runtime);
 
     private static IReadOnlyList<string> CodexDeveloperInstructionArgs(IEnumerable<string>? claudeOnlyArgs)
     {

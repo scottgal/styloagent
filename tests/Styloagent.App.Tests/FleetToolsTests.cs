@@ -51,7 +51,9 @@ public class FleetToolsTests
         public Task<string> ReadAgentAsync(string prefix) => Task.FromResult($"{prefix} said: done");
         public string WhoTouched(string path) => "foss- last touched it 5s ago (editing)";
         public IReadOnlyList<string> RecentFiles(int limit) => new[] { "/repo/Foo.cs — foss- (editing, 5s ago)" };
-        public IReadOnlyList<Styloagent.Core.Docs.DocSearchHit> SearchDocs(string query, int limit) =>
+        public Task<IReadOnlyList<Styloagent.Core.Docs.DocSearchHit>> SearchDocsAsync(string query, int limit) =>
+            Task.FromResult(SearchDocs(query, limit));
+        private static IReadOnlyList<Styloagent.Core.Docs.DocSearchHit> SearchDocs(string query, int limit) =>
             new[] { new Styloagent.Core.Docs.DocSearchHit("PROTOCOL", "/repo/.styloagent/PROTOCOL.md", Styloagent.Core.Docs.DocSource.Repo, ".styloagent/PROTOCOL.md") };
         public Task<Styloagent.Core.Memory.MemoryRecallResult> RecallMemoryAsync(string query, string? type, int limit, int maxBytes) =>
             Task.FromResult(new Styloagent.Core.Memory.MemoryRecallResult([], false, 0, 0));
@@ -345,10 +347,11 @@ public class FleetToolsTests
     }
 
     [Fact]
-    public void search_docs_serializes_hits()
+    public async Task search_docs_serializes_hits()
     {
         var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), new FakeController(), new McpAuth("secret"));
-        Assert.Contains("PROTOCOL", tools.search_docs("proto", 8));
+        var result = await tools.search_docs("proto", 8);
+        Assert.Contains("PROTOCOL", result);
     }
 
     [Fact]

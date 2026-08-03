@@ -1,4 +1,6 @@
 using System.Text.RegularExpressions;
+using Markdig;
+using Markdig.Syntax;
 using Styloagent.Core.Channel;
 using Styloagent.Core.Docs;
 using Styloagent.Core.Issues;
@@ -19,7 +21,6 @@ public static class ContextRetrievalService
 {
     private const int RrfK = 60;
     private static readonly Regex Words = new(@"[\p{L}\p{N}_-]+", RegexOptions.Compiled);
-    private static readonly Regex Heading = new(@"(?m)^#{1,4}\s+(.+)$", RegexOptions.Compiled);
     private static readonly string[] DefaultSources = ["memory", "docs", "bus", "issues"];
 
     public static async Task<ContextRetrievalResult> RetrieveAsync(string projectRoot, string channelRoot, string issuesDir,
@@ -107,14 +108,38 @@ public static class ContextRetrievalService
         => terms.Sum(t => (item.Title.Contains(t, StringComparison.OrdinalIgnoreCase) ? 3 : 0) + (item.Content.Contains(t, StringComparison.OrdinalIgnoreCase) ? 1 : 0));
     private static IEnumerable<Candidate> ChunkDocument(DocEntry doc)
     {
-        string text; try { text = File.ReadAllText(doc.FullPath); } catch { yield break; }
-        var headings = Heading.Matches(text).Cast<Match>().ToList();
-        if (headings.Count == 0) { yield return new Candidate("docs", doc.Title, doc.FullPath, "document", Trim(text, 1200), 1, FileStamp(doc.FullPath)); yield break; }
+        string text;
+        try { text = File.ReadAllText(doc.FullPath); }
+        catch { yield break; }
+
+        // Use Markdig AST for proper heading-based sectioning (handles ATX, Setext, link
+        // references, code fences that contain '#' characters — all cases regex misses).
+        var pipeline = new Markdig.MarkdownPipelineBuilder().Build();
+        Markdig.Syntax.MarkdownDocument ast;
+        try { ast = Markdig.Markdown.Parse(text, pipeline); }
+        catch { ast = Markdig.Markdown.Parse("", pipeline); }
+
+        // Find all heading blocks, sorted by position.
+        var headings = ast.Descendants().OfType<Markdig.Syntax.HeadingBlock>()
+            .Where(h => h.Level <= 4 && h.Span.Start >= 0)
+            .OrderBy(h => h.Span.Start)
+            .ToList();
+
+        if (headings.Count == 0)
+        {
+            yield return new Candidate("docs", doc.Title, doc.FullPath, "document",
+                Trim(text, 1200), 1, FileStamp(doc.FullPath));
+            yield break;
+        }
+
         for (var i = 0; i < headings.Count; i++)
         {
-            var start = headings[i].Index;
-            var end = i + 1 < headings.Count ? headings[i + 1].Index : text.Length;
-            yield return new Candidate("docs", doc.Title + " · " + headings[i].Groups[1].Value.Trim(), doc.FullPath, "document", Trim(text[start..end], 1200), 1, FileStamp(doc.FullPath));
+            var start = headings[i].Span.Start;
+            var end = i + 1 < headings.Count ? headings[i + 1].Span.Start : text.Length;
+            var headingText = headings[i].Inline?.FirstChild?.ToString()
+                ?? text.Substring(start, Math.Min(headings[i].Span.Length, 80)).TrimStart('#', ' ');
+            yield return new Candidate("docs", doc.Title + " · " + headingText, doc.FullPath,
+                "document", Trim(text[start..end], 1200), 1, FileStamp(doc.FullPath));
         }
     }
     private static IEnumerable<string> Tokens(string text) => Words.Matches(text.ToLowerInvariant()).Select(m => m.Value).Where(t => t.Length > 1).Distinct();

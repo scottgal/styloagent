@@ -869,7 +869,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     private static readonly JsonSerializerOptions _writeSettingsJsonOptions = new() { WriteIndented = true };
 
-    private static void WriteDeepCodeSettings(Uri baseUrl, string token, string repoRoot)
+    private static void WriteDeepCodeSettings(Uri baseUrl, string token, string repoRoot, string agentPrefix = "overview-")
     {
         try
         {
@@ -891,7 +891,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 ["env"] = new Dictionary<string, string>
                 {
                     ["STYLOAGENT_MCP_URL"] = baseUrl.ToString(),
-                    ["STYLOAGENT_MCP_AGENT"] = "overview-",
+                    ["STYLOAGENT_MCP_AGENT"] = agentPrefix,
                     ["STYLOAGENT_MCP_TOKEN"] = token,
                 },
             };
@@ -3061,8 +3061,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var runtime = AgentRuntimeProfile.For(entry.Runtime);
 
         // DeepCode: reads ALL config from .deepcode/settings.json — no CLI flags allowed.
+        // Write per-agent settings with the correct identity so the MCP bridge sends the right
+        // X-Styloagent-Agent header (not the old global "overview-").
         if (entry.Runtime == AgentRuntimeKind.DeepCode)
+        {
+            if (_mcpServer is { IsRunning: true } s && !string.IsNullOrWhiteSpace(repoRoot))
+                WriteDeepCodeSettings(s.BaseUrl, s.Token, repoRoot, entry.Prefix);
             return Array.Empty<string>();
+        }
 
         // Codex: --config hooks.*=, --config mcp_servers.*=, --sandbox, positional prompt
         if (runtime.UsesConfigLayerHooks)
@@ -3152,17 +3158,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 prompts.Add(args[i + 1]);
         }
         if (prompts.Count == 0) return Array.Empty<string>();
-        return new[] { "--config", $"developer_instructions={TomlString(string.Join("\n\n", prompts))}" };
+        return new[] { "--config", $"developer_instructions={Styloagent.Core.Sessions.AgentRuntimeProfile.TomlString(string.Join("\n\n", prompts))}" };
     }
 
-    private static string TomlString(string value)
-    {
-        return "\"" + value
-            .Replace("\\", "\\\\", StringComparison.Ordinal)
-            .Replace("\"", "\\\"", StringComparison.Ordinal)
-            .Replace("\r", "\\r", StringComparison.Ordinal)
-            .Replace("\n", "\\n", StringComparison.Ordinal) + "\"";
-    }
+    // TomlString → AgentRuntimeProfile.TomlString (single source of truth)
 
     /// <summary>Routes a hook event (raised on a background thread) to the owning pane on the UI thread.</summary>
     private void OnHookEvent(HookEvent e)

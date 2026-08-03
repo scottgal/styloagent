@@ -262,12 +262,13 @@ public sealed class FleetTools
 
     [McpServerTool, Description("Search the project's documents (LucidRAG SQLite FTS5, as-you-type prefix, filename/title-boosted) and get the top matches — title + path — so you can read only the relevant docs instead of scanning files. Great for finding design/lifecycle docs, the protocol, plans. Pass a query and optional limit (default 8, max 30). Saves tokens vs. reading whole files.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
-    public string search_docs(string query, int limit)
+    public async Task<string> search_docs(string query, int limit)
     {
         var ctx = _http.HttpContext;
         if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
         if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
-        return JsonSerializer.Serialize(_controller.SearchDocs(query, limit), Json);
+        var hits = await _controller.SearchDocsAsync(query, limit);
+        return JsonSerializer.Serialize(hits, Json);
     }
 
     [McpServerTool, Description("Retrieve the small set of hand-editable memory Markdown files relevant to this task. Uses LucidRAG-style hybrid RRF (local Ollama embeddings when available, BM25 title/description matching, salience and freshness), always includes pin: true / ⭐ hard rules, and hard-caps returned context. The index is disposable and rebuilt from the memory files. Pass type to scope (feedback, project, reference, user), limit (default 8, max 20), and maxBytes (default project policy, max 32KB). No synthesis is performed.")]

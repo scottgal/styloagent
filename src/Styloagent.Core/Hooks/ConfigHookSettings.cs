@@ -1,3 +1,5 @@
+using Styloagent.Core.Sessions;
+
 namespace Styloagent.Core.Hooks;
 
 /// <summary>
@@ -51,7 +53,7 @@ public static class ConfigHookSettings
                 "Stop" => Styloagent.Core.Channel.DeliveryHookCommands.ForStop(drop, hooksDir, safeId),
                 _ => observe,
             };
-            args.Add($"hooks.{ev}=[{{matcher=\"*\",hooks=[{{type=\"command\",command={TomlString(command)},timeout=30,statusMessage=\"Styloagent hook\"}}]}}]");
+            args.Add($"hooks.{ev}=[{{matcher=\"*\",hooks=[{{type=\"command\",command={AgentRuntimeProfile.TomlString(command)},timeout=30,statusMessage=\"Styloagent hook\"}}]}}]");
         }
 
         return args;
@@ -79,13 +81,5 @@ public static class ConfigHookSettings
 
     private static string ShQuote(string? s) => "'" + (s ?? string.Empty).Replace("'", "'\\''") + "'";
 
-    /// <summary>Escapes a value as a TOML basic string for <c>--config</c> values.</summary>
-    private static string TomlString(string value)
-    {
-        return "\"" + value
-            .Replace("\\", "\\\\", StringComparison.Ordinal)
-            .Replace("\"", "\\\"", StringComparison.Ordinal)
-            .Replace("\r", "\\r", StringComparison.Ordinal)
-            .Replace("\n", "\\n", StringComparison.Ordinal) + "\"";
-    }
+    // TomlString → AgentRuntimeProfile.TomlString (single source of truth)
 }

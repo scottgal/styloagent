@@ -31,7 +31,9 @@ public class StyloagentMcpServerTests
         public Task<string> ReadAgentAsync(string prefix) => Task.FromResult("done");
         public string WhoTouched(string path) => "none";
         public IReadOnlyList<string> RecentFiles(int limit) => Array.Empty<string>();
-        public IReadOnlyList<Styloagent.Core.Docs.DocSearchHit> SearchDocs(string query, int limit) =>
+        public Task<IReadOnlyList<Styloagent.Core.Docs.DocSearchHit>> SearchDocsAsync(string query, int limit) =>
+            Task.FromResult(SearchDocs(query, limit));
+        private static IReadOnlyList<Styloagent.Core.Docs.DocSearchHit> SearchDocs(string query, int limit) =>
             Array.Empty<Styloagent.Core.Docs.DocSearchHit>();
         public Task<Styloagent.Core.Memory.MemoryRecallResult> RecallMemoryAsync(string query, string? type, int limit, int maxBytes) =>
             Task.FromResult(new Styloagent.Core.Memory.MemoryRecallResult([], false, 0, 0));

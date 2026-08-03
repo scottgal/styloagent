@@ -308,7 +308,7 @@ public sealed partial class TerminalControl : UserControl
     }
 
     /// <summary>Scrollback depth (rows) the VT engine retains — the source-of-truth for a fresh engine.</summary>
-    private const int ScrollbackLines = 1000;
+    private const int ScrollbackLines = 10_000;
 
     /// <summary>Builds a fresh XTerm VT engine of the given grid size, wired to forward device replies to the PTY.</summary>
     private XTerm.Terminal BuildEngine(int cols, int rows)

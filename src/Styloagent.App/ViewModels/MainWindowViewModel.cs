@@ -1398,9 +1398,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var viewStateDir = Directory.GetParent(channelRoot)?.FullName ?? channelRoot;
         var busViewState = new JsonBusViewState(Path.Combine(viewStateDir, "bus-view-state.json"));
 
+        // Live-agent checker → ABANDONED pill: an unreplied thread whose recipient is no longer in the
+        // live fleet is orphaned and moves to Archive so the overview can triage it.
+        Func<string, bool> isAgentLive = prefix =>
+        {
+            var live = vm.SnapshotLiveAgents();
+            return live.Any(a => string.Equals(a.Prefix, prefix, StringComparison.OrdinalIgnoreCase));
+        };
+
         vm._busViewModel = new BusViewModel(
             channelRoot, channelPrefixes, viewState: busViewState,
-            isPickedUp: pickup.IsPickedUp, pickupWatchDir: pickupWatchDir)
+            isPickedUp: pickup.IsPickedUp, pickupWatchDir: pickupWatchDir,
+            isAgentLive: isAgentLive)
         {
             OpenDocument = vm.OpenBusMessageDocument,   // double-click a message → its full markdown
             ThreadOpener = vm.OpenBusThreadDocument,     // popout a thread → carousel through it
@@ -1778,7 +1787,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // 3) Its own bus feed as a document tab, keyed to ITS OWN pickup store (its WORKING pill reads the
         //    instance's PendingInbox, not the primary's); each reload pumps ITS coordinator.
         var pickup = new Styloagent.Core.Attention.PickupProjection(inst.Pending);
-        var bus = new BusViewModel(inst.Channel.ChannelRoot, inst.Channel.Prefixes, isPickedUp: pickup.IsPickedUp)
+        Func<string, bool> isRepoAgentLive = prefix =>
+        {
+            var live = SnapshotLiveAgentsForRepo(channel.RepoRoot);
+            return live.Any(a => string.Equals(a.Prefix, prefix, StringComparison.OrdinalIgnoreCase));
+        };
+        var bus = new BusViewModel(inst.Channel.ChannelRoot, inst.Channel.Prefixes,
+            isPickedUp: pickup.IsPickedUp, isAgentLive: isRepoAgentLive)
         {
             OpenDocument = OpenBusMessageDocument,
             ThreadOpener = OpenBusThreadDocument,

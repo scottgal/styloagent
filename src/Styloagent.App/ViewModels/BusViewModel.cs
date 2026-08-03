@@ -59,27 +59,31 @@ public sealed class BusMessageItem
 
     public string RelativeTime => BusTime.Format(Timestamp);
 
-    // ── 3-state status pill (WAITING → WORKING → DONE) ───────────────────────────────────────────
+    // ── 4-state status pill (WAITING → WORKING → ABANDONED → DONE) ────────────────────────────────
     // WAITING/DONE come from message content (New vs Replied/Archived); WORKING means a recipient has
     // picked the note up (PickupProjection). An explicit operator archive counts as DONE.
+    // ABANDONED: the recipient agent is no longer in the live fleet — thread needs triage.
+
+    /// <summary>The recipient agent is no longer live → this message is orphaned.</summary>
+    public bool IsAbandoned => State == "Abandoned";
 
     /// <summary>Handled: replied/archived by content, or explicitly archived by the operator.</summary>
     public bool IsDone => State is "Replied" or "Archived" || IsOperatorArchived;
 
     /// <summary>Being worked: still open, but the recipient has picked it up.</summary>
-    public bool IsBeingWorked => !IsDone && State == "New" && IsPickedUp;
+    public bool IsBeingWorked => !IsDone && !IsAbandoned && State == "New" && IsPickedUp;
 
-    /// <summary>The status pill label: DONE once handled, WORKING once picked up, else WAITING.</summary>
-    public string StatusPillText => IsDone ? "DONE" : IsBeingWorked ? "WORKING" : "WAITING";
+    /// <summary>The status pill label: DONE once handled, ABANDONED if orphaned, WORKING once picked up, else WAITING.</summary>
+    public string StatusPillText => IsDone ? "DONE" : IsAbandoned ? "ABANDONED" : IsBeingWorked ? "WORKING" : "WAITING";
 
-    /// <summary>Pill background — green (done), steel-blue (working), amber (waiting).</summary>
-    public string StatusPillBgHex => IsDone ? "#243024" : IsBeingWorked ? "#1E2A3A" : "#3A2E00";
+    /// <summary>Pill background — green (done), dark-purple (abandoned), steel-blue (working), amber (waiting).</summary>
+    public string StatusPillBgHex => IsDone ? "#243024" : IsAbandoned ? "#2A1A2E" : IsBeingWorked ? "#1E2A3A" : "#3A2E00";
 
-    /// <summary>Pill foreground — green (done), steel-blue (working), amber (waiting).</summary>
-    public string StatusPillFgHex => IsDone ? "#7FB07F" : IsBeingWorked ? "#6FA8D6" : "#E5A05A";
+    /// <summary>Pill foreground — green (done), muted-purple (abandoned), steel-blue (working), amber (waiting).</summary>
+    public string StatusPillFgHex => IsDone ? "#7FB07F" : IsAbandoned ? "#B08AC0" : IsBeingWorked ? "#6FA8D6" : "#E5A05A";
 
-    /// <summary>DONE fades most; WORKING is gently de-emphasized; WAITING stays full-strength.</summary>
-    public double RowOpacity => IsDone ? 0.5 : IsBeingWorked ? 0.85 : 1.0;
+    /// <summary>DONE fades most; ABANDONED and WORKING gently de-emphasized; WAITING stays full-strength.</summary>
+    public double RowOpacity => IsDone ? 0.5 : IsAbandoned ? 0.7 : IsBeingWorked ? 0.85 : 1.0;
 }
 
 /// <summary>One thread row in the attention-first bus.</summary>
@@ -131,22 +135,27 @@ public sealed partial class BusThreadItem : ObservableObject
     [RelayCommand]
     private void ToggleExpand() => IsExpanded = !IsExpanded;
 
-    // ── 3-state status pill (WAITING → WORKING → DONE) ───────────────────────────────────────────
+    // ── 4-state status pill (WAITING → WORKING → ABANDONED → DONE) ────────────────────────────────
     // The pill reflects HANDLING status: WAITING (needs a reply, nobody on it) → WORKING (needs a reply,
-    // a recipient picked it up) → DONE (replied/archived, or operator-archived). Operator READ-state
-    // (seen) is expressed separately as a SECTION demotion in BusViewModel, not as a pill.
+    // a recipient picked it up) → ABANDONED (recipient agent no longer live, needs triage) → DONE
+    // (replied/archived, or operator-archived). Operator READ-state (seen) is expressed separately as a
+    // SECTION demotion in BusViewModel, not as a pill.
+
+    /// <summary>The thread has been abandoned — its recipient agent is no longer in the live fleet.</summary>
+    public bool IsAbandoned => !IsDone && NeedsReply && !IsPickedUp &&
+        Messages.Count > 0 && Messages.Any(m => m.IsAbandoned);
 
     /// <summary>Handled: the thread reached <see cref="BusThreadSection.Archive"/>, or the operator archived it.</summary>
     public bool IsDone => Section == BusThreadSection.Archive || IsOperatorArchived;
 
     /// <summary>Loud: a still-open thread that needs a reply and nobody has picked up.</summary>
-    public bool IsWaiting => !IsDone && NeedsReply && !IsPickedUp;
+    public bool IsWaiting => !IsDone && !IsAbandoned && NeedsReply && !IsPickedUp;
 
     /// <summary>The middle rung: a still-open thread that needs a reply and a recipient is working it.</summary>
-    public bool IsBeingWorked => !IsDone && NeedsReply && IsPickedUp;
+    public bool IsBeingWorked => !IsDone && !IsAbandoned && NeedsReply && IsPickedUp;
 
-    /// <summary>Pill label: DONE (handled), WORKING (picked up), WAITING (needs a reply); empty otherwise.</summary>
-    public string StatusPillText => IsDone ? "DONE" : IsBeingWorked ? "WORKING" : IsWaiting ? "WAITING" : "";
+    /// <summary>Pill label: DONE (handled), ABANDONED (orphaned), WORKING (picked up), WAITING (needs a reply); empty otherwise.</summary>
+    public string StatusPillText => IsDone ? "DONE" : IsAbandoned ? "ABANDONED" : IsBeingWorked ? "WORKING" : IsWaiting ? "WAITING" : "";
 
     /// <summary>Whether to show a status pill at all (broadcasts / in-flight Recent threads carry none).</summary>
     public bool HasStatusPill => StatusPillText.Length > 0;
@@ -154,14 +163,14 @@ public sealed partial class BusThreadItem : ObservableObject
     /// <summary>The explicit-archive affordance is offered only while the thread is still open (not DONE).</summary>
     public bool CanArchive => !IsDone;
 
-    /// <summary>Pill background — green (done), steel-blue (working), amber (waiting).</summary>
-    public string StatusPillBgHex => IsDone ? "#243024" : IsBeingWorked ? "#1E2A3A" : "#3A2E00";
+    /// <summary>Pill background — green (done), dark-purple (abandoned), steel-blue (working), amber (waiting).</summary>
+    public string StatusPillBgHex => IsDone ? "#243024" : IsAbandoned ? "#2A1A2E" : IsBeingWorked ? "#1E2A3A" : "#3A2E00";
 
-    /// <summary>Pill foreground — green (done), steel-blue (working), amber (waiting).</summary>
-    public string StatusPillFgHex => IsDone ? "#7FB07F" : IsBeingWorked ? "#6FA8D6" : "#E5A05A";
+    /// <summary>Pill foreground — green (done), muted-purple (abandoned), steel-blue (working), amber (waiting).</summary>
+    public string StatusPillFgHex => IsDone ? "#7FB07F" : IsAbandoned ? "#B08AC0" : IsBeingWorked ? "#6FA8D6" : "#E5A05A";
 
-    /// <summary>DONE fades most; WORKING is gently de-emphasized; WAITING stays full-strength.</summary>
-    public double RowOpacity => IsDone ? 0.5 : IsBeingWorked ? 0.85 : 1.0;
+    /// <summary>DONE fades most; ABANDONED and WORKING gently de-emphasized; WAITING stays full-strength.</summary>
+    public double RowOpacity => IsDone ? 0.5 : IsAbandoned ? 0.7 : IsBeingWorked ? 0.85 : 1.0;
 }
 
 /// <summary>
@@ -180,6 +189,11 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
     // Per-message "picked up" lookup (recipient drained the note) → the WORKING pill. Keyed by
     // (filePath, routingPrefix); wired from Core.Attention.PickupProjection. Null-safe default = never.
     private readonly Func<string, string, bool> _isPickedUp;
+
+    // Per-prefix live-agent check → ABANDONED pill. An unreplied thread whose recipient is NOT in the
+    // live fleet is orphaned and moves to Archive (⚰) so the overview can triage it. Wired from the
+    // cockpit's live fleet snapshot. Null-safe default = all live (never abandon).
+    private readonly Func<string, bool> _isAgentLive;
 
     // The pickup signal (delivered ledger + pending push/info files) lives under the temp hooks
     // `deliver/` dir, NOT under _channelRoot — so the channel FileSystemWatcher never sees a drain and
@@ -227,13 +241,15 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
         ChannelProjection? projection = null,
         IBusViewState? viewState = null,
         Func<string, string, bool>? isPickedUp = null,
-        string? pickupWatchDir = null)
+        string? pickupWatchDir = null,
+        Func<string, bool>? isAgentLive = null)
     {
         _channelRoot = channelRoot;
         _knownPrefixes = knownPrefixes;
         _projection = projection ?? new ChannelProjection();
         _viewState = viewState ?? new InMemoryBusViewState();
         _isPickedUp = isPickedUp ?? ((_, _) => false);
+        _isAgentLive = isAgentLive ?? (_ => true);
         _pickupWatchDir = pickupWatchDir;
 
         // One timer instance, started as "disabled" (Timeout.Infinite).
@@ -311,6 +327,25 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                             (needsReply && seen) ? BusThreadSection.Recent :
                             view.Section;
 
+                        // Abandoned detection: an unreplied thread whose primary recipient is NOT in the
+                        // live fleet is orphaned → move to Archive with ⚰ glyph so the overview can
+                        // triage it (re-assign or dismiss). The check runs against the live fleet snapshot
+                        // wired from the cockpit, so it's correct at projection time — a rehydrated agent
+                        // makes its threads live again on the next reload.
+                        bool abandoned = false;
+                        if (needsReply && section != BusThreadSection.Archive)
+                        {
+                            // The thread has at least one unreplied inbox — check if ANY recipient prefix
+                            // is still live. If none are live, the thread is abandoned.
+                            var recipientPrefixes = t.Messages
+                                .Where(m => m.Kind == BusMessageKind.Inbox && m.State == BusMessageState.New)
+                                .Select(m => m.RoutingPrefix)
+                                .Distinct(StringComparer.OrdinalIgnoreCase);
+                            abandoned = recipientPrefixes.Any() && recipientPrefixes.All(p => !_isAgentLive(p));
+                            if (abandoned)
+                                section = BusThreadSection.Archive;
+                        }
+
                         string primaryPrefix = (t.Prefixes.Count > 0 ? t.Prefixes[0] : null)
                                                ?? (t.Messages.Count > 0 ? t.Messages[0].RoutingPrefix : null) ?? "";
                         string? from = t.Messages.Count > 0 ? t.Messages[0].From : null;
@@ -318,12 +353,21 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                             ? primaryPrefix
                             : $"{from} → {primaryPrefix}";
                         var msgItems = t.Messages
-                            .Select(m => BuildMessageItem(m, key, lastActivity, archived))
+                            .Select(m =>
+                            {
+                                // Messages for abandoned threads get their state overridden so the
+                                // ABANDONED pill and ⚰ glyph render correctly — the projection sees
+                                // them as New, but the viewer marks them as orphaned.
+                                var state = abandoned && m.Kind == BusMessageKind.Inbox && m.State == BusMessageState.New
+                                    ? BusMessageState.Abandoned
+                                    : m.State;
+                                return BuildMessageItem(m, key, lastActivity, archived, stateOverride: state);
+                            })
                             .ToList();
                         var threadItem = new BusThreadItem
                         {
                             Key                 = key,
-                            Glyph               = view.Glyph,
+                            Glyph               = abandoned ? "⚰" : view.Glyph,
                             Subject             = view.Subject,
                             ParticipantsDisplay = participants,
                             ColorHex            = PresentationStore.DefaultColorFor(primaryPrefix),
@@ -344,6 +388,24 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                         .SelectMany(b => b.msgItems)
                         .OrderByDescending(m => m.Timestamp ?? DateTimeOffset.MinValue)
                         .ToList();
+
+                    // ── Auto-archive completed threads ───────────────────────────────────────────
+                    // Any thread the classifier moved to Archive (replied, abandoned, or fully
+                    // archived) gets its physical files moved out of inbox/outbox so the channel
+                    // directory stays clean. Best-effort, idempotent — a move failure leaves the
+                    // thread live rather than vanishing. This runs on EVERY projection read, so
+                    // threads are cleaned regardless of how the reply was created (MCP tool,
+                    // hand-written .reply.md, or operator dismiss).
+                    foreach (var ti in threadItems)
+                    {
+                        if (ti.Section == BusThreadSection.Archive && ti.Key.Length > 0)
+                        {
+                            // Derive the slug from the key: key is "prefixslug"
+                            var sep = ti.Key.IndexOf('');
+                            var slug = sep >= 0 ? ti.Key[(sep + 1)..] : ti.Key;
+                            Styloagent.Core.Channel.ChannelArchiver.ArchiveThread(_channelRoot, slug);
+                        }
+                    }
 
                     // Update Messages — handle both UI-thread and headless/test contexts.
                     void UpdateMessages()
@@ -458,7 +520,8 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
         if (thread.IsExpanded) MarkThreadSeen(thread);
     }
 
-    /// <summary>Explicitly archive (dismiss) a thread → DONE. Persists so the reload re-sections it.</summary>
+    /// <summary>Explicitly archive (dismiss) a thread → DONE. Persists so the reload re-sections it,
+    /// and moves the thread's physical inbox/outbox files to archive/ so the channel stays clean.</summary>
     [RelayCommand]
     private void ArchiveThread(BusThreadItem? thread)
     {
@@ -466,6 +529,8 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
         thread.IsOperatorArchived = true;      // in-place → DONE immediately
         MoveThread(thread, ActionedThreads);
         _viewState.Archive(thread.Key);        // persist; Changed → reload re-sections into Archive
+        // Move the thread's physical files to archive/ so the channel stays glanceable.
+        Styloagent.Core.Channel.ChannelArchiver.ArchiveThread(_channelRoot, thread.Subject);
     }
 
     /// <summary>Mark a thread SEEN: persist to the view-state store. The store's Changed event triggers a
@@ -499,12 +564,14 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
     }
 
     private BusMessageItem BuildMessageItem(
-        BusMessage m, string threadKey, DateTimeOffset? threadLastActivity, bool archived) => new()
+        BusMessage m, string threadKey, DateTimeOffset? threadLastActivity, bool archived,
+        BusMessageState stateOverride = BusMessageState.New) => new()
     {
         RoutingPrefix      = m.RoutingPrefix,
         Slug               = m.Slug,
         Kind               = m.Kind.ToString(),
-        State              = m.State.ToString(),
+        // Use the override if provided (abandoned detection); otherwise use the message's own state.
+        State              = (stateOverride != BusMessageState.New ? stateOverride : m.State).ToString(),
         From               = m.From,
         Timestamp          = m.Timestamp,
         ColorHex           = PresentationStore.DefaultColorFor(m.RoutingPrefix),

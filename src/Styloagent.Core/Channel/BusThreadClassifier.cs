@@ -29,19 +29,24 @@ public static class BusThreadClassifier
 
         bool allArchived = messages.Count > 0 && messages.All(m => m.State == BusMessageState.Archived);
         bool hasUnrepliedInbox = messages.Any(m => m.Kind == BusMessageKind.Inbox && m.State == BusMessageState.New);
+        bool hasAbandoned = messages.Any(m => m.State == BusMessageState.Abandoned);
         bool hasReplied = messages.Any(m => m.State == BusMessageState.Replied);
         bool hasBroadcast = messages.Any(m => m.Kind is BusMessageKind.Broadcast or BusMessageKind.BroadcastReply);
 
-        // Attention first: an outstanding unreplied inbound always wins. Otherwise a HANDLED thread —
-        // replied to, or fully archived — leaves the active groups and moves to Archive so the bus stays
-        // glanceable at volume; everything else (broadcasts, sent-and-waiting, follow-ups) is Recent.
+        // Attention first: an outstanding unreplied inbound always wins. An ABANDONED thread (recipient
+        // agent no longer live) moves to Archive so the overview can triage it — it doesn't stay in the
+        // active list because nobody will ever pick it up. Otherwise a HANDLED thread — replied to, or
+        // fully archived — leaves the active groups and moves to Archive; everything else (broadcasts,
+        // sent-and-waiting, follow-ups) is Recent.
         BusThreadSection section =
             hasUnrepliedInbox ? BusThreadSection.Attention :
+            hasAbandoned ? BusThreadSection.Archive :
             (allArchived || hasReplied) ? BusThreadSection.Archive :
             BusThreadSection.Recent;
 
         string glyph =
             hasUnrepliedInbox ? "●" :
+            hasAbandoned ? "⚰" :
             hasReplied ? "↩" :                                  // replied (now archived) keeps its reply mark
             section == BusThreadSection.Archive ? "▤" :         // plainly archived, never replied
             hasBroadcast ? "◆" :

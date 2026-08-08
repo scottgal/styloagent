@@ -260,7 +260,7 @@ public sealed class FleetTools
         return JsonSerializer.Serialize(_controller.ReadTimeline(limit), Json);
     }
 
-    [McpServerTool, Description("Search the project's documents (LucidRAG SQLite FTS5, as-you-type prefix, filename/title-boosted) and get the top matches — title + path — so you can read only the relevant docs instead of scanning files. Great for finding design/lifecycle docs, the protocol, plans. Pass a query and optional limit (default 8, max 30). Saves tokens vs. reading whole files.")]
+    [McpServerTool, Description("Find the project's documents by filename/title and get the top matches — title + path — so you can read only the relevant docs instead of scanning files. Great for finding design/lifecycle docs, the protocol, plans. Pass a query and optional limit (default 8, max 30). This matches document names, not their contents: to search inside files use your own grep/search tool.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public async Task<string> search_docs(string query, int limit)
     {
@@ -269,31 +269,6 @@ public sealed class FleetTools
         if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
         var hits = await _controller.SearchDocsAsync(query, limit);
         return JsonSerializer.Serialize(hits, Json);
-    }
-
-    [McpServerTool, Description("Retrieve the small set of hand-editable memory Markdown files relevant to this task. Uses LucidRAG-style hybrid RRF (local Ollama embeddings when available, BM25 title/description matching, salience and freshness), always includes pin: true / ⭐ hard rules, and hard-caps returned context. The index is disposable and rebuilt from the memory files. Pass type to scope (feedback, project, reference, user), limit (default 8, max 20), and maxBytes (default project policy, max 32KB). No synthesis is performed.")]
-    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
-    public async Task<string> recall_memory(string query, string? type = null, int limit = 8, int maxBytes = 0)
-    {
-        var ctx = _http.HttpContext;
-        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
-        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
-        var result = await _controller.RecallMemoryAsync(query, type, Math.Clamp(limit, 1, 20), Math.Clamp(maxBytes, 0, 32 * 1024));
-        return JsonSerializer.Serialize(result, Json);
-    }
-
-    [McpServerTool, Description("Build a bounded briefing pack for the current task from selected sources: memory, docs, bus, issues (all by default). Uses LucidRAG-style RRF over lexical relevance, source salience, and freshness. Bus returns active/recent threads only and boosts messages addressed to you; issues returns open only. Every result is a citeable source-sized block. Live fleet, environment and browser state are deliberately excluded: use their deterministic tools. No synthesis is performed.")]
-    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
-    public async Task<string> retrieve_context(string query, string[]? sources = null, int limit = 8, int maxBytes = 6144)
-    {
-        var ctx = _http.HttpContext;
-        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
-        var caller = McpAuth.CallerPrefix(ctx);
-        if (caller is null) return "unauthorized: missing caller identity";
-        var allowed = new[] { "memory", "docs", "bus", "issues" };
-        var requested = (sources ?? []).Where(s => allowed.Contains(s, StringComparer.OrdinalIgnoreCase)).ToArray();
-        var result = await _controller.RetrieveContextAsync(caller, query, requested, Math.Clamp(limit, 1, 20), Math.Clamp(maxBytes, 1024, 32 * 1024));
-        return JsonSerializer.Serialize(result, Json);
     }
 
     [McpServerTool, Description("List the repos in the open workspace: each repo's name, path, index, overview prefix (e.g. 'overview-' for the primary, 'lucidresume-'), identity colour, and whether it's the primary. A single repo returns one entry. Use this to see which repos you're coordinating across and how to address each repo's overview.")]

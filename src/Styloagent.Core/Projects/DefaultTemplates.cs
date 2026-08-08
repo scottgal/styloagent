@@ -3,20 +3,6 @@ namespace Styloagent.Core.Projects;
 /// <summary>Bundled defaults written into a fresh project's .styloagent folder.</summary>
 public static class DefaultTemplates
 {
-    public const string MemoryRag =
-"""
-# Local-first retrieval over hand-editable memory Markdown. The index below is disposable.
-# Set root to an absolute store path when migrating an existing memory corpus; otherwise it is
-# relative to this project (the default is .styloagent/memory).
-root: memory
-index: memory-rag.index.json
-ollamaEndpoint: http://192.168.0.15:11434
-embeddingModel: gemma3:1b
-synthesisModel: gemma4:e4b
-maxInjectedBytes: 6144
-defaultLimit: 8
-""";
-
     public const string ModelPolicy =
 """
 # The overview may revise this file as it learns which work benefits from deeper reasoning.
@@ -149,15 +135,10 @@ You have these MCP tools from the `styloagent` server:
   file another agent may own, so you coordinate instead of colliding — context beyond worktrees.
 - `recent_files(limit)` — the files most recently touched across the fleet: a quick map of where
   everyone is working.
-- `search_docs(query, limit)` — search the project's documents (LucidRAG SQLite FTS5, prefix, title-boosted) and get
-  the top matches (title + path). Use it to find the protocol, design/lifecycle docs and plans and
-  read only what's relevant — cheaper than scanning files.
-- `recall_memory(query, type, limit, maxBytes)` — retrieve only the relevant hand-editable memory files
-  (plus pinned ⭐ / `pin: true` hard rules), using local hybrid RRF with an offline BM25 fallback. Use it
-  at the start of a task instead of reading a flat `MEMORY.md`; returned context is deliberately bounded.
-- `retrieve_context(query, sources, limit, maxBytes)` — a bounded, citeable briefing pack across memory,
-  design docs, active bus threads and open issues. Use it before broad repo reading; use live status,
-  router and browser tools separately because those are not indexed.
+- `search_docs(query, limit)` — find the project's documents by filename/title and get the top matches
+  (title + path). Use it to locate the protocol, design/lifecycle docs and plans and read only what's
+  relevant — cheaper than scanning files. This matches names, not document bodies: to search inside
+  files, use your own grep/search tool.
 - `spawn_agent(prefix, responsibility, dir, launchPrompt, worktree, missionDoc, runtime)` — launches a child
   agent under you. Set `worktree: true` **only** when the new agent's responsibility overlaps files an
   existing agent owns (so it works isolated on its own `agent/<prefix>` worktree); otherwise `false` to

@@ -20,8 +20,6 @@ using Styloagent.Core.Hooks;
 using Styloagent.Git;
 using Styloagent.Core.Mcp;
 using Styloagent.Core.Model;
-using Styloagent.Core.Memory;
-using Styloagent.Core.Retrieval;
 using Styloagent.Core.Projects;
 using Styloagent.Core.Seeding;
 using Styloagent.Core.Diagrams;
@@ -698,7 +696,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // _project) so the Git panel can fall back to it for agents without their own worktree.
     private string? _repoRoot;
     private RouterHost? _routerHost;
-    private MemoryIndexWatcher? _memoryIndexWatcher;
 
     // Per-agent markdown log writer (session-'s AgentLogWriter, item-3 slice 1). Driven off the same
     // hook Stop stream as the badges; wired in AttachProject because the project root — which locates
@@ -1534,16 +1531,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         var docRepoRoot = repoRoot ?? Environment.GetEnvironmentVariable("STYLOAGENT_REPO") ?? Directory.GetCurrentDirectory();
         vm.DocLibrary = new DocLibraryViewModel(docRepoRoot, channelRoot, vm.OpenMarkdownDocument,
-            nameSearch: term => vm.SearchIndex(index => index.SearchByName(term, 200)))
+            nameSearch: term => vm.SearchDocumentNames(term, 200))
         {
             ShowSystemMapCommand = vm.ShowSystemMapCommand,
             ShowBusSequenceCommand = vm.ShowBusSequenceCommand,
             ShowArchitectureCommand = vm.ShowArchitectureCommand,
         };
-        // Build the (content) search index OFF the startup critical path — it reads every doc's full text,
-        // which was a big chunk of the "show everything is slow" cost. With the doc library now lazy, the
-        // index is no longer needed to populate the tree, so it can finish in the background.
-        vm._searchIndexBuildTask = Task.Run(() => vm.BuildSearchIndex(docRepoRoot, channelRoot, vm._lifetimeCts.Token));
+        // Scan document NAMES off the startup critical path. The tree is lazy, so nothing waits on this;
+        // only the search boxes do, and they degrade to "no matches yet" for the moment it takes.
+        vm._docNamesBuildTask = Task.Run(() => vm.BuildDocumentNames(docRepoRoot, channelRoot, vm._lifetimeCts.Token));
         vm.Timeline.OpenSource = vm.OpenSourceDocument;
         vm.Timeline.OpenDiff = vm.OpenDiffDocument;
 
@@ -1873,8 +1869,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(FleetHudText));
         Issues?.Dispose();
         Issues = new IssuesViewModel(project.IssuesDir, OpenDocumentByPath);
-        _memoryIndexWatcher?.Dispose();
-        _memoryIndexWatcher = new MemoryIndexWatcher(MemoryRagOptions.Read(project.Root, project.MemoryRagPath));
 
         // Start (or restart) the RouterHost whenever a project is attached so the coordinator
         // drives the ledger at project.RouterRoot.  Dispose the previous host first (idempotent).
@@ -2080,16 +2074,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _ = console.StartAsync(_launcher, cwd);
     }
 
-    // ── Document search (LucidRAG SQLite FTS5, top-bar autosuggest) ──────────
-    private Styloagent.Core.Docs.DocumentSearchIndex _searchIndex = new();
-    private readonly object _searchIndexGate = new();
+    // ── Document search (filename/title match over an in-memory name list, top-bar autosuggest) ──
+    // Deliberately NOT an index: no database, no persisted corpus, no document bodies, nothing to
+    // rebuild in the background as files change. Just the doc tree's names+paths, walked once, matched
+    // in memory. The removed SQLite FTS5 index held every document's full text and was rebuilt from
+    // disk, which made it one of the cockpit's largest long-run memory costs.
+    private IReadOnlyList<Styloagent.Core.Docs.DocEntry> _docNames = [];
+    private readonly object _docNamesGate = new();
     private readonly CancellationTokenSource _lifetimeCts = new();
-    private Task? _searchIndexBuildTask;
+    private Task? _docNamesBuildTask;
 
     /// <summary>Live document-search suggestions for the top-bar box (updated as the query changes).</summary>
     public ObservableCollection<Styloagent.Core.Docs.DocSearchHit> SearchResults { get; } = new();
 
-    /// <summary>The top-bar search text — each change re-queries the SQLite FTS index for suggestions.</summary>
+    /// <summary>The top-bar search text — each change re-matches document names for suggestions.</summary>
     [ObservableProperty]
     private string _searchQuery = "";
 
@@ -2097,7 +2095,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         SearchResults.Clear();
         if (string.IsNullOrWhiteSpace(value)) return;
-        foreach (var hit in SearchIndex(index => index.Search(value, 8)))
+        foreach (var hit in SearchDocumentNames(value, 8))
             SearchResults.Add(hit);
     }
 
@@ -2118,58 +2116,35 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         });
     }
 
-    /// <summary>(Re)builds the persistent LucidRAG SQLite index. Names+titles arrive first (no file reads),
-    /// then the full-text corpus replaces that lightweight pass.</summary>
-    private void BuildSearchIndex(string? repoRoot, string? channelRoot, CancellationToken ct)
+    /// <summary>
+    /// Walks the document tree once for names+paths only (no file contents are read) and publishes the
+    /// list the top-bar and Doc Library finder match against.
+    /// </summary>
+    private void BuildDocumentNames(string? repoRoot, string? channelRoot, CancellationToken ct)
     {
-        Styloagent.Core.Docs.DocumentSearchIndex? next = null;
         try
         {
             ct.ThrowIfCancellationRequested();
-            var dbPath = string.IsNullOrWhiteSpace(repoRoot)
-                ? null
-                : Path.Combine(repoRoot, ".styloagent", "rag", "documents.db");
-            next = new Styloagent.Core.Docs.DocumentSearchIndex(dbPath);
             var entries = Styloagent.Core.Docs.DocLibraryReader.Read(repoRoot, channelRoot);
             ct.ThrowIfCancellationRequested();
-            next.BuildNames(entries);
-            ct.ThrowIfCancellationRequested();
-            next.Build(entries.Select(e => (e, SafeReadFile(e.FullPath))));
-            ct.ThrowIfCancellationRequested();
-            Styloagent.Core.Docs.DocumentSearchIndex old;
-            lock (_searchIndexGate)
-            {
-                ct.ThrowIfCancellationRequested();
-                old = _searchIndex;
-                _searchIndex = next;
-                next = null!;
-                old.Dispose();
-            }
+            lock (_docNamesGate) _docNames = entries;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // The cockpit is closing; never publish a background index after its owner has gone away.
+            // The cockpit is closing; never publish a background result after its owner has gone away.
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Trace.WriteLine($"[MainWindowViewModel] search index build failed: {ex}");
-        }
-        finally
-        {
-            next?.Dispose();
+            System.Diagnostics.Trace.WriteLine($"[MainWindowViewModel] document name scan failed: {ex}");
         }
     }
 
-    private static string SafeReadFile(string path)
+    /// <summary>Filename/title matches from the in-memory name list (empty until the scan completes).</summary>
+    private IReadOnlyList<Styloagent.Core.Docs.DocSearchHit> SearchDocumentNames(string query, int max)
     {
-        try { return File.Exists(path) ? File.ReadAllText(path) : ""; }
-        catch { return ""; }
-    }
-
-    private T SearchIndex<T>(Func<Styloagent.Core.Docs.DocumentSearchIndex, T> search)
-    {
-        lock (_searchIndexGate)
-            return search(_searchIndex);
+        IReadOnlyList<Styloagent.Core.Docs.DocEntry> entries;
+        lock (_docNamesGate) entries = _docNames;
+        return Styloagent.Core.Docs.DocNameSearch.Search(entries, query, max);
     }
 
     /// <summary>
@@ -2560,58 +2535,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             .ToList();
     }
 
-    /// <summary>Searches the SQLite-backed document library — top matches so an agent reads only relevant docs.</summary>
+    /// <summary>Finds documents by filename/title — top matches so an agent reads only relevant docs.</summary>
     public IReadOnlyList<Styloagent.Core.Docs.DocSearchHit> SearchDocs(string query, int limit)
     {
         limit = Math.Clamp(limit <= 0 ? 8 : limit, 1, 30);
-        return SearchIndex(index => index.Search(query ?? "", limit));
-    }
-
-    /// <summary>Retrieves bounded, citeable memory blocks; Markdown remains authoritative and the index is disposable.</summary>
-    public Task<MemoryRecallResult> RecallMemoryAsync(string query, string? type, int limit, int maxBytes)
-    {
-        var root = _project?.Root ?? _repoRoot;
-        if (string.IsNullOrWhiteSpace(root)) return Task.FromResult(new MemoryRecallResult([], false, 0, 0));
-        var config = _project ?? ProjectConfig.For(root);
-        var options = MemoryRagOptions.Read(config.Root, config.MemoryRagPath);
-        return MemoryRecallService.RecallAsync(options, query ?? "", type, limit <= 0 ? null : limit,
-            maxBytes <= 0 ? null : maxBytes);
-    }
-
-    public Task<ContextRetrievalResult> RetrieveContextAsync(string caller, string query, string[]? sources, int limit, int maxBytes)
-    {
-        var root = _project?.Root ?? _repoRoot;
-        if (string.IsNullOrWhiteSpace(root)) return Task.FromResult(new ContextRetrievalResult([], 0, new Dictionary<string, int>()));
-        var config = _project ?? ProjectConfig.For(root);
-        var memory = MemoryRagOptions.Read(config.Root, config.MemoryRagPath);
-        var prefixes = Panes.Select(p => p.Prefix).Append(caller).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        return ContextRetrievalService.RetrieveAsync(config.Root, config.ChannelRoot, config.IssuesDir, prefixes, memory, caller,
-            query ?? "", sources, limit, maxBytes);
-    }
-
-    /// <summary>Opens a grounded local chat session over heading-sized project-document retrieval.</summary>
-    [RelayCommand]
-    private void OpenDocsChat()
-    {
-        OpenDocsChatInternal();
-    }
-
-    private void OpenDocsChatInternal()
-    {
-        var chat = new DocsChatViewModel(AskDocumentsAsync);
-        if (_dockFactory?.DocumentDock is null || _dockFactory.RootDock is null) return;
-        _dockFactory.AddDockable(_dockFactory.DocumentDock, chat);
-        _dockFactory.SetActiveDockable(chat);
-        _dockFactory.SetFocusedDockable(_dockFactory.RootDock, chat);
-    }
-
-    private Task<DocumentAnswer> AskDocumentsAsync(string question, IReadOnlyCollection<string> sources)
-    {
-        var root = _project?.Root ?? _repoRoot;
-        if (string.IsNullOrWhiteSpace(root))
-            return Task.FromResult(new DocumentAnswer("No project is open.", [], false));
-        var config = _project ?? ProjectConfig.For(root);
-        return DocumentQuestionService.AnswerAsync(config.Root, MemoryRagOptions.Read(config.Root, config.MemoryRagPath), question, sources);
+        return SearchDocumentNames(query ?? "", limit);
     }
 
     // ── Workspace repos (multi-repo) ─────────────────────────────────────────
@@ -3888,19 +3816,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _lifetimeCts.Cancel();
-        var searchIndexBuild = _searchIndexBuildTask;
-        if (searchIndexBuild is not null && !searchIndexBuild.IsCompleted)
+        var docNamesBuild = _docNamesBuildTask;
+        if (docNamesBuild is not null && !docNamesBuild.IsCompleted)
         {
-            try { searchIndexBuild.GetAwaiter().GetResult(); }
+            try { docNamesBuild.GetAwaiter().GetResult(); }
             catch (OperationCanceledException) { }
-            catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"[MainWindowViewModel] search index shutdown failed: {ex}"); }
+            catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"[MainWindowViewModel] document name scan shutdown failed: {ex}"); }
         }
         _lifetimeCts.Dispose();
 
         _routerHost?.Dispose();
         _routerHost = null;
-        _memoryIndexWatcher?.Dispose();
-        _memoryIndexWatcher = null;
 
         _gitWatcher?.Dispose();
         _gitWatcher = null;
@@ -3917,7 +3843,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         _busViewModel?.Dispose();
         Issues?.Dispose();
-        lock (_searchIndexGate) _searchIndex.Dispose();
+        lock (_docNamesGate) _docNames = [];
 
         // Tear down every federated repo instance: its bus feed + its own hooks channel (and temp dir).
         foreach (var inst in _repoInstances)

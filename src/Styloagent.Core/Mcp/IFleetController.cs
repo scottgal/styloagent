@@ -29,8 +29,6 @@ public interface IFleetController
     string WhoTouched(string path);
     IReadOnlyList<string> RecentFiles(int limit);
     Task<IReadOnlyList<Docs.DocSearchHit>> SearchDocsAsync(string query, int limit);
-    Task<Memory.MemoryRecallResult> RecallMemoryAsync(string query, string? type, int limit, int maxBytes);
-    Task<Retrieval.ContextRetrievalResult> RetrieveContextAsync(string caller, string query, string[]? sources, int limit, int maxBytes);
     IReadOnlyList<RepoInfo> ListRepos();
     IReadOnlyList<AuthorityViolation> LintAuthority();
 }

@@ -12,8 +12,4 @@
     <PackageReference Include="Markdig" Version="0.39.0" />
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="../../../../Projects/src/SeekStorm.Bindings/SeekStorm.Bindings.csproj" />
-  </ItemGroup>
-
 </Project>

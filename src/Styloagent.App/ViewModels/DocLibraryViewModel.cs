@@ -73,9 +73,9 @@ public sealed partial class DocLibraryViewModel : ObservableObject
     // mutations back onto the UI thread; null in a plain unit-test context (→ run inline).
     private readonly SynchronizationContext? _uiContext;
 
-    // The in-pane name search delegates to repo-'s filename index (DocumentSearchIndex.SearchByName —
-    // filename+title field, no content, richer matching). Its BuildNames pass (no file reads) makes it
-    // answer almost instantly, so there is NO second full-tree walk here. Null → the box stays empty.
+    // The in-pane name search delegates to the shell's document name list (DocNameSearch over the
+    // names+paths walked once at startup — no content, nothing persisted). Matching is in-memory, so it
+    // answers instantly and there is NO second full-tree walk here. Null → the box stays empty.
     private readonly Func<string, IReadOnlyList<DocSearchHit>>? _nameSearch;
 
     /// <summary>The lazy file/folder tree (bound by the TreeView) — three collapsed sections at the top.</summary>
@@ -242,7 +242,7 @@ public sealed partial class DocLibraryViewModel : ObservableObject
         foreach (var c in ordered) { node.Children.Add(c); ResortNode(c); }
     }
 
-    // ── Filename search (backed by repo-'s DocumentSearchIndex.SearchByName) ─────────────────────
+    // ── Filename search (backed by the shell's DocNameSearch name matching) ──────────────────────
 
     partial void OnSearchTextChanged(string value) => ApplySearch();
 

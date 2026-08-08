@@ -87,10 +87,8 @@ public class DocLibraryReaderTests : IDisposable
             var entries = DocLibraryReader.Read(repoRoot: null, channelRoot: chan);
             Assert.Contains(entries, e => e.Source == DocSource.Log && e.RelativePath == "session-.md");
 
-            // End-to-end: the log must be discoverable via the existing document search.
-            using var idx = new DocumentSearchIndex();
-            idx.Build(entries.Select(e => (e, File.ReadAllText(e.FullPath))));
-            var hits = idx.Search("sqlite");
+            // End-to-end: the log must be discoverable by name via the document search.
+            var hits = DocNameSearch.Search(entries, "session-");
             Assert.Contains(hits, h => h.FullPath == Path.Combine(logs, "session-.md"));
         }
         finally { Directory.Delete(baseDir, recursive: true); }

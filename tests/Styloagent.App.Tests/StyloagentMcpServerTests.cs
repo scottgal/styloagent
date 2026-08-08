@@ -35,10 +35,6 @@ public class StyloagentMcpServerTests
             Task.FromResult(SearchDocs(query, limit));
         private static IReadOnlyList<Styloagent.Core.Docs.DocSearchHit> SearchDocs(string query, int limit) =>
             Array.Empty<Styloagent.Core.Docs.DocSearchHit>();
-        public Task<Styloagent.Core.Memory.MemoryRecallResult> RecallMemoryAsync(string query, string? type, int limit, int maxBytes) =>
-            Task.FromResult(new Styloagent.Core.Memory.MemoryRecallResult([], false, 0, 0));
-        public Task<Styloagent.Core.Retrieval.ContextRetrievalResult> RetrieveContextAsync(string caller, string query, string[]? sources, int limit, int maxBytes) =>
-            Task.FromResult(new Styloagent.Core.Retrieval.ContextRetrievalResult([], 0, new Dictionary<string, int>()));
         public IReadOnlyList<RepoInfo> ListRepos() => Array.Empty<RepoInfo>();
         public IReadOnlyList<Styloagent.Core.Architecture.AuthorityViolation> LintAuthority() =>
             Array.Empty<Styloagent.Core.Architecture.AuthorityViolation>();

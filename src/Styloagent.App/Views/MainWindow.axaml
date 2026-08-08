@@ -68,7 +68,7 @@
           </Button>
         </StackPanel>
 
-        <!-- Fast document navigation stays separate from the grounded Docs chat. -->
+        <!-- Fast document navigation: matches document names/titles as you type (no content index). -->
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="16,0" VerticalAlignment="Center">
         <AutoCompleteBox Width="250"
                          Watermark="Find a document…"
@@ -91,7 +91,6 @@
             </DataTemplate>
           </AutoCompleteBox.ItemTemplate>
         </AutoCompleteBox>
-        <Button Command="{Binding OpenDocsChatCommand}" Padding="8,4" ToolTip.Tip="Chat with project documentation">Docs chat</Button>
         </StackPanel>
 
         <!-- Centre: layout-mode segmented switch -->

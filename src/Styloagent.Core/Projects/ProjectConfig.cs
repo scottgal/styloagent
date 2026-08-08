@@ -18,8 +18,7 @@ public sealed record ProjectConfig(
     string RouterRoot,
     string EnvironmentsRoot,
     string BrowserRoot,
-    string ModelPolicyPath,
-    string MemoryRagPath)
+    string ModelPolicyPath)
 {
     /// <summary>Builds the config paths for a project root. Pure — performs no I/O.</summary>
     public static ProjectConfig For(string root)
@@ -42,7 +41,6 @@ public sealed record ProjectConfig(
             RouterRoot: Path.Combine(cfg, "router"),
             EnvironmentsRoot: Path.Combine(cfg, "environments"),
             BrowserRoot: Path.Combine(cfg, "browser"),
-            ModelPolicyPath: Path.Combine(cfg, "model-policy.yaml"),
-            MemoryRagPath: Path.Combine(cfg, "memory-rag.yaml"));
+            ModelPolicyPath: Path.Combine(cfg, "model-policy.yaml"));
     }
 }

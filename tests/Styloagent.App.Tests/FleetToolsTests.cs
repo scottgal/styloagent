@@ -55,10 +55,6 @@ public class FleetToolsTests
             Task.FromResult(SearchDocs(query, limit));
         private static IReadOnlyList<Styloagent.Core.Docs.DocSearchHit> SearchDocs(string query, int limit) =>
             new[] { new Styloagent.Core.Docs.DocSearchHit("PROTOCOL", "/repo/.styloagent/PROTOCOL.md", Styloagent.Core.Docs.DocSource.Repo, ".styloagent/PROTOCOL.md") };
-        public Task<Styloagent.Core.Memory.MemoryRecallResult> RecallMemoryAsync(string query, string? type, int limit, int maxBytes) =>
-            Task.FromResult(new Styloagent.Core.Memory.MemoryRecallResult([], false, 0, 0));
-        public Task<Styloagent.Core.Retrieval.ContextRetrievalResult> RetrieveContextAsync(string caller, string query, string[]? sources, int limit, int maxBytes) =>
-            Task.FromResult(new Styloagent.Core.Retrieval.ContextRetrievalResult([], 0, new Dictionary<string, int>()));
         public IReadOnlyList<RepoInfo>? ReposOverride;   // open_document tests point this at a real temp root
         public IReadOnlyList<RepoInfo> ListRepos() => ReposOverride ?? new[]
         {

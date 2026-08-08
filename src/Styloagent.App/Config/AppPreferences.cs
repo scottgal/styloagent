@@ -26,6 +26,13 @@ public partial class AppPreferences
     public double MarkdownFontSize { get; set; } = 14;
 
     /// <summary>
+    /// Scrollback depth (rows) each agent terminal retains. The cockpit's largest per-pane allocation:
+    /// roughly 11.5 KB per retained line, per terminal, and there is one terminal per agent — so 10,000
+    /// lines costs a 7-agent fleet ~800 MB of scrollback alone. Raise deliberately.
+    /// </summary>
+    public int TerminalScrollbackLines { get; set; } = 2_000;
+
+    /// <summary>
     /// Whether agents may drive/observe the cockpit via the UI-automation MCP tool (screenshots).
     /// OFF by default — a privileged introspection surface. Enabling it broadcasts a bus notice.
     /// </summary>

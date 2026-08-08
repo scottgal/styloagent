@@ -176,6 +176,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         SavePreferences();
     }
 
+    /// <summary>
+    /// App-wide terminal scrollback depth (rows). Persisted; applied to terminals built from here on.
+    /// This is the cockpit's biggest per-pane memory lever — see TerminalControl.DefaultScrollbackLines.
+    /// </summary>
+    [ObservableProperty]
+    private int _terminalScrollbackLines = 2_000;
+
+    partial void OnTerminalScrollbackLinesChanged(int value)
+    {
+        Styloagent.Terminal.TerminalControl.SetGlobalScrollback(value);
+        SavePreferences();
+    }
+
     /// <summary>App-wide markdown / document font size (points). Persisted.</summary>
     [ObservableProperty]
     private double _markdownFontSize = 14;
@@ -266,7 +279,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         UiAutomationEnabled = prefs.EnableUiAutomation;
         SelectedPermissionMode = Enum.TryParse<Styloagent.Core.Hooks.FleetPermissionMode>(prefs.PermissionMode, out var pm)
             ? pm : Styloagent.Core.Hooks.FleetPermissionMode.Scoped;
+        TerminalScrollbackLines = Math.Clamp(prefs.TerminalScrollbackLines, 200, 50_000);
         Styloagent.Terminal.TerminalControl.SetGlobalFontSize(TerminalFontSize);
+        Styloagent.Terminal.TerminalControl.SetGlobalScrollback(TerminalScrollbackLines);
 
         _prefsLoaded = true;   // seeding complete — subsequent changes persist
     }
@@ -279,6 +294,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _prefs.Accent = SelectedAccent.Name;
         _prefs.TerminalTheme = GlobalTerminalTheme.Name;
         _prefs.TerminalFontSize = TerminalFontSize;
+        _prefs.TerminalScrollbackLines = TerminalScrollbackLines;
         _prefs.MarkdownFontSize = MarkdownFontSize;
         _prefs.EnableUiAutomation = UiAutomationEnabled;
         _prefs.PermissionMode = SelectedPermissionMode.ToString();

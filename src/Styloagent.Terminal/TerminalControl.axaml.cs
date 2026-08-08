@@ -307,8 +307,39 @@ public sealed partial class TerminalControl : UserControl
         AddHandler(DragDrop.DropEvent, OnDrop, RoutingStrategies.Tunnel | RoutingStrategies.Bubble);
     }
 
-    /// <summary>Scrollback depth (rows) the VT engine retains — the source-of-truth for a fresh engine.</summary>
-    private const int ScrollbackLines = 10_000;
+    /// <summary>
+    /// Default scrollback depth (rows) the VT engine retains per terminal.
+    ///
+    /// THIS IS THE COCKPIT'S LARGEST PER-PANE ALLOCATION — change it only with the cost in mind. The VT
+    /// engine keeps a full-width cell buffer per retained line, and <see cref="_rows"/> mirrors the
+    /// transcript as text on top of it. Measured (headless probe, ~900px-wide terminal): retention grows
+    /// linearly at roughly 11.5 KB PER LINE until the cap, then plateaus — so the cap is a direct
+    /// multiplier on steady-state memory:
+    ///
+    ///     1,000 lines  ≈  11 MB per terminal        10,000 lines  ≈  115 MB per terminal
+    ///
+    /// and the cockpit runs one terminal PER AGENT. A 10,000-line cap put a 7-agent fleet at ~800 MB of
+    /// scrollback alone (plus native Skia/text resources), which is what drove the unbounded-looking
+    /// growth operators saw over a long session: each terminal only reaches its cap after ~10,000 lines
+    /// of output, i.e. hours, so memory climbs for hours before it levels off.
+    ///
+    /// 2,000 keeps twice the history the cockpit had historically at ~1/5th the cost of 10,000. Operators
+    /// who want deeper history can raise it (Settings → terminal scrollback) and pay for it knowingly.
+    /// </summary>
+    public const int DefaultScrollbackLines = 2_000;
+
+    private static int _globalScrollbackLines = DefaultScrollbackLines;
+
+    /// <summary>
+    /// Sets the app-wide scrollback depth. Applies to engines built from now on (a fresh spawn, a resize
+    /// that rebuilds the grid, a reattach) — terminals already running keep their current buffer until
+    /// they next rebuild, so lowering it does not retroactively free live scrollback.
+    /// </summary>
+    public static void SetGlobalScrollback(int lines)
+        => _globalScrollbackLines = Math.Clamp(lines, 200, 50_000);
+
+    /// <summary>The scrollback depth a freshly built engine will use.</summary>
+    public static int GlobalScrollback => _globalScrollbackLines;
 
     /// <summary>Builds a fresh XTerm VT engine of the given grid size, wired to forward device replies to the PTY.</summary>
     private XTerm.Terminal BuildEngine(int cols, int rows)
@@ -317,7 +348,7 @@ public sealed partial class TerminalControl : UserControl
         {
             Cols = cols,
             Rows = rows,
-            Scrollback = ScrollbackLines,
+            Scrollback = _globalScrollbackLines,
         });
         // When XTerm produces data (e.g. terminal query responses), forward it to the PTY.
         engine.DataReceived += OnTerminalDataReceived;

@@ -69,6 +69,29 @@ public static class TemplateSync
                 }
 
                 var current = File.ReadAllText(path);
+
+                // AGENT-OWNED files are append-only, forever: the operator/agents customized them, so the
+                // sync NEVER overwrites them. We deliver each new version as an appended update block (or a
+                // YAML notice) and let the owner fold it in. A file is agent-owned when the state says so,
+                // or — migration for states saved before ownership existed — when it already carries an
+                // update marker (a marker only appears on files we appended onto, i.e. files with owner
+                // content we must not clobber).
+                bool agentOwned = state.AgentOwned.Contains(tpl.Name)
+                                  || current.Contains(UpdateMarker, StringComparison.Ordinal);
+                if (agentOwned)
+                {
+                    // Deliver THIS version's update (markdown: append full content; YAML: write a notice).
+                    if (tpl.IsMarkdown)
+                        File.AppendAllText(path, UpdateSection(state.Version, bundledVersion, tpl.Content));
+                    else
+                        WriteNotice(cfg, tpl, state.Version, bundledVersion);
+                    state.AgentOwned.Add(tpl.Name);
+                    state.Files[tpl.Name] = Hash(File.ReadAllText(path));
+                    continue;
+                }
+
+                // Not agent-owned: overwrite only when we can prove nobody touched it since we last wrote it
+                // (hash matches our record, or the file is byte-identical to the current bundle).
                 var unmodified = state.Files.TryGetValue(tpl.Name, out var known)
                                  && known is not null
                                  && string.Equals(known, Hash(current), StringComparison.Ordinal);
@@ -83,7 +106,8 @@ public static class TemplateSync
                     continue;
                 }
 
-                // Agent-edited (or pre-versioning project): never clobber local intent.
+                // First time we've seen owner content: append (never clobber) and mark the file owned so
+                // every future version is delivered the same append-only way.
                 if (tpl.IsMarkdown)
                 {
                     File.AppendAllText(path, UpdateSection(state.Version, bundledVersion, tpl.Content));
@@ -92,18 +116,24 @@ public static class TemplateSync
                 else
                 {
                     WriteNotice(cfg, tpl, state.Version, bundledVersion);
-                    state.Files[tpl.Name] = Hash(current);   // next bump re-notifies only if it changed again
+                    state.Files[tpl.Name] = Hash(current);
                 }
+                state.AgentOwned.Add(tpl.Name);
             }
 
             state.Version = bundledVersion;
             SaveState(StatePathFor(cfg), state);
         }
-        catch
+        catch (Exception ex)
         {
             // Template sync is best-effort; a failure must never break project open.
+            System.Diagnostics.Trace.WriteLine($"[TemplateSync] sync failed: {ex}");
         }
     }
+
+    /// <summary>Marker that identifies an appended update block (see <see cref="UpdateSection"/>). Used both
+    /// to render blocks and, as a migration heuristic, to recognize pre-ownership agent-edited files.</summary>
+    internal const string UpdateMarker = "Styloagent template update";
 
     private static string PathFor(ProjectConfig cfg, string name) => Path.Combine(cfg.ConfigDir, name);
 
@@ -146,7 +176,12 @@ public static class TemplateSync
         if (!File.Exists(path)) return new TemplateState();
         try
         {
-            return YamlSerializer.Deserialize<TemplateState>(File.ReadAllBytes(path)) ?? new TemplateState();
+            var state = YamlSerializer.Deserialize<TemplateState>(File.ReadAllBytes(path)) ?? new TemplateState();
+            // States saved before a property existed deserialize with it null (VYaml leaves absent keys
+            // null); normalize so the sync logic never NREs on old state files.
+            state.AgentOwned ??= new HashSet<string>(StringComparer.Ordinal);
+            state.Files ??= new Dictionary<string, string>(StringComparer.Ordinal);
+            return state;
         }
         catch { return new TemplateState(); }
     }
@@ -167,4 +202,11 @@ internal partial class TemplateState
 
     /// <summary>Name → SHA-256 of the content we last wrote (the "unmodified since" proof).</summary>
     public Dictionary<string, string> Files { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Names treated as agent-owned (customized by the operator/agents): the sync appends updates to them
+    /// and NEVER overwrites them. A pre-fix state may be missing entries; the sync also recognizes an
+    /// existing update marker as proof of ownership.
+    /// </summary>
+    public HashSet<string> AgentOwned { get; set; } = new(StringComparer.Ordinal);
 }

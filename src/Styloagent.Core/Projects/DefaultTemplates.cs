@@ -8,7 +8,7 @@ public static class DefaultTemplates
     /// re-syncs existing projects on the next open — so fleets already live get the updates too, not
     /// just freshly-scaffolded ones.
     /// </summary>
-    public const int Version = 2;
+    public const int Version = 3;
     public const string ModelPolicy =
 """
 # The overview may revise this file as it learns which work benefits from deeper reasoning.

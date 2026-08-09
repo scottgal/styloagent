@@ -19,6 +19,13 @@ public class TemplateSyncTests
         new("model-policy.yaml", "default:\n  runtime: kilo\n  model: deepseek/deepseek-v4-pro\n", IsMarkdown: false),
     };
 
+    private static readonly Styloagent.Core.Projects.TemplateSync.BundledTemplate[] V3TemplatesForTest =
+    {
+        new("system-prompt.md", "# v3 system prompt\nlatest policy\n", IsMarkdown: true),
+        new("PROTOCOL.md", "# v3 protocol\n", IsMarkdown: true),
+        new("model-policy.yaml", "default:\n  runtime: kilo\n", IsMarkdown: false),
+    };
+
     private static string Root() => Path.Combine(Path.GetTempPath(), "tmpl-" + Guid.NewGuid().ToString("N"));
 
     [Fact]
@@ -126,6 +133,58 @@ public class TemplateSyncTests
             var notice = Path.Combine(TemplateSync.UpdateNoticesDir(cfg), "model-policy.yaml.md");
             Assert.True(File.Exists(notice), "an update notice should be written");
             Assert.Contains("deepseek/deepseek-v4-pro", File.ReadAllText(notice));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void Agent_owned_markdown_gets_newer_updates_appended_never_overwritten()
+    {
+        var root = Root();
+        try
+        {
+            var cfg = ProjectConfig.For(root);
+            TemplateSync.Ensure(cfg, V1Templates, bundledVersion: 1);
+
+            // The agent customises its system prompt between versions; v2 appends (not clobbers).
+            File.WriteAllText(Path.Combine(cfg.ConfigDir, "system-prompt.md"),
+                "# v1 system prompt\nold guidance.\n\n## MY CUSTOM RULES\nnever use tests.\n");
+            TemplateSync.Ensure(cfg, V2Templates, bundledVersion: 2);
+
+            // v3 arrives. The file is agent-owned: it must be APPENDED AGAIN, never overwritten — the
+            // custom rules and the v2 update block must both survive.
+            TemplateSync.Ensure(cfg, V3TemplatesForTest, bundledVersion: 3);
+
+            var updated = File.ReadAllText(Path.Combine(cfg.ConfigDir, "system-prompt.md"));
+            Assert.Contains("## MY CUSTOM RULES", updated);                    // owner content survives
+            Assert.Contains("Styloagent template update (v1 → v2)", updated);  // earlier update survives
+            Assert.Contains("Styloagent template update (v2 → v3)", updated);  // latest update delivered
+            Assert.Contains("latest policy", updated);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void Existing_update_marker_proves_ownership_for_pre_fix_states()
+    {
+        var root = Root();
+        try
+        {
+            // Simulates a project synced BEFORE agent-ownership existed: the file carries an old appended
+            // update block but the state has no AgentOwned entry. The marker alone must prove ownership so
+            // a later bump APPENDS instead of overwriting the owner's content.
+            var cfg = ProjectConfig.For(root);
+            Directory.CreateDirectory(cfg.ConfigDir);
+            File.WriteAllText(Path.Combine(cfg.ConfigDir, "system-prompt.md"),
+                "# owner content\n\n## Styloagent template update (v0 → v1)\nold update block\n");
+            var statePath = TemplateSync.StatePathFor(cfg);
+            File.WriteAllText(statePath, "version: 1\nfiles:\n  system-prompt.md: whatever\n");
+
+            TemplateSync.Ensure(cfg, V2Templates, bundledVersion: 2);
+
+            var updated = File.ReadAllText(Path.Combine(cfg.ConfigDir, "system-prompt.md"));
+            Assert.Contains("# owner content", updated);                    // never clobbered
+            Assert.Contains("Styloagent template update (v1 → v2)", updated);  // new update appended
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
     }

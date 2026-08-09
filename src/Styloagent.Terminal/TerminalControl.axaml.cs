@@ -477,6 +477,7 @@ public sealed partial class TerminalControl : UserControl
     private readonly object _rebuildGate = new();
     private bool _renderDirty;
     private bool _rebuildScheduled;
+
     /// <summary>True while <see cref="RebuildRowsCore"/> is executing on the UI thread — used by
     /// <see cref="OnScrollChanged"/> to skip rendering during a rebuild (the rebuild itself renders).</summary>
     private bool _rebuilding;
@@ -568,7 +569,11 @@ public sealed partial class TerminalControl : UserControl
     private void ScrollToTail()
     {
         double max = ScrollArea.Extent.Height - ScrollArea.Viewport.Height;
-        if (max > 0) ScrollArea.Offset = ScrollArea.Offset.WithY(max);
+        if (max <= 0) return;
+        // Skip the post when already at the bottom — writing an unchanged offset still costs a layout
+        // pass, and this fires after EVERY rebuild of a tail-following pane.
+        if (Math.Abs(ScrollArea.Offset.Y - max) < 0.5) return;
+        ScrollArea.Offset = ScrollArea.Offset.WithY(max);
     }
 
     /// <summary>
@@ -1272,9 +1277,15 @@ public sealed partial class TerminalControl : UserControl
     }
 
     /// <summary>
+    private const int BrushCacheCap = 512;
+
     private IBrush BrushFor(uint argb)
     {
         if (_brushCache.TryGetValue(argb, out IBrush? brush)) return brush;
+        // Bound the cache: a long-lived TUI painting many truecolor shades (btop, palette previews)
+        // could otherwise grow it without bound over a long session. Clearing on overflow is safe —
+        // the worst cost is re-creating a handful of brushes next render.
+        if (_brushCache.Count >= BrushCacheCap) _brushCache.Clear();
         brush = new SolidColorBrush(Color.FromUInt32(argb));
         _brushCache[argb] = brush;
         return brush;

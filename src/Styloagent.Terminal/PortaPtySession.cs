@@ -13,6 +13,13 @@ public sealed class PortaPtySession : IPtySession
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _readLoop;
 
+    // Serializes ALL writes to the PTY (keystrokes, terminal-query answers, injected bus messages,
+    // prompt injection). Porta.Pty's PtyStream is a raw-fd wrapper with no internal locking, and the
+    // cockpit's writers are genuinely concurrent — the UI thread's keystrokes race the background
+    // DA-answer path and the injector's nudge. Concurrent Write+Flush can interleave bytes mid-line
+    // and make Flush() block on the stream, which reads as "typing gets stuttery" on long sessions.
+    private readonly SemaphoreSlim _writeGate = new(1, 1);
+
     // Torn-read-safe: updated via Volatile.Write in the read loop, read via Volatile.Read in IsIdle.
     private long _lastOutputTicks = DateTime.UtcNow.Ticks;
 
@@ -95,19 +102,27 @@ public sealed class PortaPtySession : IPtySession
     /// The sole consumer <c>AgentSession</c> already awaits each write sequentially, satisfying this requirement.
     /// </para>
     /// </remarks>
-    public ValueTask WriteAsync(string text, CancellationToken ct = default)
+    public async ValueTask WriteAsync(string text, CancellationToken ct = default)
     {
-        // Porta.Pty's PtyStream on macOS/Unix is backed by a raw fd.
-        // FlushAsync hangs and synchronous Flush() deadlocks when called from an async continuation
-        // that competes with the background ReadAsync on the same stream fd.
-        // Running the write synchronously on a thread-pool thread avoids these issues.
         var bytes = Encoding.UTF8.GetBytes(text);
-        return new ValueTask(Task.Run(() =>
+        await _writeGate.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            ct.ThrowIfCancellationRequested();
-            _connection.WriterStream.Write(bytes, 0, bytes.Length);
-            _connection.WriterStream.Flush();
-        }, ct));
+            // Porta.Pty's PtyStream on macOS/Unix is backed by a raw fd.
+            // FlushAsync hangs and synchronous Flush() deadlocks when called from an async continuation
+            // that competes with the background ReadAsync on the same stream fd.
+            // Running the write synchronously on a thread-pool thread avoids these issues.
+            await Task.Run(() =>
+            {
+                ct.ThrowIfCancellationRequested();
+                _connection.WriterStream.Write(bytes, 0, bytes.Length);
+                _connection.WriterStream.Flush();
+            }, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
     }
 
     public void Resize(int cols, int rows) => _connection.Resize(cols, rows);

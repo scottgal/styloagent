@@ -39,7 +39,7 @@
           </StackPanel>
           <UniformGrid Columns="2" Rows="2" ColumnSpacing="8" RowSpacing="8">
             <ToggleButton x:Name="ClaudeFirstToggle"
-                          IsChecked="{Binding IsClaudeFirst, Mode=OneWay}"
+                          IsChecked="{Binding IsClaudeFirst, Mode=TwoWay}"
                           Command="{Binding SetRuntimeModeCommand}" CommandParameter="Claude"
                           Padding="12,10" CornerRadius="6" HorizontalContentAlignment="Stretch"
                           ToolTip.Tip="Claude (Anthropic) — Sonnet / Opus">
@@ -53,7 +53,7 @@
               </StackPanel>
             </ToggleButton>
             <ToggleButton x:Name="CodexFirstToggle"
-                          IsChecked="{Binding IsCodexFirst, Mode=OneWay}"
+                          IsChecked="{Binding IsCodexFirst, Mode=TwoWay}"
                           Command="{Binding SetRuntimeModeCommand}" CommandParameter="Codex"
                           Padding="12,10" CornerRadius="6" HorizontalContentAlignment="Stretch"
                           ToolTip.Tip="Codex (OpenAI) — GPT-5 Codex">
@@ -67,7 +67,7 @@
               </StackPanel>
             </ToggleButton>
             <ToggleButton x:Name="KiloFirstToggle"
-                          IsChecked="{Binding IsKiloFirst, Mode=OneWay}"
+                          IsChecked="{Binding IsKiloFirst, Mode=TwoWay}"
                           Command="{Binding SetRuntimeModeCommand}" CommandParameter="Kilo"
                           Padding="12,10" CornerRadius="6" HorizontalContentAlignment="Stretch"
                           ToolTip.Tip="Kilo (DeepSeek) — V4 Pro overviews, V4 Flash specialists">
@@ -81,7 +81,7 @@
               </StackPanel>
             </ToggleButton>
             <ToggleButton x:Name="ClaudeDeepSeekFirstToggle"
-                          IsChecked="{Binding IsClaudeDeepSeekFirst, Mode=OneWay}"
+                          IsChecked="{Binding IsClaudeDeepSeekFirst, Mode=TwoWay}"
                           Command="{Binding SetRuntimeModeCommand}" CommandParameter="ClaudeDeepSeek"
                           Padding="12,10" CornerRadius="6" HorizontalContentAlignment="Stretch"
                           ToolTip.Tip="Claude Code routed through DeepSeek models">

@@ -31,10 +31,13 @@ public sealed partial class WelcomeViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsClaudeDeepSeekFirst))]
     private AgentRuntimeKind _selectedRuntime;
 
-    public bool IsClaudeFirst => SelectedRuntime == AgentRuntimeKind.Claude;
-    public bool IsCodexFirst => SelectedRuntime == AgentRuntimeKind.Codex;
-    public bool IsKiloFirst => SelectedRuntime == AgentRuntimeKind.Kilo;
-    public bool IsClaudeDeepSeekFirst => SelectedRuntime == AgentRuntimeKind.ClaudeDeepSeek;
+    // Settable so the cards can bind TwoWay: clicking a card drives SelectedRuntime directly AND the
+    // visual stays in lockstep (a radio group). The setter only reacts to `true`; a click that turns an
+    // already-selected card off is a no-op, and SetRuntimeMode re-pushes to re-check it.
+    public bool IsClaudeFirst { get => SelectedRuntime == AgentRuntimeKind.Claude; set { if (value) SelectedRuntime = AgentRuntimeKind.Claude; } }
+    public bool IsCodexFirst { get => SelectedRuntime == AgentRuntimeKind.Codex; set { if (value) SelectedRuntime = AgentRuntimeKind.Codex; } }
+    public bool IsKiloFirst { get => SelectedRuntime == AgentRuntimeKind.Kilo; set { if (value) SelectedRuntime = AgentRuntimeKind.Kilo; } }
+    public bool IsClaudeDeepSeekFirst { get => SelectedRuntime == AgentRuntimeKind.ClaudeDeepSeek; set { if (value) SelectedRuntime = AgentRuntimeKind.ClaudeDeepSeek; } }
 
     public WelcomeViewModel(RecentProjectsStore recents, string recentsPath, IFolderPicker picker,
         Action<string> onProjectChosen,
@@ -61,10 +64,10 @@ public sealed partial class WelcomeViewModel : ObservableObject
     {
         var kind = AgentRuntime.Parse(mode);
         SelectedRuntime = kind;
-        // Re-push every OneWay Is*Checked binding: a click on the ALREADY-selected card flips its local
-        // IsChecked off, and since the source value did not change the OneWay binding would never write
-        // it back — leaving the selector with nothing visibly selected. Forcing the notifications keeps
-        // the visual state in lockstep with the selection (and re-checks the clicked card).
+        // Re-push every TwoWay Is*Checked binding: a click on the ALREADY-selected card flips its local
+        // IsChecked off, and since the source value did not change the binding would never write it back —
+        // leaving the selector with nothing visibly selected. Forcing the notifications keeps the visual
+        // state in lockstep with the selection (and re-checks the clicked card).
         OnPropertyChanged(nameof(IsClaudeFirst));
         OnPropertyChanged(nameof(IsCodexFirst));
         OnPropertyChanged(nameof(IsKiloFirst));

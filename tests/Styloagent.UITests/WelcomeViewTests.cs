@@ -70,6 +70,44 @@ public class WelcomeViewTests
         });
     }
 
+    /// <summary>
+    /// The reported regression: starting with Claude selected, clicking "Claude + DS" must switch the
+    /// selection — Claude must UNselect, Claude+DS must select, and the persisted default must follow.
+    /// A real ToggleButton click both toggles IsChecked AND fires the command, so the test mimics both.
+    /// </summary>
+    [Fact]
+    public Task Clicking_a_new_runtime_card_switches_selection_and_visual()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            AgentRuntimeKind? saved = null;
+            var vm = new WelcomeViewModel(new RecentProjectsStore(), "/tmp/none.yaml", new FakePicker(), _ => { },
+                initialRuntime: AgentRuntimeKind.Claude, onRuntimeChanged: kind => saved = kind);
+            var view = new WelcomeView { DataContext = vm };
+            var window = new Window { Width = 520, Height = 520, Content = view };
+            window.Show();
+            await HeadlessRender.SettleAsync(window);
+
+            var claude = Toggle(window, "ClaudeFirstToggle")!;
+            var cds = Toggle(window, "ClaudeDeepSeekFirstToggle")!;
+            Assert.True(claude.IsChecked, "claude should be selected initially");
+
+            // Real-click semantics on the Claude+DS card: toggle IsChecked (TwoWay writes SelectedRuntime)
+            // then fire the command (re-push + persist).
+            cds.IsChecked = true;
+            cds.Command!.Execute("ClaudeDeepSeek");
+
+            Assert.Equal(AgentRuntimeKind.ClaudeDeepSeek, vm.SelectedRuntime);
+            Assert.Equal(AgentRuntimeKind.ClaudeDeepSeek, saved);
+            Assert.True(vm.IsClaudeDeepSeekFirst);
+            Assert.True(cds.IsChecked, "Claude+DS card must end checked");
+            Assert.False(vm.IsClaudeFirst);
+            Assert.False(claude.IsChecked, "Claude card must unselect when a new runtime is picked");
+
+            window.Close();
+        });
+    }
+
     private static ToggleButton? Toggle(Window window, string name)
         => window.GetVisualDescendants().OfType<ToggleButton>().FirstOrDefault(t => t.Name == name);
 }

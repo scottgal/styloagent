@@ -16,11 +16,19 @@ public static class AgentRuntime
         _ => "claude",
     };
 
-    public static AgentRuntimeKind Parse(string? name) =>
-        string.Equals(name, "codex", StringComparison.OrdinalIgnoreCase) ? AgentRuntimeKind.Codex :
-        string.Equals(name, "kilo", StringComparison.OrdinalIgnoreCase) ? AgentRuntimeKind.Kilo :
-        string.Equals(name, "claude-deepseek", StringComparison.OrdinalIgnoreCase) ? AgentRuntimeKind.ClaudeDeepSeek :
-        AgentRuntimeKind.Claude;
+    public static AgentRuntimeKind Parse(string? name)
+    {
+        // Normalize so every spelling maps: "ClaudeDeepSeek", "claude-deepseek", "CLAUDE_DEEPSEEK" etc.
+        // A camelCase CommandParameter was silently parsing to Claude — the "Claude+DS launches Opus" bug.
+        string? key = name?.Trim().ToLowerInvariant().Replace("-", "").Replace("_", "").Replace(" ", "");
+        return key switch
+        {
+            "codex" => AgentRuntimeKind.Codex,
+            "kilo" => AgentRuntimeKind.Kilo,
+            "claudedeepseek" => AgentRuntimeKind.ClaudeDeepSeek,
+            _ => AgentRuntimeKind.Claude,
+        };
+    }
 }
 
 public sealed record AgentManifestEntry(

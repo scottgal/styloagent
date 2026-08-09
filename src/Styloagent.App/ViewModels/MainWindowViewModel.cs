@@ -2244,7 +2244,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         var decision = FleetGovernor.Check(state, req.ParentPrefix, req.Prefix);
         if (!decision.Allowed) return SpawnOutcome.Reject(decision.Reason!.Value, decision.Message);
 
-        var runtime = RuntimeFromRequest(req.Runtime);
+        // A spawned child inherits the PARENT's CLI by default ("spin up the same cli you started in");
+        // spawn_agent can still pass an explicit runtime to override. Falls back to the global default
+        // only when there is no live parent.
+        var runtime = string.IsNullOrWhiteSpace(req.Runtime)
+            ? ParentRuntime(req.ParentPrefix)
+            : AgentRuntime.Parse(req.Runtime);
         // Spawned specialists are classified by TIER (Sonnet = the fast/cheap model per runtime) unless the
         // spawner explicitly passes a tier, model or effort. The overview/repo-root agents keep the Opus tier.
         var tier = Styloagent.Core.Model.ModelTierNames.Parse(req.Tier);
@@ -3156,6 +3161,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     private AgentRuntimeKind RuntimeFromRequest(string? runtime)
         => string.IsNullOrWhiteSpace(runtime) ? _defaultAgentRuntime : AgentRuntime.Parse(runtime);
+
+    /// <summary>The runtime of the named parent pane, or the global default when absent — spawned children
+    /// inherit their parent's CLI so a claude-deepseek fleet stays claude-deepseek unless told otherwise.</summary>
+    private AgentRuntimeKind ParentRuntime(string? parentPrefix)
+        => parentPrefix is not null && Panes.FirstOrDefault(p => p.Prefix == parentPrefix) is { } parent
+            ? parent.Runtime
+            : _defaultAgentRuntime;
 
     private static string RuntimeName(AgentRuntimeKind runtime) => AgentRuntime.Name(runtime);
 

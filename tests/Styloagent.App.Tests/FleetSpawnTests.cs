@@ -1,6 +1,7 @@
 using Styloagent.App.ViewModels;
 using Styloagent.Core.Git;
 using Styloagent.Core.Mcp;
+using Styloagent.Core.Model;
 using Styloagent.Core.Projects;
 using Xunit;
 
@@ -50,6 +51,37 @@ public class FleetSpawnTests
             new FakeWatcher(),
             gitService: gitService,
             repoRoot: repoRoot);
+    }
+
+    /// <summary>
+    /// A spawned child inherits the SPAWNER's CLI by default ("spin up the same cli you started in"),
+    /// and an explicit runtime overrides it ("start a codex agent"). A claude-deepseek fleet must not
+    /// silently spawn kilo children.
+    /// </summary>
+    [Fact]
+    public async Task Child_inherits_parent_runtime_unless_overridden()
+    {
+        var channelRoot = MainWindowViewModelTests.MakeTwoAgentChannel();
+        var launcher = new FakeLauncher();
+        try
+        {
+            var vm = await MainWindowViewModel.InitializeAsync(
+                channelRoot, launcher, new FakeWatcher(),
+                defaultAgentRuntime: AgentRuntimeKind.ClaudeDeepSeek);
+            var overview = vm.Panes[0];
+            Assert.Equal(AgentRuntimeKind.ClaudeDeepSeek, overview.Runtime);
+
+            // No runtime -> inherits the parent's claude-deepseek.
+            var inherited = await vm.SpawnChildAsync(new SpawnRequest(overview.Prefix, "kid-", "owns X", ".", "p", false));
+            Assert.True(inherited.Spawned);
+            Assert.Equal(AgentRuntimeKind.ClaudeDeepSeek, vm.Panes.First(p => p.Prefix == "kid-").Runtime);
+
+            // Explicit runtime overrides ("start a codex agent").
+            var overridden = await vm.SpawnChildAsync(new SpawnRequest(overview.Prefix, "ctx-", "owns Y", ".", "p", false, Runtime: "codex"));
+            Assert.True(overridden.Spawned);
+            Assert.Equal(AgentRuntimeKind.Codex, vm.Panes.First(p => p.Prefix == "ctx-").Runtime);
+        }
+        finally { if (Directory.Exists(channelRoot)) Directory.Delete(channelRoot, recursive: true); }
     }
 
     [Fact]

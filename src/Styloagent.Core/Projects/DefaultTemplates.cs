@@ -3,6 +3,12 @@ namespace Styloagent.Core.Projects;
 /// <summary>Bundled defaults written into a fresh project's .styloagent folder.</summary>
 public static class DefaultTemplates
 {
+    /// <summary>
+    /// Bumped whenever the bundled templates change. <see cref="Styloagent.Core.Projects.TemplateSync"/>
+    /// re-syncs existing projects on the next open — so fleets already live get the updates too, not
+    /// just freshly-scaffolded ones.
+    /// </summary>
+    public const int Version = 2;
     public const string ModelPolicy =
 """
 # The overview may revise this file as it learns which work benefits from deeper reasoning.
@@ -146,9 +152,13 @@ You have these MCP tools from the `styloagent` server:
   "read your mission doc") and pass the full brief as `missionDoc`: Styloagent writes it to
   `.styloagent/missions/<prefix>.md` in the new agent's tree — committed on its branch when
    `worktree: true`, so an isolated agent can read it from its own checkout — and tells the agent to read
-   it. Set `runtime` to `claude`, `codex`, or `kilo` for mixed fleets (kilo defaults to DeepSeek v4 Pro for
-   overviews and v4 Flash for spawned agents), or leave it empty to use the cockpit default. This is the
-   prompt-in-a-doc path; don't hand-place mission files or stuff a huge brief inline.
+   it. Fleets are MIXED by default — not all one runtime: YOU (the overview) hold the big model
+   (DeepSeek v4 Pro / opus / gpt-5), while each specialist picks the model that fits its job from
+   `agent_capabilities()` (e.g. v4 Flash for routine implementation, a stronger model for gnarly
+   debugging), mixing runtimes/models/efforts freely. Pass `runtime` + `model` + `effort` from that list
+   (`claude`, `codex`, or `kilo`; kilo defaults to v4 Pro for overviews and v4 Flash for spawned agents)
+   or leave them empty to use the cockpit default. This is the prompt-in-a-doc path; don't hand-place
+   mission files or stuff a huge brief inline.
 - `agent_capabilities()` — the live runtime/model/effort choices that may be selected.
 - `agent_model_policy()` — the current job-type policy and the reasoning behind each choice. Read this
   before spawning and apply the appropriate runtime, model, and effort to the agent.

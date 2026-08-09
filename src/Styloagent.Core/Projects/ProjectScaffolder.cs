@@ -31,6 +31,11 @@ public static class ProjectScaffolder
         if (!File.Exists(environmentPolicy))
             File.WriteAllText(environmentPolicy, "controlOwner: overview-\n");
 
+        // Versioned template sync: existing fleets get bundled template updates too (append for
+        // agent-edited docs, never clobber). Runs after the missing-file writes above so freshly
+        // seeded files are recorded as unmodified.
+        TemplateSync.Ensure(cfg);
+
         return cfg;
     }
 }

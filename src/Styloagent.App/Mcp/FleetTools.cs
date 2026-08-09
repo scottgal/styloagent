@@ -55,7 +55,8 @@ public sealed class FleetTools
 #pragma warning disable CA1707 // Identifiers should not contain underscores — tool names are MCP contract and must match the wire protocol
     [McpServerTool, Description("Launch a child agent under you. prefix is a short lowercase tag ending in '-'. runtime is 'claude', 'codex', 'kilo', or 'claude-deepseek' — call agent_capabilities first to see the available models and reasoning-effort levels for each runtime, then pass model and effort from that list (leave blank for defaults; spawned kilo agents default to the fast DeepSeek v4 Flash model). Set worktree=true when this agent's work overlaps files another agent owns, so it runs isolated on its own git worktree/branch; otherwise false to share the repo. Keep launchPrompt SHORT (identity + 'read your mission doc'); pass the full brief as missionDoc — Styloagent writes it to .styloagent/missions/<prefix>.md in the new agent's tree and tells the agent to read it. Leave missionDoc empty to inject launchPrompt alone.")]
     public async Task<string> spawn_agent(string prefix, string responsibility, string dir, string launchPrompt,
-        bool worktree, string missionDoc = "", string runtime = "", string model = "", string effort = "")
+        bool worktree, string missionDoc = "", string runtime = "", string tier = "",
+        string model = "", string effort = "")
     {
         var ctx = _http.HttpContext;
         if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
@@ -66,6 +67,7 @@ public sealed class FleetTools
             new SpawnRequest(parent, prefix, responsibility,
                 string.IsNullOrWhiteSpace(dir) ? "." : dir, launchPrompt, worktree, missionDoc ?? string.Empty,
                 string.IsNullOrWhiteSpace(runtime) ? null : runtime,
+                string.IsNullOrWhiteSpace(tier) ? null : tier,
                 string.IsNullOrWhiteSpace(model) ? null : model,
                 string.IsNullOrWhiteSpace(effort) ? null : effort));
 

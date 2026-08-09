@@ -1310,7 +1310,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 RestartPromptPath: string.Empty,
                 SavedContextPath: string.Empty,
                 Transport: AgentTransport.Local,
-                Runtime: defaultAgentRuntime);
+                Runtime: defaultAgentRuntime,
+                Tier: Styloagent.Core.Model.ModelTier.Opus);
 
             // Resume the overview from its OWN context doc when the channel carries one — revive YOU, not a
             // blank overseer. Write a restart prompt (identity + re-read your context doc + resume + stay in
@@ -1368,13 +1369,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 ?? Directory.GetCurrentDirectory();
             var worktrees = await gitReader.ListWorktreesAsync(root, ct);
             entries = worktrees.Count > 0
-                ? worktrees.Select(w => WorktreeEntry(w, root) with { Runtime = defaultAgentRuntime }).ToList()
-                : new[] { WorktreeEntry(new GitWorktree(root, Path.GetFileName(root.TrimEnd('/', '\\')), string.Empty), root) with { Runtime = defaultAgentRuntime } };
+                ? worktrees.Select(w => WorktreeEntry(w, root) with
+                { Runtime = defaultAgentRuntime, Tier = Styloagent.Core.Model.ModelTier.Opus }).ToList()
+                : new[] { WorktreeEntry(new GitWorktree(root, Path.GetFileName(root.TrimEnd('/', '\\')), string.Empty), root) with
+                { Runtime = defaultAgentRuntime, Tier = Styloagent.Core.Model.ModelTier.Opus } };
         }
         else
         {
             entries = (await new ChannelManifestSeeder().SeedAsync(channelRoot, new Dictionary<string, string>()))
-                .Select(e => e with { Runtime = defaultAgentRuntime })
+                .Select(e => e with { Runtime = defaultAgentRuntime, Tier = Styloagent.Core.Model.ModelTier.Opus })
                 .ToList();
         }
         vm._seededEntries = entries;
@@ -2242,16 +2245,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         if (!decision.Allowed) return SpawnOutcome.Reject(decision.Reason!.Value, decision.Message);
 
         var runtime = RuntimeFromRequest(req.Runtime);
-        // Spawned specialists default to the fast DeepSeek model on Kilo — the overview/repo-root agents
-        // keep the pro default. The spawner can still pick any model explicitly.
-        var model = runtime == AgentRuntimeKind.Kilo && string.IsNullOrWhiteSpace(req.Model)
-            ? Styloagent.Core.Sessions.AgentRuntimeProfile.KiloFlashModelId
-            : req.Model;
+        // Spawned specialists are classified by TIER (Sonnet = the fast/cheap model per runtime) unless the
+        // spawner explicitly passes a tier, model or effort. The overview/repo-root agents keep the Opus tier.
+        var tier = Styloagent.Core.Model.ModelTierNames.Parse(req.Tier);
+        if (tier == Styloagent.Core.Model.ModelTier.Default && string.IsNullOrWhiteSpace(req.Model))
+            tier = Styloagent.Core.Model.ModelTier.Sonnet;
+        var model = req.Model;
         var runtimeName = RuntimeName(runtime);
         var capabilities = BuildAgentCapabilities();
-        if (!capabilities.Supports(runtimeName, model, req.Effort))
+        if (!capabilities.Supports(runtimeName, model ?? Styloagent.Core.Model.ModelTierResolver.ResolveModel(runtime, tier), req.Effort))
             return SpawnOutcome.Reject(RejectReason.InvalidPrefix,
-                $"unsupported agent selection: {runtimeName}/{model ?? "default"}/{req.Effort ?? "default"}; call agent_capabilities");
+                $"unsupported agent selection: {runtimeName}/{model ?? tier.ToString().ToLowerInvariant()}/{req.Effort ?? "default"}; call agent_capabilities");
 
         // Re-spawn recovery: the governor allows re-spawning over a crashed ("exited") ghost. Drop the
         // dead pane so the fresh spawn reclaims its slot instead of duplicating the prefix. Refuse if the
@@ -2281,7 +2285,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         var paneVm = CreateAgentPane(req.Prefix, req.Responsibility, req.Dir, launchPrompt,
             parentPrefix: req.ParentPrefix, depth: parentDepth + 1,
             worktreeOverride: worktreePath, worktreeBranch: worktreeBranch, runtime: runtime,
-            model: model, effort: req.Effort);
+            tier: tier, model: model, effort: req.Effort);
         if (worktreePath is not null && _git is not null)
             _ = paneVm!.RefreshGitStatusAsync(_git);
         return paneVm is null
@@ -2675,6 +2679,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string? worktreeOverride = null,
         string? worktreeBranch = null,
         AgentRuntimeKind? runtime = null,
+        Styloagent.Core.Model.ModelTier? tier = null,
         string? model = null,
         string? effort = null)
     {
@@ -2712,6 +2717,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             SavedContextPath: SavedContextPathFor(prefix),   // so it can be dehydrated / parked
             Transport: AgentTransport.Local,
             Runtime: runtime ?? _defaultAgentRuntime,
+            Tier: tier,
             Model: model,
             Effort: effort);
 
@@ -3010,14 +3016,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         {
             // Kilo runs as its interactive TUI (`kilo --model …`); the prompt is injected by typing via
             // the PTY, and approvals come from the KILO_CONFIG_CONTENT permission block.
-            return runtime.ModelEffortArgs(entry.Model, entry.Effort).ToArray();
+            return runtime.ModelEffortArgs(entry.Model, entry.Effort, entry.Tier).ToArray();
         }
 
         // Codex: --config hooks.*=, --config mcp_servers.*=, --sandbox, positional prompt
         if (runtime.UsesConfigLayerHooks)
         {
             var args = new List<string>();
-            args.AddRange(runtime.ModelEffortArgs(entry.Model, entry.Effort));
+            args.AddRange(runtime.ModelEffortArgs(entry.Model, entry.Effort, entry.Tier));
             if (hooks is not null)
             {
                 var hydration = Styloagent.Core.Hooks.HydrationText.For(
@@ -3042,7 +3048,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         return HookArgs(hookId, entry, hooks, channelRoot, repoRoot, protocolPath)
             .Concat(claudeOnlyArgs ?? Array.Empty<string>())
             .Concat(McpArgsFor(entry.Prefix))
-            .Concat(runtime.ModelEffortArgs(entry.Model, entry.Effort))
+            .Concat(runtime.ModelEffortArgs(entry.Model, entry.Effort, entry.Tier))
             .ToArray();
     }
 

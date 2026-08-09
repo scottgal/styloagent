@@ -25,6 +25,7 @@ internal partial class ManifestRow
     public string SavedContext { get; set; } = "";
     public string Transport { get; set; } = "local";
     public string Runtime { get; set; } = "claude";
+    public string? Tier { get; set; }
     public string? Model { get; set; }
     public string? Effort { get; set; }
     public bool AutoStartPrompt { get; set; } = true;
@@ -48,6 +49,7 @@ public sealed class ManifestStore
                 SavedContext = e.SavedContextPath,
                 Transport = e.Transport.Kind == TransportKind.Ssh ? "ssh" : "local",
                 Runtime = AgentRuntime.Name(e.Runtime),
+                Tier = e.Tier is null ? null : Styloagent.Core.Model.ModelTierNames.Name(e.Tier.Value),
                 Model = e.Model,
                 Effort = e.Effort,
                 AutoStartPrompt = e.AutoStartPrompt,
@@ -74,6 +76,7 @@ public sealed class ManifestStore
                 ? new AgentTransport(TransportKind.Ssh, r.SshHost, r.CredentialRef)
                 : AgentTransport.Local,
             AgentRuntime.Parse(r.Runtime),
+            Styloagent.Core.Model.ModelTierNames.Parse(r.Tier),
             r.Model,
             r.Effort,
             r.AutoStartPrompt)).ToList();

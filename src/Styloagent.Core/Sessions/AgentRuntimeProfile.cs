@@ -124,10 +124,17 @@ public sealed record AgentRuntimeProfile(
     /// Kilo uses <c>--model provider/model</c> + <c>--variant</c>. Codex uses --config model_reasoning_effort=.
     /// Claude family uses --model and --effort.
     /// </summary>
-    public IReadOnlyList<string> ModelEffortArgs(string? model, string? effort)
+    public IReadOnlyList<string> ModelEffortArgs(string? model, string? effort, Styloagent.Core.Model.ModelTier? tier = null)
     {
         var args = new List<string>();
-        var effectiveModel = !string.IsNullOrWhiteSpace(model) ? model : DefaultModel;
+        // Classification-first: an explicit model still wins, then the tier maps to a concrete model
+        // for THIS runtime, then the runtime's own default. Storing tiers (not raw ids) keeps the fleet
+        // runtime-agnostic.
+        var effectiveModel = !string.IsNullOrWhiteSpace(model)
+            ? model
+            : tier is not null
+                ? Styloagent.Core.Model.ModelTierResolver.ResolveModel(Kind, tier.Value)
+                : DefaultModel;
         var effectiveEffort = !string.IsNullOrWhiteSpace(effort) &&
                               !effort.Equals("default", StringComparison.OrdinalIgnoreCase)
             ? effort

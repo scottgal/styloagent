@@ -131,6 +131,53 @@ public class FleetWiringTests
     }
 
     /// <summary>
+    /// THE acceptance test: the stylobot-commercial-style overview must launch as Claude Code routed
+    /// through DeepSeek (not real-Anthropic Opus). The Opus TIER on the claude-deepseek runtime must
+    /// resolve to --model deepseek-v4-pro (no [1m] suffix — the DeepSeek API rejects it), with the
+    /// DeepSeek base URL + key env applied, and never pass the literal 'opus' model or the Anthropic
+    /// base URL.
+    /// </summary>
+    [Fact]
+    public async Task ClaudeDeepSeek_overview_launches_routed_to_deepseek_not_opus()
+    {
+        var proj = Path.Combine(Path.GetTempPath(), "wire-cds-" + Guid.NewGuid().ToString("N"));
+        var cfg = ProjectScaffolder.Ensure(proj);
+        var launcher = new CapturingLauncher();
+        MainWindowViewModel? vm = null;
+        try
+        {
+            vm = await MainWindowViewModel.InitializeAsync(
+                cfg.ChannelRoot, launcher, new FakeWatcher(),
+                repoRoot: cfg.Root,
+                overviewSystemPromptPath: cfg.SystemPromptPath,
+                defaultAgentRuntime: AgentRuntimeKind.ClaudeDeepSeek);
+
+            Assert.True(vm.McpServerRunning);
+            var spawn = Assert.Single(launcher.Options);
+            Assert.Equal("claude", spawn.Command);
+
+            // Opus tier on claude-deepseek -> deepseek-v4-pro, NEVER the literal claude 'opus' model.
+            var modelIdx = spawn.Args.ToList().IndexOf("--model");
+            Assert.True(modelIdx >= 0, "claude must receive an explicit --model");
+            Assert.Equal("deepseek-v4-pro", spawn.Args[modelIdx + 1]);
+            Assert.DoesNotContain("--model", spawn.Args.Skip(modelIdx + 1));
+            Assert.DoesNotContain("opus", spawn.Args, StringComparer.Ordinal);
+
+            // The DeepSeek routing env must be applied; the Anthropic base URL must NOT be.
+            Assert.NotNull(spawn.Env);
+            Assert.Equal("https://api.deepseek.com/anthropic", spawn.Env["ANTHROPIC_BASE_URL"]);
+            Assert.NotEmpty(spawn.Env["ANTHROPIC_AUTH_TOKEN"]);
+            Assert.False(spawn.Env.ContainsKey("ANTHROPIC_BASE_URL") && spawn.Env["ANTHROPIC_BASE_URL"]!.Contains("anthropic.com"),
+                "must not route claude to the real Anthropic API");
+        }
+        finally
+        {
+            vm?.Dispose();
+            if (Directory.Exists(proj)) Directory.Delete(proj, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// AttachProject reads fleet.yaml and populates FleetPolicy with MaxFleet / MaxDepth.
     /// </summary>
     [Fact]

@@ -341,6 +341,16 @@ public sealed partial class TerminalControl : UserControl
     /// <summary>The scrollback depth a freshly built engine will use.</summary>
     public static int GlobalScrollback => _globalScrollbackLines;
 
+    /// <summary>
+    /// Slow-tick period (ms) for background (inactive) terminal rebuilds — the fleet-wide deferred-render
+    /// cadence. Stretching it makes deferral deterministic in tests.
+    /// </summary>
+    public static int DeferredRendersIntervalMs
+    {
+        get => DeferredRenders.IntervalMs;
+        set => DeferredRenders.IntervalMs = Math.Clamp(value, 1, 3_600_000);
+    }
+
     /// <summary>Builds a fresh XTerm VT engine of the given grid size, wired to forward device replies to the PTY.</summary>
     private XTerm.Terminal BuildEngine(int cols, int rows)
     {
@@ -417,6 +427,7 @@ public sealed partial class TerminalControl : UserControl
         session.Exited += OnSessionExited;
         _humanComposing = false;   // a fresh session starts with no line half-typed
         OperatorInputState.SetComposing(session, false);   // clear any stale compose flag for a re-attached session
+        _isActive = true;          // a fresh session the operator just opened renders eagerly
     }
 
     /// <summary>
@@ -430,6 +441,10 @@ public sealed partial class TerminalControl : UserControl
         OperatorInputState.Clear(_session);   // operator can't be composing in a detached pane
         _session = null;
         _brushCache.Clear();                  // release per-session colour brushes
+        // Leave the fleet-wide deferred set (and any pending dirty state) — a detached terminal never
+        // rebuilds again, and without this it would pin the control + keep the shared timer alive.
+        DeferredRenders.Unregister(this);
+        lock (_rebuildGate) _renderDirty = false;
     }
 
     /// <inheritdoc />
@@ -477,6 +492,16 @@ public sealed partial class TerminalControl : UserControl
     private readonly object _rebuildGate = new();
     private bool _renderDirty;
     private bool _rebuildScheduled;
+    /// <summary>
+    /// True while this terminal is the one the operator is looking at / typing into (focused, or just
+    /// interacted with). The ACTIVE terminal renders eagerly at frame rate so keystroke echo is instant;
+    /// INACTIVE terminals (background panes in a Tile layout, streaming agents) defer their expensive UI
+    /// rebuild to a shared fleet-wide slow tick (<see cref="DeferredRenders"/>), which collapses their
+    /// combined UI cost by ~15x while the agents themselves keep running untouched. Defaults to true so a
+    /// fresh terminal — and every headless test — renders eagerly until focus is actually lost. Volatile:
+    /// written on the UI thread (focus), read on the background PTY thread (ScheduleRebuild).
+    /// </summary>
+    private volatile bool _isActive = true;
 
     /// <summary>True while <see cref="RebuildRowsCore"/> is executing on the UI thread — used by
     /// <see cref="OnScrollChanged"/> to skip rendering during a rebuild (the rebuild itself renders).</summary>
@@ -538,6 +563,16 @@ public sealed partial class TerminalControl : UserControl
         {
             _renderDirty = true;
             if (_rebuildScheduled) return;   // a rebuild is already queued — it will pick up this output too
+            if (!_isActive)
+            {
+                // Background pane: don't queue an eager Render-priority rebuild. Register for the shared
+                // slow tick instead, so the sum of all background rebuilds can't saturate the UI thread
+                // while the operator types in the active terminal. The agent keeps running; only the
+                // cockpit-side UI refresh defers. The VT engine state was already updated eagerly (and
+                // off-thread) by OnSessionOutput, so the deferred rebuild renders the LATEST buffer.
+                DeferredRenders.Register(this);
+                return;
+            }
             _rebuildScheduled = true;
         }
         Dispatcher.UIThread.Post(RunCoalescedRebuild, DispatcherPriority.Render);
@@ -553,7 +588,11 @@ public sealed partial class TerminalControl : UserControl
         lock (_rebuildGate)
         {
             _rebuildScheduled = false;
-            if (!_renderDirty) return;
+            if (!_renderDirty)
+            {
+                DeferredRenders.Unregister(this);   // flushed clean — nothing left to defer
+                return;
+            }
             _renderDirty = false;
         }
         // Capture before rebuild — Surface.Height changes during RebuildRowsCore fire OnScrollChanged,
@@ -563,6 +602,25 @@ public sealed partial class TerminalControl : UserControl
         RebuildRows();
         if (wasFollowing)
             Dispatcher.UIThread.Post(ScrollToTail, DispatcherPriority.Loaded);
+
+        // Output may have arrived WHILE we rebuilt. Re-arm accordingly: eager for the active terminal,
+        // back onto the slow tick for a background one (it stays registered until a flush finds it clean).
+        lock (_rebuildGate)
+        {
+            if (_renderDirty)
+            {
+                if (_isActive)
+                {
+                    if (!_rebuildScheduled)
+                    {
+                        _rebuildScheduled = true;
+                        Dispatcher.UIThread.Post(RunCoalescedRebuild, DispatcherPriority.Render);
+                    }
+                }
+                else DeferredRenders.Register(this);
+            }
+            else DeferredRenders.Unregister(this);
+        }
     }
 
     /// <summary>Pins the viewport to the bottom of the transcript (keeps the live prompt/last line in view).</summary>
@@ -836,6 +894,38 @@ public sealed partial class TerminalControl : UserControl
         base.OnPointerPressed(e);
     }
 
+    /// <summary>Becomes the active terminal: flush any deferred background content immediately.</summary>
+    protected override void OnGotFocus(GotFocusEventArgs e)
+    {
+        base.OnGotFocus(e);
+        Activate();
+    }
+
+    /// <summary>No longer the operator's focus — future rebuilds defer to the slow tick.</summary>
+    protected override void OnLostFocus(RoutedEventArgs e)
+    {
+        base.OnLostFocus(e);
+        _isActive = false;
+    }
+
+    /// <summary>
+    /// Marks this terminal active and, if it had deferred dirty output, flushes it NOW (Render priority)
+    /// so the operator sees current state the moment they interact with the pane. Idempotent.
+    /// </summary>
+    private void Activate()
+    {
+        _isActive = true;
+        DeferredRenders.Unregister(this);
+        lock (_rebuildGate)
+        {
+            if (_renderDirty && !_rebuildScheduled)
+            {
+                _rebuildScheduled = true;
+                Dispatcher.UIThread.Post(RunCoalescedRebuild, DispatcherPriority.Render);
+            }
+        }
+    }
+
     /// <summary>
     /// Mouse wheel: Ctrl+wheel zooms; otherwise scrolls our scrollback. Registered on the Tunnel route so
     /// this fires before the inner ScrollViewer, letting us drive the real offset (and mark Handled to avoid
@@ -843,6 +933,8 @@ public sealed partial class TerminalControl : UserControl
     /// </summary>
     private void OnWheel(object? sender, PointerWheelEventArgs e)
     {
+        // Scrolling a background pane means the operator is looking at it — flush any deferred content.
+        Activate();
         if ((e.KeyModifiers & KeyModifiers.Control) != 0)
         {
             if (e.Delta.Y > 0) ZoomIn();
@@ -1384,5 +1476,55 @@ public sealed partial class TerminalControl : UserControl
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Fleet-wide deferred-render registry. Terminals that are NOT the operator's active focus register
+    /// here instead of queueing eager Render-priority rebuilds; one shared <see cref="DispatcherTimer"/>
+    /// (default 250 ms — the "slow tick") flushes every dirty background terminal in a single pass. The
+    /// agents themselves are untouched: the PTY read loops, hook events and the VT engine state all keep
+    /// running; only the cockpit's UI refresh of background panes is throttled. This collapses the
+    /// combined rebuild cost of a busy Tile fleet (~N x 60 fps) to ~4 fps total, which frees the UI
+    /// thread for the active terminal's keystroke echo.
+    /// All members are UI-thread only except <see cref="Register"/>, which the background PTY thread may
+    /// call (it defers timer creation/start to the UI thread).
+    /// </summary>
+    private static class DeferredRenders
+    {
+        /// <summary>Slow-tick period for background panes. Static so tests can stretch it for determinism.</summary>
+        public static int IntervalMs { get; set; } = 250;
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<TerminalControl, byte> Pending = new();
+        private static DispatcherTimer? _timer;
+
+        /// <summary>Adds a terminal to the deferred set (idempotent) and arms the shared tick.</summary>
+        public static void Register(TerminalControl terminal)
+        {
+            if (!Pending.TryAdd(terminal, 0)) return;
+            // Register can be called from the background PTY thread; the timer is UI-thread-owned.
+            Dispatcher.UIThread.Post(EnsureTimer, DispatcherPriority.Background);
+        }
+
+        /// <summary>Removes a terminal (flushed clean, activated, or detached).</summary>
+        public static void Unregister(TerminalControl terminal) => Pending.TryRemove(terminal, out _);
+
+        private static void EnsureTimer()
+        {
+            if (_timer is null)
+            {
+                _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(IntervalMs) };
+                _timer.Tick += (_, _) => Tick();
+            }
+            if (!_timer.IsEnabled) _timer.Start();
+        }
+
+        private static void Tick()
+        {
+            // Snapshot: a flush may unregister itself (clean) or stay (still streaming). The tick is the
+            // single flush point for ALL background panes, so their combined cost is one pass per tick.
+            foreach (var terminal in Pending.Keys)
+                terminal.RunCoalescedRebuild();
+            if (Pending.IsEmpty) _timer?.Stop();
+        }
     }
 }

@@ -24,8 +24,8 @@ public class RouterViewTests : IDisposable
         _browserRoot = Path.Combine(Path.GetTempPath(), "browserview-" + Guid.NewGuid().ToString("N"));
         Styloagent.Core.Environments.EnvironmentRegistry.Create(
             _environmentsRoot, "staging", "Staging", "non-production", "deploy-");
-        new Styloagent.Core.Browser.BrowserJobStore(_browserRoot).Create(
-            "test-", "staging", Styloagent.Core.Browser.BrowserRunMode.Observe, "capture", "/", null,
+        new Styloagent.BrowserBroker.BrowserJobStore(_browserRoot).Create(
+            "test-", "staging", Styloagent.BrowserBroker.BrowserRunMode.Observe, "capture", "/", null,
             false, null, DateTimeOffset.UtcNow);
         var now = DateTimeOffset.UtcNow;
         // Write a resource.yaml so the env/account is discovered

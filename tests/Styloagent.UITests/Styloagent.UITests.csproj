@@ -19,6 +19,7 @@
     <PackageReference Include="Avalonia.Headless" Version="11.3.18" />
     <PackageReference Include="Dock.Model.Mvvm" Version="11.3.12.1" />
     <PackageReference Include="Mostlylucid.Avalonia.UITesting" Version="1.7.0" />
+  <ProjectReference Include="..\..\src\Styloagent.BrowserBroker\Styloagent.BrowserBroker.csproj" />
   </ItemGroup>
 
   <ItemGroup>

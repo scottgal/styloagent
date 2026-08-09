@@ -169,7 +169,7 @@ public static class EnvironmentRegistry
         return value.Length > 0 && value[^1] == '-' ? value : value + "-";
     }
 
-    internal static string? NormalizeId(string? id)
+    public static string? NormalizeId(string? id)
     {
         if (string.IsNullOrWhiteSpace(id)) return null;
         var value = id.Trim().ToLowerInvariant();

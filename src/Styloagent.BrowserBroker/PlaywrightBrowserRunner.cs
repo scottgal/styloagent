@@ -1,9 +1,9 @@
 using System.Text.Json;
 using Microsoft.Playwright;
-using Styloagent.Core.Browser;
+using Styloagent.BrowserBroker;
 using Styloagent.Core.Environments;
 
-namespace Styloagent.App.Browser;
+namespace Styloagent.BrowserBroker;
 
 /// <summary>
 /// Executes one approved browser job in a fresh non-persistent context. Network routing enforces the

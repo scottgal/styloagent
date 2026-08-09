@@ -18,6 +18,7 @@ using Styloagent.Core.Git;
 using Styloagent.Core.Hooks;
 using Styloagent.Git;
 using Styloagent.Core.Mcp;
+using Styloagent.BrowserBroker;
 using Styloagent.Core.Model;
 using Styloagent.Core.Projects;
 using Styloagent.Core.Seeding;
@@ -31,7 +32,7 @@ namespace Styloagent.App.ViewModels;
 /// loads presentation data, and exposes the first agent as <see cref="Pane"/>.
 /// Supports adding additional agent panes at runtime via <see cref="AddAgentCommand"/>.
 /// </summary>
-public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
+public sealed partial class MainWindowViewModel : ObservableObject, IDisposable, IBrowserControllerHost
 {
     [ObservableProperty]
     private AgentPaneViewModel? _pane;
@@ -879,7 +880,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 Avalonia.Threading.Dispatcher.UIThread.Post(() => HandleDocumentOpen(req));
 
             // Feed the live hooksDir so check_inbox drains the SAME PendingInbox store the delivery hooks fill.
-            var browserController = new BrowserController(this);
+            var browserController = new BrowserController(this, new EnvironmentBrowserCredentialProvider());
             _mcpServer = await StyloagentMcpServer.StartAsync(new FleetController(this),
                 new RouterController(this, browserController), _hookChannel?.HooksDirectory,
                 _operatorQuestionHub, _documentOpenHub, browserController).ConfigureAwait(false);
@@ -913,6 +914,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     /// <summary>Returns the durable Playwright request/artifact root for the active project.</summary>
     public string? BrowserRootOrNull => _project?.BrowserRoot;
+
+    /// <summary>Browser broker host seam: called when a governed run completes (background thread).</summary>
+    void IBrowserControllerHost.NotifyBrowserRefresh() => Router?.Refresh();
+
+    string? IBrowserControllerHost.EnvironmentsRoot => EnvironmentsRootOrNull;
+    string? IBrowserControllerHost.BrowserRoot => BrowserRootOrNull;
 
     // ── Fleet management ─────────────────────────────────────────────────────
 

@@ -1,4 +1,4 @@
-using Styloagent.Core.Browser;
+using Styloagent.BrowserBroker;
 using Xunit;
 
 namespace Styloagent.Core.Tests;

@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Styloagent.Core.Browser;
+namespace Styloagent.BrowserBroker;
 
 /// <summary>Durable one-JSON-file-per-job store. Replacements are atomic within one filesystem.</summary>
 public sealed class BrowserJobStore

@@ -1,8 +1,8 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using Styloagent.App.Browser;
-using Styloagent.Core.Browser;
+using Styloagent.BrowserBroker;
+using Styloagent.BrowserBroker;
 using Xunit;
 
 namespace Styloagent.App.Tests;

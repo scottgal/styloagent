@@ -3,6 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Server;
 using Styloagent.Core.Mcp;
+using Styloagent.BrowserBroker;
 
 namespace Styloagent.App.Mcp;
 

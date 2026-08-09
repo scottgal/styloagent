@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <PackageId>Styloagent.BrowserBroker</PackageId>
+    <Title>Styloagent Browser Broker</Title>
+    <Description>Centralized governed Playwright screenshot broker: durable request→approve→run→artifact lifecycle, environment allow-list rules, and centralized header/API-key resolution. One implementation shared by every Styloagent host so clients can hand screenshots to each other.</Description>
+    <Version>1.0.0</Version>
+    <Authors>Scott Galloway</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Styloagent.Core\Styloagent.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Playwright" Version="1.61.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.5" />
+  </ItemGroup>
+
+</Project>

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Styloagent.App.Mcp;
 using Styloagent.Core.Mcp;
+using Styloagent.BrowserBroker;
 using Xunit;
 
 namespace Styloagent.App.Tests;

@@ -1,4 +1,4 @@
-namespace Styloagent.Core.Mcp;
+namespace Styloagent.BrowserBroker;
 
 /// <summary>Application seam for governed Playwright requests and execution.</summary>
 public interface IBrowserController

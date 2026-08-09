@@ -2,7 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Styloagent.Core.Environments;
-using Styloagent.Core.Browser;
+using Styloagent.BrowserBroker;
 using Styloagent.Core.Router;
 
 namespace Styloagent.App.ViewModels;

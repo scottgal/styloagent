@@ -2,6 +2,7 @@ using System.Text;
 using Styloagent.App.ViewModels;
 using Styloagent.Core.Environments;
 using Styloagent.Core.Mcp;
+using Styloagent.BrowserBroker;
 using Styloagent.Core.Router;
 
 namespace Styloagent.App.Mcp;

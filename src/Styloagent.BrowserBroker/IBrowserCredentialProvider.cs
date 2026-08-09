@@ -1,4 +1,4 @@
-namespace Styloagent.App.Browser;
+namespace Styloagent.BrowserBroker;
 
 /// <summary>
 /// Resolves an approved opaque reference inside the broker. Implementations must never log or persist

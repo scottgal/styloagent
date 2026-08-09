@@ -1,4 +1,4 @@
-namespace Styloagent.Core.Browser;
+namespace Styloagent.BrowserBroker;
 
 public enum BrowserRunMode { Observe, Test, Operate }
 public enum BrowserJobStatus { Pending, Approved, Running, Completed, Failed, Cancelled }

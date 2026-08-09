@@ -1,20 +1,24 @@
-using Styloagent.App.Browser;
-using Styloagent.App.ViewModels;
-using Styloagent.Core.Browser;
-using Styloagent.Core.Mcp;
+using Styloagent.Core.Environments;
 
-namespace Styloagent.App.Mcp;
+namespace Styloagent.BrowserBroker;
 
-/// <summary>Coordinates durable browser jobs and starts an isolated runner only after owner approval.</summary>
+/// <summary>
+/// Coordinates durable browser jobs and starts an isolated Playwright runner only after owner approval.
+/// Host-agnostic: the host supplies environment/browser roots via <see cref="IBrowserControllerHost"/>,
+/// so the SAME controller powers the cockpit, external clients and tests. Completed artifacts are exposed
+/// as portable <c>broker://&lt;runId&gt;/&lt;file&gt;</c> references so one client can send a screenshot to another.
+/// </summary>
 public sealed class BrowserController : IBrowserController
 {
-    private readonly MainWindowViewModel _vm;
+    private readonly IBrowserControllerHost _host;
+    private readonly IBrowserCredentialProvider _credentials;
     private readonly Dictionary<string, CancellationTokenSource> _running = new(StringComparer.Ordinal);
     private readonly object _gate = new();
     private BrowserJobService? _service;
     private string? _serviceKey;
 
-    public BrowserController(MainWindowViewModel vm) => _vm = vm;
+    public BrowserController(IBrowserControllerHost host, IBrowserCredentialProvider? credentials = null)
+        => (_host, _credentials) = (host, credentials ?? new RejectingBrowserCredentialProvider());
 
     public Task<string> RequestAsync(string caller, string environment, string mode, string purpose,
         string relativePath, string? selector, bool fullPage, string? credentialRef)
@@ -67,13 +71,16 @@ public sealed class BrowserController : IBrowserController
         if (service is null) return Task.FromResult("no active project");
         var job = service.Read(requestId);
         if (job is null) return Task.FromResult("unknown browser request");
-        var registry = Styloagent.Core.Environments.EnvironmentOwnershipStore.Read(_vm.EnvironmentsRootOrNull!);
+        var registry = EnvironmentOwnershipStore.Read(_host.EnvironmentsRoot!);
         var environment = registry.Environments.FirstOrDefault(e => e.Definition.Id == job.EnvironmentId);
         if (caller != job.Requester && caller != environment?.Owner && caller != registry.ControlOwner)
             return Task.FromResult("denied: artifacts are visible only to requester or environment authority");
         if (job.Status != BrowserJobStatus.Completed || job.ArtifactPath is null)
             return Task.FromResult($"no artifact: browser request is {job.Status.ToString().ToLowerInvariant()}");
-        return Task.FromResult(job.ArtifactPath);
+        // Hand back the PORTABLE reference, not an absolute path — it can travel in a bus message to
+        // another client, which resolves it against its own browser root.
+        var reference = BrokerArtifacts.Reference(job.ArtifactPath, _host.BrowserRoot!);
+        return Task.FromResult(reference ?? job.ArtifactPath);
     }
 
     public async Task RevokeEnvironmentAsync(string caller, string environment)
@@ -92,9 +99,8 @@ public sealed class BrowserController : IBrowserController
         {
             var running = service.MarkRunning(approved.Id, DateTimeOffset.UtcNow);
             if (!running.Success || running.Job is null) return;
-            var runner = new PlaywrightBrowserRunner(_vm.EnvironmentsRootOrNull!, _vm.BrowserRootOrNull!);
+            var runner = new PlaywrightBrowserRunner(_host.EnvironmentsRoot!, _host.BrowserRoot!, _credentials);
             var result = await runner.RunAsync(running.Job, cts.Token).ConfigureAwait(false);
-            // A user cancellation wins over a late runner completion.
             if (service.Read(approved.Id)?.Status == BrowserJobStatus.Running)
                 service.Complete(approved.Id, result, DateTimeOffset.UtcNow);
         }
@@ -102,13 +108,13 @@ public sealed class BrowserController : IBrowserController
         {
             lock (_gate) _running.Remove(approved.Id);
             cts.Dispose();
-            Avalonia.Threading.Dispatcher.UIThread.Post(() => _vm.Router?.Refresh());
+            _host.NotifyBrowserRefresh();
         }
     }
 
     private BrowserJobService? Service()
     {
-        if (_vm.EnvironmentsRootOrNull is not { } environments || _vm.BrowserRootOrNull is not { } browser)
+        if (_host.EnvironmentsRoot is not { } environments || _host.BrowserRoot is not { } browser)
             return null;
         var key = environments + "\n" + browser;
         lock (_gate)

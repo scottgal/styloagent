@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Styloagent.Core.Attention;
 using Styloagent.Core.Channel;
 using Styloagent.Core.Mcp;
+using Styloagent.BrowserBroker;
 
 namespace Styloagent.App.Mcp;
 

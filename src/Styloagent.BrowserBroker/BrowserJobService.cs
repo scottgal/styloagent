@@ -1,6 +1,6 @@
 using Styloagent.Core.Environments;
 
-namespace Styloagent.Core.Browser;
+namespace Styloagent.BrowserBroker;
 
 /// <summary>
 /// Deterministic browser request/approval lifecycle. Approval atomically acquires the environment's

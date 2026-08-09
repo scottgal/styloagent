@@ -83,7 +83,7 @@ public class KiloRealTuiTests
                 var pane = Assert.Single(vm.Panes);
                 Assert.Equal(AgentRuntimeKind.Kilo, pane.Runtime);
 
-                window = new MainWindow { DataContext = vm, Width = 1200, Height = 800 };
+                window = new MainWindow { DataContext = vm, Width = 1200, Height = 1600 };
                 window.Show();
                 await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 
@@ -101,12 +101,24 @@ public class KiloRealTuiTests
                     if (text.Any(c => !char.IsWhiteSpace(c))) break;
                 }
 
-                // The terminal must render kilo's TUI: any non-whitespace glyph (kilo's header/status
-                // lines, or the typed prompt echo) proves the VT pipeline delivered kilo's frames to the
-                // pane, and the interactive session stays alive (not a headless one-shot that exited).
+                // The terminal must render kilo's TUI: any non-whitespace glyph proves the VT pipeline
+                // delivered kilo's frames to the pane, and the interactive session stays alive (not a
+                // headless one-shot that exited).
                 Assert.True(text.Any(c => !char.IsWhiteSpace(c)),
                     $"kilo TUI produced no renderable content within 120s — pane='{pane.HookStateText}' " +
                     $"pty={(pane.CurrentPty is null ? "null" : "attached")}");
+
+                // Regression guard for "TUI renders only in the top half": kilo (opencode) reads its size
+                // from the PTY winsize, so it must paint content down to the BOTTOM of the terminal — not
+                // just the top ~24 rows. Assert the last non-blank rendered row is in the bottom quarter.
+                var terminal = Assert.Single(window.GetVisualDescendants().OfType<TerminalControl>());
+                var rows = terminal.RenderedText.Split('\n');
+                var lastNonBlank = 0;
+                for (int i = 0; i < rows.Length; i++) if (!string.IsNullOrWhiteSpace(rows[i])) lastNonBlank = i;
+                var ptyRows = terminal.PtyRows;
+                Assert.True(lastNonBlank >= ptyRows * 0.75,
+                    $"kilo TUI stops at row {lastNonBlank}/{ptyRows} — painted for a stale (smaller) terminal " +
+                    "and never repainted after the PTY resize (top-half bug)");
                 // The interactive TUI stays alive (a headless 'kilo run' would have exited) — the pane
                 // must not be stuck in the exited state while the agent is live.
                 Assert.NotEqual("exited", pane.HookStateText);

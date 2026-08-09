@@ -428,6 +428,13 @@ public sealed partial class TerminalControl : UserControl
         _humanComposing = false;   // a fresh session starts with no line half-typed
         OperatorInputState.SetComposing(session, false);   // clear any stale compose flag for a re-attached session
         _isActive = true;          // a fresh session the operator just opened renders eagerly
+
+        // RE-ASSERT THE PTY SIZE at attach. The session is spawned (at the initial grid) BEFORE this view
+        // attaches and lays out, so OnSizeChanged may have resized the ENGINE while _session was still null
+        // and the PTY winsize was never updated. A freshly-started TUI (kilo/opencode reads its size from the
+        // winsize) then paints at the stale ~24-row grid and only fills the top of the pane. Forcing the
+        // current grid at attach delivers the real size (and a SIGWINCH) so the child repaints full-screen.
+        lock (_terminalGate) _session?.Resize(_terminal.Cols, _terminal.Rows);
     }
 
     /// <summary>
@@ -1136,7 +1143,11 @@ public sealed partial class TerminalControl : UserControl
         // sessions grew past a few thousand lines.
         while (_rows.Count < count) _rows.Add(string.Empty);
         if (_rows.Count > count) _rows.RemoveRange(count, _rows.Count - count);
-        int rebuildFrom = Math.Max(0, _lastRebuiltCount - 1);
+        // The tail-only re-read assumes append-only output. A full-screen TUI on the alternate buffer
+        // repaints ARBITRARY rows (absolute cursor addressing), so the tail scan leaves RenderedText stale
+        // (blank rows where the TUI drew). On the alt buffer the grid is screen-sized (small) — re-read it
+        // wholesale; keep the O(scrollback) tail scan for the normal buffer.
+        int rebuildFrom = altBuffer ? 0 : Math.Max(0, _lastRebuiltCount - 1);
         for (int r = rebuildFrom; r < count; r++)
         {
             BufferLine? l = SafeLine(buffer, r);

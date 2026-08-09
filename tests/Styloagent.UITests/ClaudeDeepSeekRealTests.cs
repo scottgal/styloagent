@@ -67,6 +67,8 @@ public class ClaudeDeepSeekRealTests
                     cfg.ChannelRoot, new PortaPtyLauncher(), new FakeWatcher(),
                     repoRoot: cfg.Root, overviewSystemPromptPath: cfg.SystemPromptPath,
                     defaultAgentRuntime: AgentRuntimeKind.ClaudeDeepSeek);
+                // The real app applies the Dracula theme — reproduce that to catch theme-related colour loss.
+                vm.GlobalTerminalTheme = Styloagent.Terminal.TerminalTheme.Dracula;
 
                 var pane = Assert.Single(vm.Panes);
                 Assert.Equal(AgentRuntimeKind.ClaudeDeepSeek, pane.Runtime);
@@ -97,6 +99,23 @@ public class ClaudeDeepSeekRealTests
                 Assert.True(text.Any(c => !char.IsWhiteSpace(c)),
                     $"claude-deepseek overview produced no renderable output — pane='{pane.HookStateText}'");
                 Assert.NotEqual("exited", pane.HookStateText);
+
+                // COLOR diagnostic: are the rendered runs using real colour brushes, or all default?
+                var distinct = new HashSet<string>();
+                var defaultFg = "FFEDEDED";
+                foreach (var tb in window.GetVisualDescendants().OfType<SelectableTextBlock>().Where(t => t.Name == "ScreenText"))
+                {
+                    if (tb.Inlines is null) continue;
+                    foreach (var inline in tb.Inlines)
+                        if (inline is Run r && r.Foreground is Avalonia.Media.ISolidColorBrush sc)
+                            distinct.Add(sc.Color.ToUInt32().ToString("X8"));
+                }
+                distinct.Remove(defaultFg);
+                var diag = string.Join(",", distinct.Take(8));
+                System.IO.File.WriteAllText("/tmp/claude-colours.txt",
+                    $"distinct-fg-colours={distinct.Count} sample=[{diag}]");
+                Assert.NotEmpty(distinct);   // the Claude TUI must render with colour brushes, not all-default
+
             }
             finally
             {

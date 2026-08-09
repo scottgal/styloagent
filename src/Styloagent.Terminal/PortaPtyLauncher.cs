@@ -53,11 +53,15 @@ public sealed class PortaPtyLauncher : IPtyLauncher
         var prefix = string.Join(':', toolDirs);
         env["PATH"] = string.IsNullOrEmpty(existing) ? prefix : $"{prefix}:{existing}";
 
-        // A .app launched from Finder/launchd inherits a MINIMAL environment — no TERM, no COLORTERM —
-        // and forwards that to the child PTYs, so claude/kilo TUI colour detection falls back to
-        // monochrome. Default them to a 256-colour truecolor xterm (never override an explicit host value).
-        if (!env.ContainsKey("TERM")) env["TERM"] = "xterm-256color";
-        if (!env.ContainsKey("COLORTERM")) env["COLORTERM"] = "truecolor";
+        // A .app launched from Finder/launchd gets TERM=dumb (macOS sets it for GUI apps) — claude/kilo
+        // read TERM=dumb as "no colour support" and render MONOCHROME. Force a colour-capable TERM, and
+        // default COLORTERM when absent. Never override a genuine explicit colour-capable TERM, but do
+        // replace the `dumb`/empty macOS default.
+        if (!env.TryGetValue("TERM", out var term) || string.IsNullOrWhiteSpace(term)
+            || string.Equals(term, "dumb", StringComparison.OrdinalIgnoreCase))
+            env["TERM"] = "xterm-256color";
+        if (!env.TryGetValue("COLORTERM", out var ct) || string.IsNullOrWhiteSpace(ct))
+            env["COLORTERM"] = "truecolor";
 
         // Claude Code's /login (and `claude auth login`) delegates OAuth to $BROWSER. A process launched
         // from a macOS .app commonly has no BROWSER even though it has a GUI session, so Claude falls back

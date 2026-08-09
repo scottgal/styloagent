@@ -1609,10 +1609,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         {
             _genericAgentCounter++;
             var prefix = $"agent-{_genericAgentCounter}-";
+            string spawnRoot = RepoRootForSpawn();
             entry = new AgentManifestEntry(
                 Prefix: prefix,
-                Repo: string.Empty,
-                Worktree: string.Empty,
+                Repo: spawnRoot,
+                Worktree: spawnRoot,
                 LaunchPromptPath: string.Empty,
                 RestartPromptPath: string.Empty,
                 SavedContextPath: SavedContextPathFor(prefix),   // so it can be dehydrated / parked
@@ -2697,10 +2698,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         // Anchor a spawn to the SAME repo the overview agent runs in. _project can be null after a
         // restart (no project auto-loaded), so fall back through _repoRoot / STYLOAGENT_REPO before
         // ever dropping to DefaultWorkingDirectory() — which is the user's home (~/), NOT the repo.
-        string root = _project?.Root
-            ?? _repoRoot
-            ?? Environment.GetEnvironmentVariable("STYLOAGENT_REPO")
-            ?? DefaultWorkingDirectory();
+        string root = RepoRootForSpawn();
         string launchPromptPath = string.Empty;
         if (_project is not null && !string.IsNullOrWhiteSpace(launchPrompt))
         {
@@ -3680,6 +3678,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// Returns the entry with a valid working directory — its worktree if that exists,
     /// otherwise the app default — so the spawn is never handed an empty Cwd.
     /// </summary>
+    /// <summary>
+    /// The repo a spawned/manual agent should run in: the active project, else the repo root, else
+    /// STYLOAGENT_REPO — NEVER the user's home. The old fallback to DefaultWorkingDirectory() (~/)
+    /// made toolbar "+ Kilo / + Claude" agents spawn in the home directory with no project context.
+    /// </summary>
+    private string RepoRootForSpawn()
+        => _project?.Root
+           ?? _repoRoot
+           ?? Environment.GetEnvironmentVariable("STYLOAGENT_REPO")
+           ?? DefaultWorkingDirectory();
+
     private static AgentManifestEntry WithWorkingDir(AgentManifestEntry e)
         => e with { Worktree = WorkingDirectoryResolver.Resolve(e.Worktree, DefaultWorkingDirectory()) };
 

@@ -193,6 +193,42 @@ public class MainWindowViewModelTests : IDisposable
         finally { Directory.Delete(root, recursive: true); }
     }
 
+    /// <summary>
+    /// Toolbar "+ Kilo" (and the other runtime buttons) must spawn the blank agent in the PROJECT ROOT —
+    /// the old path resolved the empty worktree against the user's home, leaving the agent with no repo
+    /// context (looked hung at a bare TUI).
+    /// </summary>
+    [Fact]
+    public async Task AddKiloCommand_spawns_in_the_project_root_not_home()
+    {
+        var channel = MakeTwoAgentChannel();
+        var repo = Path.Combine(Path.GetTempPath(), "addkilo-root-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(repo);
+        try
+        {
+            var launcher = new FakeLauncher();
+            var vm = await MainWindowViewModel.InitializeAsync(
+                channel, launcher, new FakeWatcher(), repoRoot: repo);
+
+            vm.AddKiloCommand.Execute(null);
+            await WaitUntil(() => launcher.Options.Count >= 2);
+
+            var generic = launcher.Options[^1];
+            Assert.Equal("kilo", generic.Command);
+            Assert.NotNull(generic.WorkingDirectory);
+            Assert.True(Path.GetFullPath(generic.WorkingDirectory).StartsWith(
+                Path.GetFullPath(repo), StringComparison.Ordinal),
+                $"generic kilo agent should spawn under the project root, got {generic.WorkingDirectory}");
+            Assert.NotEqual(Path.GetFullPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
+                Path.GetFullPath(generic.WorkingDirectory));
+        }
+        finally
+        {
+            if (Directory.Exists(channel)) Directory.Delete(channel, recursive: true);
+            if (Directory.Exists(repo)) Directory.Delete(repo, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task AddCodexCommand_AddsPaneAndLaunchesCodex()
     {

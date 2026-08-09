@@ -225,15 +225,21 @@ public sealed class PortaPtySession : IPtySession
             diagTail.Append(text);
             if (diagTail.Length > 2000) diagTail.Remove(0, diagTail.Length - 2000);
 
-            // Append to the replay backlog AND deliver live, under one lock: a subscriber that attaches
-            // between these would otherwise either miss this chunk or get it twice.
+            // Append to the replay backlog AND capture the subscriber list under one lock: a subscriber
+            // that attaches between these would otherwise either miss this chunk or get it twice. The
+            // INVOKE happens outside the lock — a slow subscriber (the VT-engine write, a future sink)
+            // must never stall the read loop: PTY backpressure from a blocked loop would fill the kernel
+            // buffer and make the child block on write, which reads as echo/typing lag. Invocation is
+            // still in-order and on this thread, so the single-threaded read loop preserves ordering.
+            Action<string>? output;
             lock (_outputGate)
             {
                 _backlog.Append(text);
                 if (_backlog.Length > BacklogCap)
                     _backlog.Remove(0, _backlog.Length - BacklogCap);
-                _output?.Invoke(text);
+                output = _output;
             }
+            output?.Invoke(text);
         }
 
         // Flush any partial UTF-8 bytes buffered in the decoder on exit.
@@ -241,11 +247,13 @@ public sealed class PortaPtySession : IPtySession
         if (flushChars > 0)
         {
             var tail = new string(charBuffer, 0, flushChars);
+            Action<string>? output;
             lock (_outputGate)
             {
                 _backlog.Append(tail);
-                _output?.Invoke(tail);
+                output = _output;
             }
+            output?.Invoke(tail);
         }
     }
 }

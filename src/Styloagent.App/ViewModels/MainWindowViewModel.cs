@@ -212,9 +212,41 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         SavePreferences();
     }
 
-    /// <summary>Command behind the top-bar screenshot button (only shown when automation is enabled).</summary>
+    /// <summary>
+    /// Command behind the top-bar screenshot button (only shown when automation is enabled). Captures
+    /// the cockpit and TELLS THE OPERATOR where the file landed: a bus notice with the full path, plus
+    /// the path copied to the clipboard so they can paste it into Finder/Spotlight. Failures are
+    /// surfaced the same way instead of being silently swallowed.
+    /// </summary>
     [RelayCommand]
-    private async Task CaptureScreenshot() => await CaptureScreenshotToFileAsync(null);
+    private async Task CaptureScreenshot()
+    {
+        var result = await CaptureScreenshotToFileAsync(null);
+        if (result.StartsWith("rejected", StringComparison.Ordinal))
+        {
+            if (_project is not null)
+                _ = SendBusMessage(new MessageRequest(
+                    "cockpit-", "all-", "Screenshot failed", result, "info"));
+            return;
+        }
+
+        TryCopyScreenshotPath(result);
+        if (_project is not null)
+            _ = SendBusMessage(new MessageRequest(
+                "cockpit-", "all-", "Cockpit screenshot saved", result, "info"));
+    }
+
+    /// <summary>Best-effort: puts the screenshot path on the clipboard so the operator can paste it.</summary>
+    private static void TryCopyScreenshotPath(string path)
+    {
+        try
+        {
+            var window = (Avalonia.Application.Current?.ApplicationLifetime
+                as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.MainWindow;
+            window?.Clipboard?.SetTextAsync(path);
+        }
+        catch { /* clipboard access is best-effort */ }
+    }
 
     /// <summary>
     /// Captures the cockpit window (or, unimplemented for now, a named control) to a timestamped PNG

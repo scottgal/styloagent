@@ -95,7 +95,7 @@ public sealed record AgentRuntimeProfile(
         SupportsClaudeSettingsHooks: true,
         SupportsInitialPromptArgument: false,
         UsesConfigLayerHooks: false,
-        DefaultModel: "deepseek-v4-pro[1m]",
+        DefaultModel: "deepseek-v4-pro",
         PtyWakeString: "1\r",
         DefaultLaunchPromptTemplate: "You are agent '{0}'. Begin your work.");
 

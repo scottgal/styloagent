@@ -9,7 +9,7 @@
 | `claude` | `claude` (TUI) | prompt injected via PTY | `--model`, `--effort` | `--mcp-config` | `--settings` hooks.json |
 | `codex` | `codex` | prompt as positional | `--config model_reasoning_effort=` | `--config mcp_servers.*` | `--config hooks.*` |
 | `kilo` | `kilo run <prompt>` (headless, autonomous) | prompt as positional | `--model provider/model`, `--variant` | per-agent `KILO_CONFIG_CONTENT` env | `.kilo/plugins/styloagent-hooks.js` drop writer |
-| `claude-deepseek` | `claude` + `deepseek.env` routing | prompt injected via PTY | `--model deepseek-v4-pro[1m]` | `--mcp-config` | `--settings` hooks.json |
+| `claude-deepseek` | `claude` + `deepseek.env` routing | prompt injected via PTY | `--model deepseek-v4-pro` | `--mcp-config` | `--settings` hooks.json |
 
 Kilo runs as its **interactive TUI** (`kilo --model <id>`) over the PTY, exactly like Claude — the
 operator sees kilo's real UI in the pane. The launch prompt is injected by typing + Enter (the app's

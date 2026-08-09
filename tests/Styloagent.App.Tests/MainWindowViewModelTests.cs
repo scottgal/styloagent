@@ -272,7 +272,7 @@ public class MainWindowViewModelTests : IDisposable
             // --settings, --mcp-config, and --model flags as regular Claude.
             Assert.Equal("claude", launcher.Options[1].Command);
             Assert.Contains(launcher.Options[1].Args, a => a == "--model");
-            Assert.Contains(launcher.Options[1].Args, a => a == "deepseek-v4-pro[1m]");
+            Assert.Contains(launcher.Options[1].Args, a => a == "deepseek-v4-pro");
             // The Kilo/headless prompt flag must NOT apply — ClaudeDeepSeek IS the claude CLI.
             Assert.DoesNotContain(launcher.Options[1].Args, a => a == "-p");
         }

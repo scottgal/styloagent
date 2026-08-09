@@ -67,11 +67,12 @@ public sealed record AgentRuntimeProfile(
             "You are the '{0}' Styloagent workspace agent. Read .styloagent/PROTOCOL.md and your mission doc if present, check the fleet inbox, then carry out your assigned task.");
 
     /// <summary>
-    /// The Kilo CLI, run headless as <c>kilo run &lt;prompt&gt;</c> (autonomous — mirrors Codex's one-shot
-    /// model: it exits when the task completes and the cockpit treats the pane as a re-spawnable ghost).
-    /// Model/effort come from <c>--model provider/model</c> + <c>--variant</c>; MCP config, permissions and
-    /// the fleet-observation hooks plugin are injected per-agent via <c>KILO_CONFIG_CONTENT</c> + env, so no
-    /// repo config file is mutated. Hooks are fully wired (not skipped): the plugin writes drop files the
+    /// The Kilo CLI, run as its interactive TUI (the operator sees kilo's real UI in the pane, exactly
+    /// like Claude's). The prompt is injected by typing + Enter; model comes from <c>--model provider/model</c>;
+    /// effort is at the agent's discretion (the TUI has no <c>--variant</c>). MCP config, permissions and the
+    /// fleet-observation hooks plugin are injected per-agent via <c>KILO_CONFIG_CONTENT</c> + env (config
+    /// <c>permission</c> drives auto-approval in the TUI — no <c>--auto</c> needed), so no repo config file is
+    /// mutated. Hooks are fully wired (not skipped): the plugin writes drop files the
     /// <see cref="Styloagent.Core.Hooks.HookChannel"/> consumes, driving the live state machine.
     /// </summary>
     public static readonly AgentRuntimeProfile Kilo = new(
@@ -79,7 +80,7 @@ public sealed record AgentRuntimeProfile(
         Command: "kilo",
         DisplayName: "Kilo",
         SupportsClaudeSettingsHooks: false,
-        SupportsInitialPromptArgument: true,
+        SupportsInitialPromptArgument: false,
         UsesConfigLayerHooks: false,
         DefaultModel: KiloDefaultModelId,
         PtyWakeString: "\r",
@@ -113,12 +114,8 @@ public sealed record AgentRuntimeProfile(
             FleetPermissionMode.Scoped => new[] { "--sandbox", "workspace-write", "--ask-for-approval", "on-request" },
             _ => Array.Empty<string>(),
         },
-        AgentRuntimeKind.Kilo => mode switch
-        {
-            FleetPermissionMode.Bypass => new[] { "--auto" },
-            FleetPermissionMode.Scoped => new[] { "--auto" },
-            _ => new[] { "--auto" },
-        },
+        // Kilo TUI: approvals come from the per-agent KILO_CONFIG_CONTENT permission block, so no CLI flag.
+        AgentRuntimeKind.Kilo => Array.Empty<string>(),
         _ => HookSettings.PermissionArgs(mode),
     };
 
@@ -138,15 +135,12 @@ public sealed record AgentRuntimeProfile(
 
         if (Kind == AgentRuntimeKind.Kilo)
         {
+            // Interactive TUI: --model only. The TUI has no --variant flag — reasoning effort is at the
+            // agent's discretion (per cockpit policy).
             if (!string.IsNullOrWhiteSpace(effectiveModel))
             {
                 args.Add("--model");
                 args.Add(effectiveModel!);
-            }
-            if (!string.IsNullOrWhiteSpace(effectiveEffort))
-            {
-                args.Add("--variant");
-                args.Add(effectiveEffort!);
             }
             return args;
         }

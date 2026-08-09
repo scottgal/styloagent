@@ -104,10 +104,11 @@ public class FleetWiringTests
             Assert.Single(launcher.Options);
             var spawn = launcher.Options[0];
             Assert.Equal("kilo", spawn.Command);
-            Assert.Equal("run", spawn.Args[0]);
-            Assert.Contains("--model", spawn.Args);
+            // Interactive TUI launch: --model only (prompt typed via PTY; approvals from config).
+            Assert.Equal("--model", spawn.Args[0]);
             Assert.Contains(spawn.Args, a => a == Styloagent.Core.Sessions.AgentRuntimeProfile.KiloDefaultModelId);
-            Assert.Contains("--auto", spawn.Args);
+            Assert.DoesNotContain("run", spawn.Args);
+            Assert.DoesNotContain("--auto", spawn.Args);
             Assert.DoesNotContain("--mcp-config", spawn.Args);
             Assert.DoesNotContain("--settings", spawn.Args);
 

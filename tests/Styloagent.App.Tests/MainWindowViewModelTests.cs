@@ -238,12 +238,12 @@ public class MainWindowViewModelTests : IDisposable
             Assert.StartsWith("agent-", vm.Panes[1].Prefix);
             Assert.Equal("New Kilo", vm.Panes[1].DisplayName);
             Assert.Equal("kilo", launcher.Options[1].Command);
-            // Kilo runs headless as `kilo run` with model/effort + autonomous flags; MCP config and hooks
-            // ride the per-agent KILO_CONFIG_CONTENT env, so no --settings/--mcp-config/--config CLI args.
-            Assert.Equal("run", launcher.Options[1].Args[0]);
+            // Kilo runs as its interactive TUI: only --model is passed (the prompt is typed via the PTY,
+            // and approvals come from the KILO_CONFIG_CONTENT permission block). No headless flags.
             Assert.Contains("--model", launcher.Options[1].Args);
             Assert.Contains(launcher.Options[1].Args, a => a == Styloagent.Core.Sessions.AgentRuntimeProfile.KiloDefaultModelId);
-            Assert.Contains("--auto", launcher.Options[1].Args);
+            Assert.DoesNotContain("run", launcher.Options[1].Args);
+            Assert.DoesNotContain("--auto", launcher.Options[1].Args);
             Assert.DoesNotContain(launcher.Options[1].Args, a => a == "--settings");
             Assert.DoesNotContain(launcher.Options[1].Args, a => a == "--mcp-config");
             Assert.DoesNotContain(launcher.Options[1].Args, a => a == "--config");

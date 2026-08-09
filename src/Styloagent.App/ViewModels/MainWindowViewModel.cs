@@ -3008,12 +3008,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         // in BuildEnv — no repo config file is touched, and each agent reaches the MCP server as itself.
         if (entry.Runtime == AgentRuntimeKind.Kilo)
         {
-            var args = new List<string> { "run" };
-            args.AddRange(runtime.ModelEffortArgs(entry.Model, entry.Effort));
-            args.AddRange(runtime.PermissionArgs(PermissionMode));
-            args.Add("--title");
-            args.Add(entry.Prefix.TrimEnd('-'));
-            return args;
+            // Kilo runs as its interactive TUI (`kilo --model …`); the prompt is injected by typing via
+            // the PTY, and approvals come from the KILO_CONFIG_CONTENT permission block.
+            return runtime.ModelEffortArgs(entry.Model, entry.Effort).ToArray();
         }
 
         // Codex: --config hooks.*=, --config mcp_servers.*=, --sandbox, positional prompt

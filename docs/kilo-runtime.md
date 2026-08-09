@@ -11,11 +11,12 @@
 | `kilo` | `kilo run <prompt>` (headless, autonomous) | prompt as positional | `--model provider/model`, `--variant` | per-agent `KILO_CONFIG_CONTENT` env | `.kilo/plugins/styloagent-hooks.js` drop writer |
 | `claude-deepseek` | `claude` + `deepseek.env` routing | prompt injected via PTY | `--model deepseek-v4-pro[1m]` | `--mcp-config` | `--settings` hooks.json |
 
-Kilo runs as `kilo run <prompt> --model <id> --variant <effort> --auto` over a PTY. It is a one-shot
-headless run (like Codex): it exits when the task completes and the cockpit treats the pane as a
-re-spawnable ghost. `--auto` is always passed — without it a headless kilo run auto-rejects any
-permission request and exits 1. The permission *mode* (Prompt/Scoped/Bypass) is still reflected in the
-per-agent `permission` block inside `KILO_CONFIG_CONTENT`.
+Kilo runs as its **interactive TUI** (`kilo --model <id>`) over the PTY, exactly like Claude — the
+operator sees kilo's real UI in the pane. The launch prompt is injected by typing + Enter (the app's
+startup sets a 2.5s settle before Enter so kilo's input handler is ready); reasoning effort is at the
+agent's discretion (the TUI has no `--variant`). Approvals come from the per-agent `permission` block in
+`KILO_CONFIG_CONTENT` (the TUI auto-approves `allow` rules), so no `--auto` flag is needed and the agent
+stays alive across turns instead of exiting after a one-shot `kilo run`.
 
 ## Per-agent config, not repo mutation
 

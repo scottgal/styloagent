@@ -65,7 +65,12 @@ jobs:
         run: |
           APP="Styloagent.app"
           mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-          cp -R publish/. "$APP/Contents/MacOS/"
+          # The Playwright driver (.playwright) must NOT live under Contents/MacOS — codesign treats
+          # every subdirectory there as a nested bundle and aborts on it. Ship it under
+          # Contents/Resources instead; Program.cs points PLAYWRIGHT_DRIVER_PATH at it when the app
+          # runs from a bundle.
+          rsync -a --exclude '.playwright' publish/ "$APP/Contents/MacOS/"
+          cp -R publish/.playwright "$APP/Contents/Resources/.playwright"
           chmod +x "$APP/Contents/MacOS/Styloagent.App"
           cp src/Styloagent.App/icon.icns "$APP/Contents/Resources/icon.icns"
           # Non-interpolating heredoc for the fixed plist; version substituted from $VERSION after.
@@ -95,14 +100,8 @@ jobs:
           # ad-hoc (seals Info.plist + Resources), THEN verify — a bad signature must fail the build so
           # a broken bundle can never ship green again. (No Developer ID cert, so ad-hoc: users
           # right-click → Open, or `xattr -dr com.apple.quarantine`.)
-          # The Playwright driver (.playwright/node + package/) is a plain directory, not a valid
-          # bundle, so 'codesign --deep' aborts on it ("bundle format unrecognized, invalid, or
-          # unsuitable"). Sign the driver's node binary and every nested dylib explicitly, then sign
-          # the bundle itself (which seals Info.plist + Resources and signs the apphost).
-          find "$APP/Contents" -type f \( -name "*.dylib" -o -path "*/Contents/MacOS/.playwright/node" \) \
-            -exec codesign --force --sign - {} \;
-          codesign --force --sign - "$APP"
-          codesign --verify --strict --verbose=2 "$APP"
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
           ditto -c -k --keepParent "$APP" "${ASSET}.zip"
 
       - name: Package (Windows / Linux)

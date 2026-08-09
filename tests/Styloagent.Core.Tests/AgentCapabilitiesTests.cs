@@ -19,7 +19,7 @@ public class AgentCapabilitiesTests
         Assert.DoesNotContain(capabilities.Agents, agent => agent.Agent == "deepcode");
 
         var kilo = Assert.Single(capabilities.Agents, agent => agent.Agent == "kilo");
-        Assert.Equal("default,kilo/deepseek/deepseek-v4-pro,kilo/deepseek/deepseek-v4-flash",
+        Assert.Equal("default,deepseek/deepseek-v4-pro,deepseek/deepseek-v4-flash",
             string.Join(',', kilo.Models.Select(model => model.Id)));
         Assert.Equal("DeepSeek V4 Pro (overview default)", kilo.Models[0].Label);
         Assert.DoesNotContain(kilo.Models, model => model.Id is "deepseek-v4" or "deepseek-v3");
@@ -31,7 +31,7 @@ public class AgentCapabilitiesTests
         var capabilities = AgentCapabilities.Load(null);
         var live = new[]
         {
-            new AgentCapability("kilo/deepseek/deepseek-v4-pro", "DeepSeek V4 Pro", HighEfforts),
+            new AgentCapability("deepseek/deepseek-v4-pro", "DeepSeek V4 Pro", HighEfforts),
             new AgentCapability("kilo/anthropic/claude-sonnet-4.6", "Claude Sonnet", MediumEfforts),
         };
 
@@ -40,8 +40,8 @@ public class AgentCapabilitiesTests
         var kilo = Assert.Single(merged.Agents, agent => agent.Agent == "kilo");
         Assert.Equal(2, kilo.Models.Count);
         Assert.Equal("kilo/anthropic/claude-sonnet-4.6", kilo.Models[1].Id);
-        Assert.True(merged.Supports("kilo", "kilo/deepseek/deepseek-v4-pro", "high"));
-        Assert.False(merged.Supports("kilo", "kilo/deepseek/deepseek-v4-flash", "default"));
+        Assert.True(merged.Supports("kilo", "deepseek/deepseek-v4-pro", "high"));
+        Assert.False(merged.Supports("kilo", "deepseek/deepseek-v4-flash", "default"));
     }
 
     [Fact]

@@ -58,7 +58,7 @@ wrapped in try/catch so a malformed event can never crash kilo.
 ## Dynamic model discovery
 
 `KiloModelDiscovery` runs the installed `kilo models` CLI (one `provider/model` per line) and parses
-the catalog, e.g. `kilo/deepseek/deepseek-v4-pro`. Results are cached (5 min TTL) and refreshed in the
+the catalog, e.g. `deepseek/deepseek-v4-pro`. Results are cached (5 min TTL) and refreshed in the
 background — the UI thread never waits on the process. `BuildAgentCapabilities` overlays the live
 catalog onto the static `agent-capabilities.json` / fallback list via `AgentCapabilities.WithKiloModels`,
 so `agent_capabilities()` always shows every model actually available on this machine. Claude/Codex stay
@@ -66,8 +66,8 @@ curated (their model-listing commands are interactive TUIs, not scriptable).
 
 ## Default model policy
 
-- Overview / repo-root agents default to `kilo/deepseek/deepseek-v4-pro` (`AgentRuntimeProfile.DefaultModel`).
-- Spawned agents default to `kilo/deepseek/deepseek-v4-flash` (applied in `SpawnChildAsync`).
+- Overview / repo-root agents default to `deepseek/deepseek-v4-pro` (`AgentRuntimeProfile.DefaultModel`).
+- Spawned agents default to `deepseek/deepseek-v4-flash` (applied in `SpawnChildAsync`).
 - Reasoning **effort is at the agent's discretion**: the model policy no longer sets `effort` values,
   and `--variant` is only passed when a spawner explicitly requests one.
 

@@ -63,8 +63,8 @@ public sealed record AgentCapabilities(IReadOnlyList<AgentRuntimeCapabilities> A
         new AgentRuntimeCapabilities("kilo", new[]
         {
             new AgentCapability("default", "DeepSeek V4 Pro (overview default)", KiloEfforts),
-            new AgentCapability("kilo/deepseek/deepseek-v4-pro", "DeepSeek V4 Pro", KiloEfforts),
-            new AgentCapability("kilo/deepseek/deepseek-v4-flash", "DeepSeek V4 Flash", KiloEfforts),
+            new AgentCapability("deepseek/deepseek-v4-pro", "DeepSeek V4 Pro", KiloEfforts),
+            new AgentCapability("deepseek/deepseek-v4-flash", "DeepSeek V4 Flash", KiloEfforts),
         }),
         new AgentRuntimeCapabilities("claude-deepseek", new[]
         {

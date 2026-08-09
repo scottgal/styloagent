@@ -17,24 +17,24 @@ public static class DefaultTemplates
 # spawned agent decides how deeply to reason for the work in front of it.
 default:
   runtime: kilo
-  model: kilo/deepseek/deepseek-v4-pro
+  model: deepseek/deepseek-v4-pro
   reasoning: "No specialised policy: use the Kilo runtime defaults (DeepSeek V4 Pro for the overview, V4 Flash for spawned agents). Effort is left to the agent's discretion."
 rules:
   - jobType: architecture
     runtime: kilo
-    model: kilo/deepseek/deepseek-v4-pro
+    model: deepseek/deepseek-v4-pro
     reasoning: "Architecture and boundary decisions have broad downstream cost, so give the agent the strongest model and let it reason as deep as the decision needs."
   - jobType: implementation
     runtime: kilo
-    model: kilo/deepseek/deepseek-v4-flash
+    model: deepseek/deepseek-v4-flash
     reasoning: "Routine implementation gets the fast model; the agent decides how much reasoning each change needs."
   - jobType: tests
     runtime: kilo
-    model: kilo/deepseek/deepseek-v4-flash
+    model: deepseek/deepseek-v4-flash
     reasoning: "Test failures need careful reproduction and cross-layer diagnosis; the agent sets its own reasoning depth."
   - jobType: docs
     runtime: kilo
-    model: kilo/deepseek/deepseek-v4-flash
+    model: deepseek/deepseek-v4-flash
     reasoning: "Documentation needs context and clarity; reasoning effort is at the agent's discretion."
 """;
 

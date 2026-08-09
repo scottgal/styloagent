@@ -16,7 +16,7 @@ public class TemplateSyncTests
     {
         new("system-prompt.md", "# v2 system prompt\nnew guidance — mixed fleets.\n", IsMarkdown: true),
         new("PROTOCOL.md", "# v2 protocol\nnew protocol.\n", IsMarkdown: true),
-        new("model-policy.yaml", "default:\n  runtime: kilo\n  model: kilo/deepseek/deepseek-v4-pro\n", IsMarkdown: false),
+        new("model-policy.yaml", "default:\n  runtime: kilo\n  model: deepseek/deepseek-v4-pro\n", IsMarkdown: false),
     };
 
     private static string Root() => Path.Combine(Path.GetTempPath(), "tmpl-" + Guid.NewGuid().ToString("N"));
@@ -77,7 +77,7 @@ public class TemplateSyncTests
                 File.ReadAllText(Path.Combine(cfg.ConfigDir, "system-prompt.md")));
             Assert.Equal("# v2 protocol\nnew protocol.\n",
                 File.ReadAllText(Path.Combine(cfg.ConfigDir, "PROTOCOL.md")));
-            Assert.Contains("kilo/deepseek/deepseek-v4-pro",
+            Assert.Contains("deepseek/deepseek-v4-pro",
                 File.ReadAllText(Path.Combine(cfg.ConfigDir, "model-policy.yaml")));
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
@@ -125,7 +125,7 @@ public class TemplateSyncTests
             Assert.Equal("default:\n  runtime: codex\n  reasoning: local choice\n", policy);   // untouched
             var notice = Path.Combine(TemplateSync.UpdateNoticesDir(cfg), "model-policy.yaml.md");
             Assert.True(File.Exists(notice), "an update notice should be written");
-            Assert.Contains("kilo/deepseek/deepseek-v4-pro", File.ReadAllText(notice));
+            Assert.Contains("deepseek/deepseek-v4-pro", File.ReadAllText(notice));
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
     }

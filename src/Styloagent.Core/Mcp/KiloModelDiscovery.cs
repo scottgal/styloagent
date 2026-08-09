@@ -118,7 +118,7 @@ public static class KiloModelDiscovery
     }
 
     /// <summary>
-    /// Turns <c>kilo/deepseek/deepseek-v4-pro</c> into a human label: <c>Deepseek V4 Pro</c>. The full id
+    /// Turns <c>deepseek/deepseek-v4-pro</c> into a human label: <c>Deepseek V4 Pro</c>. The full id
     /// is kept as the selectable value; only the display label is derived from the last path segment.
     /// </summary>
     private static readonly char[] Separators = { '-', '_', ' ' };

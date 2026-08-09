@@ -29,11 +29,15 @@ public sealed record AgentRuntimeProfile(
         _ => Claude,
     };
 
-    /// <summary>Preferred DeepSeek model for the overview / repo-root agents (the fleet's planner).</summary>
-    public static readonly string KiloDefaultModelId = "kilo/deepseek/deepseek-v4-pro";
+    /// <summary>
+    /// Preferred DeepSeek model for the overview / repo-root agents (the fleet's planner). Uses the
+    /// DIRECT DeepSeek provider id (not the <c>kilo/</c> gateway prefix) so the user's DeepSeek API key
+    /// authenticates it — the kilo gateway requires a separate sign-in.
+    /// </summary>
+    public static readonly string KiloDefaultModelId = "deepseek/deepseek-v4-pro";
 
-    /// <summary>Preferred DeepSeek model for spawned specialist agents (fast, cheap, focused).</summary>
-    public static readonly string KiloFlashModelId = "kilo/deepseek/deepseek-v4-flash";
+    /// <summary>Preferred DeepSeek model for spawned specialist agents (fast, cheap, focused). Same direct-provider id.</summary>
+    public static readonly string KiloFlashModelId = "deepseek/deepseek-v4-flash";
 
     /// <summary>Reasoning-effort variants Kilo accepts for DeepSeek models (the <c>--variant</c> flag).</summary>
     public static readonly string[] KiloEfforts = { "default", "low", "medium", "high", "max" };

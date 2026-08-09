@@ -44,11 +44,11 @@
                         Padding="8,5" ToolTip.Tip="Codex (OpenAI)">
             <ic:SymbolIcon Symbol="BotSparkle" FontSize="18" />
           </ToggleButton>
-          <ToggleButton x:Name="DeepCodeFirstToggle" Grid.Column="3"
-                        IsChecked="{Binding IsDeepCodeFirst, Mode=OneWay}"
-                        Command="{Binding SetRuntimeModeCommand}" CommandParameter="DeepCode"
-                        Padding="8,5" ToolTip.Tip="DeepCode (DeepSeek)">
-            <ic:SymbolIcon Symbol="BrainCircuit" FontSize="18" />
+          <ToggleButton x:Name="KiloFirstToggle" Grid.Column="3"
+                        IsChecked="{Binding IsKiloFirst, Mode=OneWay}"
+                        Command="{Binding SetRuntimeModeCommand}" CommandParameter="Kilo"
+                        Padding="8,5" ToolTip.Tip="Kilo (DeepSeek)">
+            <ic:SymbolIcon Symbol="Rocket" FontSize="18" />
           </ToggleButton>
           <ToggleButton x:Name="ClaudeDeepSeekFirstToggle" Grid.Column="4"
                         IsChecked="{Binding IsClaudeDeepSeekFirst, Mode=OneWay}"

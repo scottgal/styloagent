@@ -26,13 +26,13 @@ public sealed partial class WelcomeViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsClaudeFirst))]
     [NotifyPropertyChangedFor(nameof(IsCodexFirst))]
-    [NotifyPropertyChangedFor(nameof(IsDeepCodeFirst))]
+    [NotifyPropertyChangedFor(nameof(IsKiloFirst))]
     [NotifyPropertyChangedFor(nameof(IsClaudeDeepSeekFirst))]
-    private AgentRuntimeKind _selectedRuntime = AgentRuntimeKind.Claude;
+    private AgentRuntimeKind _selectedRuntime = AgentRuntimeKind.Kilo;
 
     public bool IsClaudeFirst => SelectedRuntime == AgentRuntimeKind.Claude;
     public bool IsCodexFirst => SelectedRuntime == AgentRuntimeKind.Codex;
-    public bool IsDeepCodeFirst => SelectedRuntime == AgentRuntimeKind.DeepCode;
+    public bool IsKiloFirst => SelectedRuntime == AgentRuntimeKind.Kilo;
     public bool IsClaudeDeepSeekFirst => SelectedRuntime == AgentRuntimeKind.ClaudeDeepSeek;
 
     public WelcomeViewModel(RecentProjectsStore recents, string recentsPath, IFolderPicker picker,

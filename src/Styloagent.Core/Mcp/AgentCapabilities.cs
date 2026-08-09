@@ -43,6 +43,8 @@ public sealed record AgentCapabilities(IReadOnlyList<AgentRuntimeCapabilities> A
             capability.Efforts.Any(e => e.Equals(effort.Trim(), StringComparison.OrdinalIgnoreCase)));
     }
 
+    private static readonly string[] KiloEfforts = { "default", "low", "medium", "high", "max" };
+
     private static readonly IReadOnlyList<AgentRuntimeCapabilities> Default = new[]
     {
         new AgentRuntimeCapabilities("claude", new[]
@@ -58,11 +60,11 @@ public sealed record AgentCapabilities(IReadOnlyList<AgentRuntimeCapabilities> A
             new AgentCapability("gpt-5-codex", "GPT-5 Codex", new[] { "default", "low", "medium", "high", "xhigh" }),
             new AgentCapability("gpt-5", "GPT-5", new[] { "default", "low", "medium", "high", "xhigh" }),
         }),
-        new AgentRuntimeCapabilities("deepcode", new[]
+        new AgentRuntimeCapabilities("kilo", new[]
         {
-            new AgentCapability("default", "CLI default (deepseek-v4-pro)", new[] { "default", "low", "medium", "high" }),
-            new AgentCapability("deepseek-v4-pro", "DeepSeek V4 Pro", new[] { "default", "low", "medium", "high" }),
-            new AgentCapability("deepseek-v4-flash", "DeepSeek V4 Flash", new[] { "default", "low", "medium", "high" }),
+            new AgentCapability("default", "DeepSeek V4 Pro (overview default)", KiloEfforts),
+            new AgentCapability("kilo/deepseek/deepseek-v4-pro", "DeepSeek V4 Pro", KiloEfforts),
+            new AgentCapability("kilo/deepseek/deepseek-v4-flash", "DeepSeek V4 Flash", KiloEfforts),
         }),
         new AgentRuntimeCapabilities("claude-deepseek", new[]
         {
@@ -71,6 +73,22 @@ public sealed record AgentCapabilities(IReadOnlyList<AgentRuntimeCapabilities> A
             new AgentCapability("deepseek-v4-flash", "DeepSeek V4 Flash", new[] { "default", "low", "medium", "high", "max" }),
         }),
     };
+
+    /// <summary>
+    /// Replaces the <c>kilo</c> runtime's model list with a live catalog discovered from the installed
+    /// <c>kilo models</c> CLI. Unknown model ids are dropped; the runtime entry itself is always kept so
+    /// the kilo agent stays selectable even when discovery is unavailable.
+    /// </summary>
+    public AgentCapabilities WithKiloModels(IReadOnlyList<AgentCapability> models)
+    {
+        if (models is null || models.Count == 0) return this;
+        var list = Agents.ToList();
+        int idx = list.FindIndex(a => a.Agent.Equals("kilo", StringComparison.OrdinalIgnoreCase));
+        var entry = new AgentRuntimeCapabilities("kilo", models);
+        if (idx >= 0) list[idx] = entry;
+        else list.Add(entry);
+        return this with { Agents = list };
+    }
 
     private sealed class AgentCapabilitiesFile
     {

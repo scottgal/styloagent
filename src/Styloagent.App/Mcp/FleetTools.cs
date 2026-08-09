@@ -53,7 +53,7 @@ public sealed class FleetTools
              documentOpen ?? new DocumentOpenHub());
 
 #pragma warning disable CA1707 // Identifiers should not contain underscores — tool names are MCP contract and must match the wire protocol
-    [McpServerTool, Description("Launch a child agent under you. prefix is a short lowercase tag ending in '-'. runtime is 'claude', 'codex', 'deepcode', or 'claude-deepseek' — call agent_capabilities first to see the available models and reasoning-effort levels for each runtime, then pass model and effort from that list (leave blank for defaults). Set worktree=true when this agent's work overlaps files another agent owns, so it runs isolated on its own git worktree/branch; otherwise false to share the repo. Keep launchPrompt SHORT (identity + 'read your mission doc'); pass the full brief as missionDoc — Styloagent writes it to .styloagent/missions/<prefix>.md in the new agent's tree and tells the agent to read it. Leave missionDoc empty to inject launchPrompt alone.")]
+    [McpServerTool, Description("Launch a child agent under you. prefix is a short lowercase tag ending in '-'. runtime is 'claude', 'codex', 'kilo', or 'claude-deepseek' — call agent_capabilities first to see the available models and reasoning-effort levels for each runtime, then pass model and effort from that list (leave blank for defaults; spawned kilo agents default to the fast DeepSeek v4 Flash model). Set worktree=true when this agent's work overlaps files another agent owns, so it runs isolated on its own git worktree/branch; otherwise false to share the repo. Keep launchPrompt SHORT (identity + 'read your mission doc'); pass the full brief as missionDoc — Styloagent writes it to .styloagent/missions/<prefix>.md in the new agent's tree and tells the agent to read it. Leave missionDoc empty to inject launchPrompt alone.")]
     public async Task<string> spawn_agent(string prefix, string responsibility, string dir, string launchPrompt,
         bool worktree, string missionDoc = "", string runtime = "", string model = "", string effort = "")
     {
@@ -82,7 +82,7 @@ public sealed class FleetTools
         return await _controller.RenameAgentAsync(prefix, name);
     }
 
-    [McpServerTool, Description("Return the live model and reasoning-effort choices for every supported agent runtime (claude, codex, deepcode, claude-deepseek). Each runtime lists its available models with human-readable labels and the effort levels each model accepts (low, medium, high, etc.). Use this BEFORE calling spawn_agent so you pass a valid runtime/model/effort combination. Reloaded from .styloagent/agent-capabilities.json on every call, so the list stays current without restarting Styloagent.")]
+    [McpServerTool, Description("Return the live model and reasoning-effort choices for every supported agent runtime (claude, codex, kilo, claude-deepseek). Each runtime lists its available models with human-readable labels and the effort levels each model accepts (low, medium, high, etc.). The kilo runtime's model list is discovered live from the installed `kilo models` CLI, so it reflects every model actually available on this machine. Use this BEFORE calling spawn_agent so you pass a valid runtime/model/effort combination. Reloaded from .styloagent/agent-capabilities.json + the live kilo catalog on every call, so the list stays current without restarting Styloagent.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public string agent_capabilities()
     {
@@ -240,7 +240,7 @@ public sealed class FleetTools
         return (repos.FirstOrDefault(r => r.Primary) ?? repos[0]).Path;
     }
 
-    [McpServerTool, Description("Rich live status of the whole fleet: each agent's stable prefix, display name, runtime (claude/codex/deepcode), model, reasoning effort, responsibility, state (working | idle | needs-you | exited), current activity, seconds since its last output, remaining context tokens and pressure (normal | elevated | high | critical), and whether it has a git worktree — plus working/waiting counts and the paused flag. Use this to see which agents are at what effort level before spawning more.")]
+    [McpServerTool, Description("Rich live status of the whole fleet: each agent's stable prefix, display name, runtime (claude/codex/kilo/claude-deepseek), model, reasoning effort, responsibility, state (working | idle | needs-you | exited), current activity, seconds since its last output, remaining context tokens and pressure (normal | elevated | high | critical), and whether it has a git worktree — plus working/waiting counts and the paused flag. Use this to see which agents are at what effort level before spawning more.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public string fleet_status()
     {

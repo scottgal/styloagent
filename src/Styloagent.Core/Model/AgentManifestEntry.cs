@@ -1,6 +1,6 @@
 namespace Styloagent.Core.Model;
 
-public enum AgentRuntimeKind { Claude, Codex, DeepCode, ClaudeDeepSeek }
+public enum AgentRuntimeKind { Claude, Codex, Kilo, ClaudeDeepSeek }
 
 /// <summary>
 /// Centralized runtime name mapping — the only place that converts between <see cref="AgentRuntimeKind"/>
@@ -11,14 +11,14 @@ public static class AgentRuntime
     public static string Name(AgentRuntimeKind kind) => kind switch
     {
         AgentRuntimeKind.Codex => "codex",
-        AgentRuntimeKind.DeepCode => "deepcode",
+        AgentRuntimeKind.Kilo => "kilo",
         AgentRuntimeKind.ClaudeDeepSeek => "claude-deepseek",
         _ => "claude",
     };
 
     public static AgentRuntimeKind Parse(string? name) =>
         string.Equals(name, "codex", StringComparison.OrdinalIgnoreCase) ? AgentRuntimeKind.Codex :
-        string.Equals(name, "deepcode", StringComparison.OrdinalIgnoreCase) ? AgentRuntimeKind.DeepCode :
+        string.Equals(name, "kilo", StringComparison.OrdinalIgnoreCase) ? AgentRuntimeKind.Kilo :
         string.Equals(name, "claude-deepseek", StringComparison.OrdinalIgnoreCase) ? AgentRuntimeKind.ClaudeDeepSeek :
         AgentRuntimeKind.Claude;
 }

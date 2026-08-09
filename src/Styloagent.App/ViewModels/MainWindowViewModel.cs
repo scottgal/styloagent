@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Text.Json;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -757,7 +756,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private IFileWatcher? _watcher;
     private IGitService? _git;
     private int _genericAgentCounter;
-    private AgentRuntimeKind _defaultAgentRuntime = AgentRuntimeKind.Claude;
+    private AgentRuntimeKind _defaultAgentRuntime = AgentRuntimeKind.Kilo;
 
     // Extra args appended to the first pane's session when launched in overview mode.
     private IReadOnlyList<string> _overviewSystemPromptArgs = Array.Empty<string>();
@@ -853,10 +852,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 new RouterController(this, browserController), _hookChannel?.HooksDirectory,
                 _operatorQuestionHub, _documentOpenHub, browserController).ConfigureAwait(false);
 
-            // Write the dynamic MCP URL into .deepcode/settings.json so DeepCode CLI agents
-            // (which rely on settings.json rather than --mcp-config) always reach THIS instance.
-            if (_repoRoot is not null)
-                WriteDeepCodeSettings(_mcpServer.BaseUrl, _mcpServer.Token, _repoRoot);
+            // Warm the dynamic Kilo model catalog in the background so agent_capabilities reflects the
+            // installed CLI's models without blocking the UI thread (or the first spawn).
+            _ = Task.Run(() => Core.Mcp.KiloModelDiscovery.RefreshAsync());
         }
         catch (Exception ex)
         {
@@ -874,52 +872,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     private IReadOnlyList<string> CodexMcpArgsFor(string prefix)
         => _mcpServer is { IsRunning: true } s ? s.CodexMcpConfigArgs(prefix) : Array.Empty<string>();
-
-    /// <summary>
-    /// Writes <c>.deepcode/settings.json</c> in <paramref name="repoRoot"/> with the live MCP URL
-    /// and token, so DeepCode CLI agents (which read settings.json rather than --mcp-config) always
-    /// reach THIS cockpit instance. Preserves any existing non-MCP settings the user may have added.
-    /// </summary>
-    private static readonly JsonSerializerOptions _writeSettingsJsonOptions = new() { WriteIndented = true };
-
-    private static void WriteDeepCodeSettings(Uri baseUrl, string token, string repoRoot, string agentPrefix = "overview-")
-    {
-        try
-        {
-            var dir = Path.Combine(repoRoot, ".deepcode");
-            Directory.CreateDirectory(dir);
-            var path = Path.Combine(dir, "settings.json");
-
-            // Read existing settings (if any) to preserve user customisations.
-            var root = File.Exists(path)
-                ? JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(File.ReadAllText(path))
-                : null;
-            root ??= new Dictionary<string, JsonElement>();
-
-            var bridgePath = Path.Combine(repoRoot, ".agents", "scripts", "styloagent-mcp-bridge.py");
-            var mcpServer = new Dictionary<string, object?>
-            {
-                ["command"] = "python3",
-                ["args"] = new[] { bridgePath },
-                ["env"] = new Dictionary<string, string>
-                {
-                    ["STYLOAGENT_MCP_URL"] = baseUrl.ToString(),
-                    ["STYLOAGENT_MCP_AGENT"] = agentPrefix,
-                    ["STYLOAGENT_MCP_TOKEN"] = token,
-                },
-            };
-            root["mcpServers"] = JsonSerializer.SerializeToElement(
-                new Dictionary<string, object> { ["styloagent"] = mcpServer });
-
-            var json = JsonSerializer.Serialize(root, _writeSettingsJsonOptions);
-            File.WriteAllText(path, json);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Trace.WriteLine(
-                $"[Styloagent] Failed to write .deepcode/settings.json: {ex.Message}");
-        }
-    }
 
     /// <summary>Returns the router root directory for the active project, or null when no project is loaded.</summary>
     public string? RouterRootOrNull => _project?.RouterRoot;
@@ -1270,7 +1222,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         IGitLog? gitLog = null,
         string? overviewColorHex = null,
         IReadOnlyList<Styloagent.Core.Workspace.RepoOverview>? extraOverviews = null,
-        AgentRuntimeKind defaultAgentRuntime = AgentRuntimeKind.Claude,
+        AgentRuntimeKind defaultAgentRuntime = AgentRuntimeKind.Kilo,
         CancellationToken ct = default)
     {
         var vm = new MainWindowViewModel();
@@ -1495,7 +1447,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         string firstHookId = vm.ReserveHookId(first.Prefix);
         var session = new AgentSession(first, launcher, watcher,
             vm.LaunchArgsFor(firstHookId, first, vm._overviewSystemPromptArgs),
-            BuildEnv(first, repoRoot));
+            vm.BuildEnv(first, repoRoot, vm._overviewSystemPromptArgs));
 
         vm.Pane = new AgentPaneViewModel(
             session,
@@ -1578,7 +1530,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void AddCodex() => AddAgent(AgentRuntimeKind.Codex);
 
     [RelayCommand]
-    public void AddDeepCode() => AddAgent(AgentRuntimeKind.DeepCode);
+    public void AddKilo() => AddAgent(AgentRuntimeKind.Kilo);
 
     [RelayCommand]
     public void AddClaudeDeepSeek() => AddAgent(AgentRuntimeKind.ClaudeDeepSeek);
@@ -1713,7 +1665,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         string hookId = ReserveHookId(entry.Prefix);
         var session = new AgentSession(entry, _launcher, _watcher,
             LaunchArgsFor(hookId, entry, hooks, channelRoot, repoRoot, protocolPath, systemPromptArgs),
-            BuildEnv(entry, repoRoot));
+            BuildEnv(entry, repoRoot, systemPromptArgs));
 
         var paneVm = new AgentPaneViewModel(session, entry, overview.Prefix.TrimEnd('-'), overview.ColorHex)
         {
@@ -2251,11 +2203,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (!decision.Allowed) return SpawnOutcome.Reject(decision.Reason!.Value, decision.Message);
 
         var runtime = RuntimeFromRequest(req.Runtime);
+        // Spawned specialists default to the fast DeepSeek model on Kilo — the overview/repo-root agents
+        // keep the pro default. The spawner can still pick any model explicitly.
+        var model = runtime == AgentRuntimeKind.Kilo && string.IsNullOrWhiteSpace(req.Model)
+            ? Styloagent.Core.Sessions.AgentRuntimeProfile.KiloFlashModelId
+            : req.Model;
         var runtimeName = RuntimeName(runtime);
         var capabilities = BuildAgentCapabilities();
-        if (!capabilities.Supports(runtimeName, req.Model, req.Effort))
+        if (!capabilities.Supports(runtimeName, model, req.Effort))
             return SpawnOutcome.Reject(RejectReason.InvalidPrefix,
-                $"unsupported agent selection: {runtimeName}/{req.Model ?? "default"}/{req.Effort ?? "default"}; call agent_capabilities");
+                $"unsupported agent selection: {runtimeName}/{model ?? "default"}/{req.Effort ?? "default"}; call agent_capabilities");
 
         // Re-spawn recovery: the governor allows re-spawning over a crashed ("exited") ghost. Drop the
         // dead pane so the fresh spawn reclaims its slot instead of duplicating the prefix. Refuse if the
@@ -2285,7 +2242,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var paneVm = CreateAgentPane(req.Prefix, req.Responsibility, req.Dir, launchPrompt,
             parentPrefix: req.ParentPrefix, depth: parentDepth + 1,
             worktreeOverride: worktreePath, worktreeBranch: worktreeBranch, runtime: runtime,
-            model: req.Model, effort: req.Effort);
+            model: model, effort: req.Effort);
         if (worktreePath is not null && _git is not null)
             _ = paneVm!.RefreshGitStatusAsync(_git);
         return paneVm is null
@@ -2320,9 +2277,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         return new FleetSnapshot(members, FleetPolicy.MaxFleet, FleetPolicy.MaxDepth, FleetPaused);
     }
 
-    /// <summary>Reloads the repo capability catalog so MCP and new agents see edits immediately.</summary>
+    /// <summary>Reloads the repo capability catalog so MCP and new agents see edits immediately, and overlays
+    /// the live Kilo model catalog discovered from the installed <c>kilo models</c> CLI (cached/refreshed in
+    /// the background — the UI never waits on the process).</summary>
     public AgentCapabilities BuildAgentCapabilities()
-        => AgentCapabilities.Load(_project?.Root ?? _repoRoot);
+        => AgentCapabilities.Load(_project?.Root ?? _repoRoot)
+            .WithKiloModels(Core.Mcp.KiloModelDiscovery.GetOrStartRefresh());
 
     /// <summary>Reloads the overview-owned job-type policy so a revised file affects the next spawn.</summary>
     public Styloagent.Core.Projects.ModelPolicy BuildModelPolicy()
@@ -3004,14 +2964,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         var runtime = AgentRuntimeProfile.For(entry.Runtime);
 
-        // DeepCode: reads ALL config from .deepcode/settings.json — no CLI flags allowed.
-        // Write per-agent settings with the correct identity so the MCP bridge sends the right
-        // X-Styloagent-Agent header (not the old global "overview-").
-        if (entry.Runtime == AgentRuntimeKind.DeepCode)
+        // Kilo: `kilo run` headless. Model/effort + autonomous permission flags go on the CLI; the MCP
+        // server, permission block and hooks observation ride the per-agent KILO_CONFIG_CONTENT env built
+        // in BuildEnv — no repo config file is touched, and each agent reaches the MCP server as itself.
+        if (entry.Runtime == AgentRuntimeKind.Kilo)
         {
-            if (_mcpServer is { IsRunning: true } s && !string.IsNullOrWhiteSpace(repoRoot))
-                WriteDeepCodeSettings(s.BaseUrl, s.Token, repoRoot, entry.Prefix);
-            return Array.Empty<string>();
+            var args = new List<string> { "run" };
+            args.AddRange(runtime.ModelEffortArgs(entry.Model, entry.Effort));
+            args.AddRange(runtime.PermissionArgs(PermissionMode));
+            args.Add("--title");
+            args.Add(entry.Prefix.TrimEnd('-'));
+            return args;
         }
 
         // Codex: --config hooks.*=, --config mcp_servers.*=, --sandbox, positional prompt
@@ -3048,15 +3011,78 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Returns the DeepSeek environment variables for a ClaudeDeepSeek agent, or null for
-    /// other runtimes.
+    /// Per-agent environment variables. ClaudeDeepSeek gets its DeepSeek routing vars from
+    /// <c>deepseek.env</c>; Kilo gets the per-agent <c>KILO_CONFIG_CONTENT</c> (MCP + permissions +
+    /// instruction files) plus the hooks-dir/agent-id env the observation plugin reads.
+    /// <paramref name="claudeOnlyArgs"/> may carry <c>--append-system-prompt</c> entries (the overview /
+    /// repo system prompts); for Kilo those are written to instruction files and referenced by path.
+    /// Other runtimes get nothing.
     /// </summary>
-    private static IReadOnlyDictionary<string, string>? BuildEnv(AgentManifestEntry entry, string? repoRoot)
+    private IReadOnlyDictionary<string, string>? BuildEnv(AgentManifestEntry entry, string? repoRoot,
+        IEnumerable<string>? claudeOnlyArgs = null)
     {
-        if (entry.Runtime != AgentRuntimeKind.ClaudeDeepSeek)
-            return null;
-        var vars = Core.Sessions.DeepSeekEnv.Load(repoRoot);
-        return vars.Count > 0 ? vars : null;
+        if (entry.Runtime == AgentRuntimeKind.ClaudeDeepSeek)
+        {
+            var vars = Core.Sessions.DeepSeekEnv.Load(repoRoot);
+            return vars.Count > 0 ? vars : null;
+        }
+
+        if (entry.Runtime == AgentRuntimeKind.Kilo)
+        {
+            if (_mcpServer is not { IsRunning: true } server) return null;
+
+            // Install the observation plugin into the agent's working tree so kilo auto-loads it at
+            // startup (worktrees are separate checkouts, so it must exist there too).
+            Styloagent.Core.Hooks.KiloHooksPlugin.EnsureInstalled(entry.Worktree);
+            Styloagent.Core.Hooks.KiloHooksPlugin.EnsureInstalled(_repoRoot);
+
+            var vars = new Dictionary<string, string>
+            {
+                ["KILO_CONFIG_CONTENT"] = Styloagent.Core.Hooks.KiloHooksPlugin.BuildConfigContent(
+                    entry.Prefix, server.BaseUrl, server.Token, PermissionMode,
+                    KiloInstructionFiles(entry, claudeOnlyArgs)),
+                ["STYLOAGENT_AGENT_ID"] = entry.Prefix,
+            };
+            if (_hookChannel is not null)
+                vars["STYLOAGENT_HOOKS_DIR"] = _hookChannel.HooksDirectory;
+            return vars;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Converts any <c>--append-system-prompt &lt;text&gt;</c> entries in <paramref name="claudeOnlyArgs"/>
+    /// into instruction files written under the agent's <c>.kilo/instructions/</c> (so the Kilo CLI loads
+    /// them at startup via the config <c>instructions</c> key). Returns their absolute paths, or null.
+    /// </summary>
+    private static IEnumerable<string>? KiloInstructionFiles(AgentManifestEntry entry, IEnumerable<string>? claudeOnlyArgs)
+    {
+        if (claudeOnlyArgs is null) return null;
+        var prompts = new List<string>();
+        var args = claudeOnlyArgs.ToList();
+        for (int i = 0; i < args.Count - 1; i++)
+        {
+            if (args[i] == "--append-system-prompt" && !string.IsNullOrWhiteSpace(args[i + 1]))
+                prompts.Add(args[i + 1]);
+        }
+        if (prompts.Count == 0) return null;
+
+        var paths = new List<string>();
+        try
+        {
+            var dir = Path.Combine(string.IsNullOrWhiteSpace(entry.Worktree) ? entry.Repo : entry.Worktree,
+                ".kilo", "instructions");
+            Directory.CreateDirectory(dir);
+            for (int i = 0; i < prompts.Count; i++)
+            {
+                var path = Path.Combine(dir, $"{HookSettings.SanitizeAgentId(entry.Prefix)}-{i + 1}.md");
+                File.WriteAllText(path, prompts[i]);
+                paths.Add(path);
+            }
+        }
+        catch { /* best-effort: a failed instruction write degrades to no extra instructions */ }
+        return paths.Count > 0 ? paths : null;
     }
 
     /// <summary>

@@ -76,7 +76,7 @@ the bus. Click a file op to open it in a syntax-highlighted read-only source vie
 
 ### Real terminals, in colour
 
-Each pane launches a real `claude` (or any CLI) over a PTY and renders its full-colour TUI —
+Each pane launches a real coding CLI — `claude`, `codex`, `kilo` (DeepSeek models by default), or any CLI — over a PTY and renders its full-colour TUI —
 24-bit truecolor, the 256-colour palette, background highlights, bold and inverse:
 
 ![Colour terminal](docs/screenshots/terminal-colour.png)

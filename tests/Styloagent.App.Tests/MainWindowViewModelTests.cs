@@ -86,7 +86,8 @@ public class MainWindowViewModelTests : IDisposable
         try
         {
             var claudeLauncher = new FakeLauncher();
-            var claude = await MainWindowViewModel.InitializeAsync(claudeRoot, claudeLauncher, new FakeWatcher());
+            var claude = await MainWindowViewModel.InitializeAsync(claudeRoot, claudeLauncher, new FakeWatcher(),
+                defaultAgentRuntime: AgentRuntimeKind.Claude);
             claude.Pane!.ApplyHookEvent(new Styloagent.Core.Hooks.HookEvent(
                 "foss-", "PermissionRequest", null, "Approve?", "session", "/repo"));
             claude.ApprovePermissionCommand.Execute(claude.Pane);
@@ -220,7 +221,7 @@ public class MainWindowViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task AddDeepCodeCommand_AddsPaneAndLaunchesDeepCodeWithoutIllegalFlags()
+    public async Task AddKiloCommand_AddsPaneAndLaunchesKiloHeadless()
     {
         var root = MakeTwoAgentChannel();
         try
@@ -229,20 +230,23 @@ public class MainWindowViewModelTests : IDisposable
             var vm = await MainWindowViewModel.InitializeAsync(
                 root, launcher, new FakeWatcher());
 
-            vm.AddDeepCodeCommand.Execute(null);
+            vm.AddKiloCommand.Execute(null);
             await WaitUntil(() => launcher.Options.Count >= 2);
 
             Assert.Equal(2, vm.Panes.Count);
-            Assert.Equal(AgentRuntimeKind.DeepCode, vm.Panes[1].Runtime);
+            Assert.Equal(AgentRuntimeKind.Kilo, vm.Panes[1].Runtime);
             Assert.StartsWith("agent-", vm.Panes[1].Prefix);
-            Assert.Equal("New DeepCode", vm.Panes[1].DisplayName);
-            Assert.Equal("deepcode", launcher.Options[1].Command);
-            // The deepcode CLI (v0.1.34) accepts ONLY -p/-r/-v/-h — anything else (e.g. the
-            // Codex-style --config MCP args) aborts the launch with "Unknown argument: config".
-            // DeepCode reads model/effort/hooks/MCP from settings.json layers instead.
-            Assert.DoesNotContain(launcher.Options[1].Args, a => a.StartsWith("--config", StringComparison.Ordinal));
+            Assert.Equal("New Kilo", vm.Panes[1].DisplayName);
+            Assert.Equal("kilo", launcher.Options[1].Command);
+            // Kilo runs headless as `kilo run` with model/effort + autonomous flags; MCP config and hooks
+            // ride the per-agent KILO_CONFIG_CONTENT env, so no --settings/--mcp-config/--config CLI args.
+            Assert.Equal("run", launcher.Options[1].Args[0]);
+            Assert.Contains("--model", launcher.Options[1].Args);
+            Assert.Contains(launcher.Options[1].Args, a => a == Styloagent.Core.Sessions.AgentRuntimeProfile.KiloDefaultModelId);
+            Assert.Contains("--auto", launcher.Options[1].Args);
             Assert.DoesNotContain(launcher.Options[1].Args, a => a == "--settings");
             Assert.DoesNotContain(launcher.Options[1].Args, a => a == "--mcp-config");
+            Assert.DoesNotContain(launcher.Options[1].Args, a => a == "--config");
         }
         finally { Directory.Delete(root, recursive: true); }
     }
@@ -264,12 +268,12 @@ public class MainWindowViewModelTests : IDisposable
             Assert.Equal(AgentRuntimeKind.ClaudeDeepSeek, vm.Panes[1].Runtime);
             Assert.StartsWith("agent-", vm.Panes[1].Prefix);
             Assert.Equal("New Claude+DeepSeek", vm.Panes[1].DisplayName);
-            // ClaudeDeepSeek uses the `claude` CLI (NOT `deepcode`), so it gets the same
+            // ClaudeDeepSeek uses the `claude` CLI (NOT `kilo run`), so it gets the same
             // --settings, --mcp-config, and --model flags as regular Claude.
             Assert.Equal("claude", launcher.Options[1].Command);
             Assert.Contains(launcher.Options[1].Args, a => a == "--model");
             Assert.Contains(launcher.Options[1].Args, a => a == "deepseek-v4-pro[1m]");
-            // DeepCode-only restrictions must NOT apply — ClaudeDeepSeek IS the claude CLI.
+            // The Kilo/headless prompt flag must NOT apply — ClaudeDeepSeek IS the claude CLI.
             Assert.DoesNotContain(launcher.Options[1].Args, a => a == "-p");
         }
         finally { Directory.Delete(root, recursive: true); }
@@ -506,12 +510,19 @@ public class MainWindowViewModelTests : IDisposable
             Assert.Contains("overview", vm.Pane!.DisplayName);
 
             // FakeLauncher captures PtySpawnOptions synchronously (Task.FromResult),
-            // so the spawn args are observable here.
+            // so the spawn args + env are observable here.
             Assert.Single(launcher.Options);
             var args = launcher.Options[0].Args.ToList();
-            var appendIdx = args.IndexOf("--append-system-prompt");
-            Assert.True(appendIdx >= 0, "Expected --append-system-prompt arg to be present");
-            Assert.Equal(promptContent, args[appendIdx + 1]);
+            // Default runtime is Kilo: the system prompt is delivered as an instruction file referenced by
+            // the per-agent KILO_CONFIG_CONTENT env, not as a --append-system-prompt CLI arg.
+            Assert.DoesNotContain("--append-system-prompt", args);
+            Assert.NotNull(launcher.Options[0].Env);
+            Assert.True(launcher.Options[0].Env.ContainsKey("KILO_CONFIG_CONTENT"));
+            var content = launcher.Options[0].Env["KILO_CONFIG_CONTENT"];
+            Assert.Contains(".kilo/instructions/", content);
+            var instructionFiles = Directory.GetFiles(Path.Combine(repoRoot, ".kilo", "instructions"), "*.md");
+            var instructionFile = Assert.Single(instructionFiles);
+            Assert.Contains(promptContent, File.ReadAllText(instructionFile));
         }
         finally
         {

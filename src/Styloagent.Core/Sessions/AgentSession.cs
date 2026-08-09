@@ -176,10 +176,7 @@ public sealed class AgentSession
         if (!_runtime.SupportsInitialPromptArgument || string.IsNullOrEmpty(prompt))
             return _launchArgs;
 
-        // DeepCode needs `-p <prompt>`; Codex takes a bare positional prompt.
-        if (_runtime.Kind == AgentRuntimeKind.DeepCode)
-            return _launchArgs.Concat(new[] { "-p", prompt }).ToArray();
-
+        // Kilo (`kilo run <prompt>`) and Codex take the prompt as a bare positional argument.
         return _launchArgs.Concat(new[] { prompt }).ToArray();
     }
 }

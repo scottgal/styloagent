@@ -4,7 +4,7 @@ namespace Styloagent.Core.Hooks;
 
 /// <summary>
 /// Builds CLI hook configuration via <c>--config key=value</c> arguments for runtimes that use
-/// config-layer hooks (Codex, DeepCode). Styloagent attaches per-pane hook drops without writing
+/// config-layer hooks (Codex). Styloagent attaches per-pane hook drops without writing
 /// user or project config files.
 /// </summary>
 public static class ConfigHookSettings

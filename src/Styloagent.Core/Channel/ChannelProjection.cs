@@ -76,9 +76,10 @@ public sealed class ChannelProjection
             var stripped = StripKnownPrefix(raw, knownPrefixes);
             var candidates = inboxes.Where(i =>
                     (i.Slug.Equals(raw, StringComparison.OrdinalIgnoreCase) || i.Slug.Equals(stripped, StringComparison.OrdinalIgnoreCase))
-                    && (!string.IsNullOrWhiteSpace(message.From)
-                        ? i.RoutingPrefix.Equals(message.From, StringComparison.OrdinalIgnoreCase)
-                        : i.RoutingPrefix.Equals(message.RoutingPrefix, StringComparison.OrdinalIgnoreCase)))
+                    && (i.RoutingPrefix.Equals("all-", StringComparison.OrdinalIgnoreCase)    // broadcast: match on slug only
+                        || (!string.IsNullOrWhiteSpace(message.From)
+                            ? i.RoutingPrefix.Equals(message.From, StringComparison.OrdinalIgnoreCase)
+                            : i.RoutingPrefix.Equals(message.RoutingPrefix, StringComparison.OrdinalIgnoreCase))))
                 .ToList();
             var inbox = candidates.Count == 1 ? candidates[0] : null;
             var key = inbox is null ? ThreadKey(message.RoutingPrefix, message.Slug) : ThreadKey(inbox.RoutingPrefix, inbox.Slug);

@@ -16,9 +16,9 @@ public static class ContextPressurePolicy
 
     public static string Guidance(ContextPressure pressure) => pressure switch
     {
-        ContextPressure.Critical => "Context is nearly full. Stop broad exploration: finish the smallest safe unit, summarize decisions, and checkpoint immediately.",
-        ContextPressure.High => "Context is under heavy pressure. Keep replies and tool output compact, avoid rereading files, and checkpoint before taking new scope.",
-        ContextPressure.Elevated => "Context is filling. Prefer concise replies, targeted reads, and small bounded actions; avoid expanding scope.",
+        ContextPressure.Critical => "Context is nearly full. Switch to reasoning effort 'low' immediately, finish the smallest safe unit, summarize decisions, and checkpoint. Do not spawn new agents or take new scope.",
+        ContextPressure.High => "Context is under heavy pressure. Lower your reasoning effort to 'medium' or 'low', keep replies and tool output compact, avoid rereading files, and checkpoint before taking new scope.",
+        ContextPressure.Elevated => "Context is filling. Consider lowering reasoning effort to 'medium', prefer concise replies, targeted reads, and small bounded actions; avoid expanding scope.",
         _ => "",
     };
 }

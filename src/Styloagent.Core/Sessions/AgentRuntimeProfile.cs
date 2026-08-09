@@ -24,10 +24,19 @@ public sealed record AgentRuntimeProfile(
     public static AgentRuntimeProfile For(AgentRuntimeKind kind) => kind switch
     {
         AgentRuntimeKind.Codex => Codex,
-        AgentRuntimeKind.DeepCode => DeepCode,
+        AgentRuntimeKind.Kilo => Kilo,
         AgentRuntimeKind.ClaudeDeepSeek => ClaudeDeepSeek,
         _ => Claude,
     };
+
+    /// <summary>Preferred DeepSeek model for the overview / repo-root agents (the fleet's planner).</summary>
+    public static readonly string KiloDefaultModelId = "kilo/deepseek/deepseek-v4-pro";
+
+    /// <summary>Preferred DeepSeek model for spawned specialist agents (fast, cheap, focused).</summary>
+    public static readonly string KiloFlashModelId = "kilo/deepseek/deepseek-v4-flash";
+
+    /// <summary>Reasoning-effort variants Kilo accepts for DeepSeek models (the <c>--variant</c> flag).</summary>
+    public static readonly string[] KiloEfforts = { "default", "low", "medium", "high", "max" };
 
     public static readonly AgentRuntimeProfile Claude = new(
         AgentRuntimeKind.Claude,
@@ -53,16 +62,24 @@ public sealed record AgentRuntimeProfile(
         DefaultLaunchPromptTemplate:
             "You are the '{0}' Styloagent workspace agent. Read .styloagent/PROTOCOL.md and your mission doc if present, check the fleet inbox, then carry out your assigned task.");
 
-    public static readonly AgentRuntimeProfile DeepCode = new(
-        AgentRuntimeKind.DeepCode,
-        Command: "deepcode",
-        DisplayName: "DeepCode",
+    /// <summary>
+    /// The Kilo CLI, run headless as <c>kilo run &lt;prompt&gt;</c> (autonomous — mirrors Codex's one-shot
+    /// model: it exits when the task completes and the cockpit treats the pane as a re-spawnable ghost).
+    /// Model/effort come from <c>--model provider/model</c> + <c>--variant</c>; MCP config, permissions and
+    /// the fleet-observation hooks plugin are injected per-agent via <c>KILO_CONFIG_CONTENT</c> + env, so no
+    /// repo config file is mutated. Hooks are fully wired (not skipped): the plugin writes drop files the
+    /// <see cref="Styloagent.Core.Hooks.HookChannel"/> consumes, driving the live state machine.
+    /// </summary>
+    public static readonly AgentRuntimeProfile Kilo = new(
+        AgentRuntimeKind.Kilo,
+        Command: "kilo",
+        DisplayName: "Kilo",
         SupportsClaudeSettingsHooks: false,
         SupportsInitialPromptArgument: true,
-        UsesConfigLayerHooks: true,
+        UsesConfigLayerHooks: false,
+        DefaultModel: KiloDefaultModelId,
         PtyWakeString: "\r",
-        SkipHookStateMachine: true,
-        UseCodexTranscriptReader: true,
+        SkipHookStateMachine: false,
         DefaultLaunchPromptTemplate:
             "You are the '{0}' Styloagent workspace agent. Read .styloagent/PROTOCOL.md and your mission doc if present, check the fleet inbox, then carry out your assigned task.");
 
@@ -79,7 +96,10 @@ public sealed record AgentRuntimeProfile(
 
     /// <summary>
     /// Runtime-native permission flags. Claude family uses HookSettings.PermissionArgs (scoped/permission-mode
-    /// flags); Codex uses its own sandbox/approval flags; DeepCode has no CLI permission flags.
+    /// flags); Codex uses its own sandbox/approval flags; Kilo runs headless <c>kilo run</c>, where any
+    /// not-auto-approved permission request is auto-rejected (the run exits 1), so fleet agents always launch
+    /// with <c>--auto</c>. The permission-mode distinction is still reflected in the per-agent
+    /// <c>KILO_CONFIG_CONTENT</c> permission block (see the launch pipeline).
     /// </summary>
     public IReadOnlyList<string> PermissionArgs(FleetPermissionMode mode) => Kind switch
     {
@@ -89,31 +109,49 @@ public sealed record AgentRuntimeProfile(
             FleetPermissionMode.Scoped => new[] { "--sandbox", "workspace-write", "--ask-for-approval", "on-request" },
             _ => Array.Empty<string>(),
         },
-        AgentRuntimeKind.DeepCode => Array.Empty<string>(),
+        AgentRuntimeKind.Kilo => mode switch
+        {
+            FleetPermissionMode.Bypass => new[] { "--auto" },
+            FleetPermissionMode.Scoped => new[] { "--auto" },
+            _ => new[] { "--auto" },
+        },
         _ => HookSettings.PermissionArgs(mode),
     };
 
     /// <summary>
     /// Builds the --model and --effort (or equivalent) CLI arguments for this runtime.
-    /// DeepCode reads these from settings.json (no CLI flags). Codex uses --config model_reasoning_effort=.
+    /// Kilo uses <c>--model provider/model</c> + <c>--variant</c>. Codex uses --config model_reasoning_effort=.
     /// Claude family uses --model and --effort.
     /// </summary>
     public IReadOnlyList<string> ModelEffortArgs(string? model, string? effort)
     {
-        if (Kind == AgentRuntimeKind.DeepCode)
-            return Array.Empty<string>();
-
         var args = new List<string>();
         var effectiveModel = !string.IsNullOrWhiteSpace(model) ? model : DefaultModel;
+        var effectiveEffort = !string.IsNullOrWhiteSpace(effort) &&
+                              !effort.Equals("default", StringComparison.OrdinalIgnoreCase)
+            ? effort
+            : null;
+
+        if (Kind == AgentRuntimeKind.Kilo)
+        {
+            if (!string.IsNullOrWhiteSpace(effectiveModel))
+            {
+                args.Add("--model");
+                args.Add(effectiveModel!);
+            }
+            if (!string.IsNullOrWhiteSpace(effectiveEffort))
+            {
+                args.Add("--variant");
+                args.Add(effectiveEffort!);
+            }
+            return args;
+        }
+
         if (!string.IsNullOrWhiteSpace(effectiveModel))
         {
             args.Add("--model");
             args.Add(effectiveModel!);
         }
-        var effectiveEffort = !string.IsNullOrWhiteSpace(effort) &&
-                              !effort.Equals("default", StringComparison.OrdinalIgnoreCase)
-            ? effort
-            : null;
         if (!string.IsNullOrWhiteSpace(effectiveEffort))
         {
             if (Kind == AgentRuntimeKind.Codex)
@@ -131,8 +169,10 @@ public sealed record AgentRuntimeProfile(
     }
 
     /// <summary>
-    /// Builds the hook configuration CLI arguments for one spawned agent. Delegates to the right
-    /// hook builder: ConfigHookSettings (Codex, DeepCode) or HookSettings (Claude family).
+    /// Builds the hook configuration CLI arguments for one spawned agent. Claude family: hook settings are
+    /// injected via --settings JSON (handled separately in the launch pipeline). Codex uses --config hooks.*.
+    /// Kilo has no CLI hook flags — its fleet-observation plugin (dropped into the project's
+    /// <c>.kilo/plugins/</c>) is auto-loaded and writes the same drop files, so no args are needed here.
     /// </summary>
     public IReadOnlyList<string> BuildHookArgs(
         string hookId, string hooksDir, string? hydrationFile = null,
@@ -148,16 +188,15 @@ public sealed record AgentRuntimeProfile(
 
     /// <summary>
     /// Returns the CLI prompt argument for this runtime, or null if the prompt is injected via PTY.
-    /// DeepCode uses -p, Codex uses a bare positional argument, Claude injects via PTY.
+    /// Kilo and Codex take the prompt as a positional argument to <c>kilo run</c> / <c>codex</c>;
+    /// Claude injects via PTY.
     /// </summary>
     public string? PromptArg(string? prompt)
     {
         if (string.IsNullOrWhiteSpace(prompt) || !SupportsInitialPromptArgument)
             return null;
 
-        return Kind == AgentRuntimeKind.DeepCode
-            ? $"-p {prompt}"   // DeepCode: -p <prompt>
-            : prompt;           // Codex: bare positional
+        return prompt;   // Kilo (`kilo run <prompt>`) and Codex (bare positional)
     }
 
     /// <summary>

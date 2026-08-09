@@ -7,29 +7,29 @@ public static class DefaultTemplates
 """
 # The overview may revise this file as it learns which work benefits from deeper reasoning.
 # Every rule must explain its choice; the explanation is shown to the human and available via MCP.
+# Effort is deliberately NOT set here: the reasoning effort is at the agent's own discretion — each
+# spawned agent decides how deeply to reason for the work in front of it.
 default:
-  reasoning: "No specialised policy: use the runtime and model defaults."
+  runtime: kilo
+  model: kilo/deepseek/deepseek-v4-pro
+  reasoning: "No specialised policy: use the Kilo runtime defaults (DeepSeek V4 Pro for the overview, V4 Flash for spawned agents). Effort is left to the agent's discretion."
 rules:
   - jobType: architecture
-    runtime: claude
-    model: opus
-    effort: high
-    reasoning: "Architecture and boundary decisions have broad downstream cost, so use the strongest reasoning profile."
+    runtime: kilo
+    model: kilo/deepseek/deepseek-v4-pro
+    reasoning: "Architecture and boundary decisions have broad downstream cost, so give the agent the strongest model and let it reason as deep as the decision needs."
   - jobType: implementation
-    runtime: codex
-    model: gpt-5-codex
-    effort: medium
-    reasoning: "Routine implementation benefits from strong code/tool use without spending the maximum reasoning budget."
+    runtime: kilo
+    model: kilo/deepseek/deepseek-v4-flash
+    reasoning: "Routine implementation gets the fast model; the agent decides how much reasoning each change needs."
   - jobType: tests
-    runtime: codex
-    model: gpt-5-codex
-    effort: high
-    reasoning: "Test failures require careful reproduction and cross-layer diagnosis."
+    runtime: kilo
+    model: kilo/deepseek/deepseek-v4-flash
+    reasoning: "Test failures need careful reproduction and cross-layer diagnosis; the agent sets its own reasoning depth."
   - jobType: docs
-    runtime: claude
-    model: sonnet
-    effort: medium
-    reasoning: "Documentation needs context and clarity, but usually less deep code reasoning."
+    runtime: kilo
+    model: kilo/deepseek/deepseek-v4-flash
+    reasoning: "Documentation needs context and clarity; reasoning effort is at the agent's discretion."
 """;
 
     public const string SystemPrompt =
@@ -145,9 +145,10 @@ You have these MCP tools from the `styloagent` server:
   share the repo. You decide this from the fleet + architecture. Keep `launchPrompt` SHORT (identity +
   "read your mission doc") and pass the full brief as `missionDoc`: Styloagent writes it to
   `.styloagent/missions/<prefix>.md` in the new agent's tree — committed on its branch when
-  `worktree: true`, so an isolated agent can read it from its own checkout — and tells the agent to read
-  it. Set `runtime` to `claude` or `codex` for mixed fleets, or leave it empty to use the cockpit
-  default. This is the prompt-in-a-doc path; don't hand-place mission files or stuff a huge brief inline.
+   `worktree: true`, so an isolated agent can read it from its own checkout — and tells the agent to read
+   it. Set `runtime` to `claude`, `codex`, or `kilo` for mixed fleets (kilo defaults to DeepSeek v4 Pro for
+   overviews and v4 Flash for spawned agents), or leave it empty to use the cockpit default. This is the
+   prompt-in-a-doc path; don't hand-place mission files or stuff a huge brief inline.
 - `agent_capabilities()` — the live runtime/model/effort choices that may be selected.
 - `agent_model_policy()` — the current job-type policy and the reasoning behind each choice. Read this
   before spawning and apply the appropriate runtime, model, and effort to the agent.

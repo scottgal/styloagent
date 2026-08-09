@@ -54,7 +54,7 @@ public partial class App : Application
             ThemeApplier.ApplyAccent(this, AccentPalette.Resolve(prefs.Accent));
 
             async Task OpenProjectAsync(string root, Window? welcomeWindow, MainWindow? existing = null,
-                AgentRuntimeKind defaultRuntime = AgentRuntimeKind.Claude)
+                AgentRuntimeKind defaultRuntime = AgentRuntimeKind.Kilo)
             {
                 try
                 {
@@ -161,14 +161,25 @@ public partial class App : Application
                 {
                     Title = "Styloagent",
                     Icon = AppIcon(),
-                    Width = 520,
-                    Height = 520,
+                    Width = 560,
+                    Height = 660,
+                    MinWidth = 520,
+                    MinHeight = 600,
                 };
                 WelcomeViewModel? welcome = null;
+                // The "start with" runtime choice is persisted in preferences, so the next app start
+                // opens with the same default (and the welcome screen preselects it).
+                var initialRuntime = Styloagent.Core.Model.AgentRuntime.Parse(prefs.DefaultRuntime);
                 welcome = new WelcomeViewModel(recents, recentsPath,
                     new StorageFolderPicker(welcomeWindow),
                     root => _ = OpenProjectAsync(root, welcomeWindow,
-                        defaultRuntime: welcome?.SelectedRuntime ?? AgentRuntimeKind.Claude));
+                        defaultRuntime: welcome?.SelectedRuntime ?? initialRuntime),
+                    initialRuntime: initialRuntime,
+                    onRuntimeChanged: kind =>
+                    {
+                        prefs.DefaultRuntime = Styloagent.Core.Model.AgentRuntime.Name(kind);
+                        _ = prefsStore.SaveAsync(prefsPath, prefs);
+                    });
                 welcomeWindow.Content = new WelcomeView { DataContext = welcome };
                 desktop.MainWindow = welcomeWindow;
                 welcomeWindow.Show();

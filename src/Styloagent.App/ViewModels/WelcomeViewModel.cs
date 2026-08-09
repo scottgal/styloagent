@@ -15,6 +15,7 @@ public sealed partial class WelcomeViewModel : ObservableObject
     private readonly string _recentsPath;
     private readonly IFolderPicker _picker;
     private readonly Action<string> _onProjectChosen;
+    private readonly Action<AgentRuntimeKind>? _onRuntimeChanged;
 
     [ObservableProperty]
     private ObservableCollection<string> _recent = new();
@@ -28,7 +29,7 @@ public sealed partial class WelcomeViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsCodexFirst))]
     [NotifyPropertyChangedFor(nameof(IsKiloFirst))]
     [NotifyPropertyChangedFor(nameof(IsClaudeDeepSeekFirst))]
-    private AgentRuntimeKind _selectedRuntime = AgentRuntimeKind.Kilo;
+    private AgentRuntimeKind _selectedRuntime;
 
     public bool IsClaudeFirst => SelectedRuntime == AgentRuntimeKind.Claude;
     public bool IsCodexFirst => SelectedRuntime == AgentRuntimeKind.Codex;
@@ -36,12 +37,16 @@ public sealed partial class WelcomeViewModel : ObservableObject
     public bool IsClaudeDeepSeekFirst => SelectedRuntime == AgentRuntimeKind.ClaudeDeepSeek;
 
     public WelcomeViewModel(RecentProjectsStore recents, string recentsPath, IFolderPicker picker,
-        Action<string> onProjectChosen)
+        Action<string> onProjectChosen,
+        AgentRuntimeKind initialRuntime = AgentRuntimeKind.Kilo,
+        Action<AgentRuntimeKind>? onRuntimeChanged = null)
     {
         _recents = recents;
         _recentsPath = recentsPath;
         _picker = picker;
         _onProjectChosen = onProjectChosen;
+        _onRuntimeChanged = onRuntimeChanged;
+        _selectedRuntime = initialRuntime;
     }
 
     public async Task LoadRecentsAsync()
@@ -52,7 +57,20 @@ public sealed partial class WelcomeViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void SetRuntimeMode(string? mode) => SelectedRuntime = AgentRuntime.Parse(mode);
+    private void SetRuntimeMode(string? mode)
+    {
+        var kind = AgentRuntime.Parse(mode);
+        SelectedRuntime = kind;
+        // Re-push every OneWay Is*Checked binding: a click on the ALREADY-selected card flips its local
+        // IsChecked off, and since the source value did not change the OneWay binding would never write
+        // it back — leaving the selector with nothing visibly selected. Forcing the notifications keeps
+        // the visual state in lockstep with the selection (and re-checks the clicked card).
+        OnPropertyChanged(nameof(IsClaudeFirst));
+        OnPropertyChanged(nameof(IsCodexFirst));
+        OnPropertyChanged(nameof(IsKiloFirst));
+        OnPropertyChanged(nameof(IsClaudeDeepSeekFirst));
+        _onRuntimeChanged?.Invoke(kind);
+    }
 
     [RelayCommand]
     private async Task OpenFolder()

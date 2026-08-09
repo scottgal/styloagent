@@ -8,7 +8,7 @@
   <Border Background="{DynamicResource CockpitBgBrush}" Padding="28">
     <!-- Keep the modal itself fixed; only the potentially long Recent folder list scrolls. -->
     <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*" VerticalAlignment="Top"
-          HorizontalAlignment="Center" Width="440" MaxWidth="440">
+          HorizontalAlignment="Center" Width="460" MaxWidth="460">
       <StackPanel Grid.Row="0" Spacing="10">
         <Image Source="avares://Styloagent.App/icon.png" Width="64" Height="64"
                HorizontalAlignment="Center" Stretch="Uniform" />
@@ -28,35 +28,74 @@
               Padding="14,8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
       </StackPanel>
 
-      <Border Grid.Row="2" Background="#151528" BorderBrush="#2B2B45" BorderThickness="1" CornerRadius="6" Padding="4" Margin="0,14,0,0">
-        <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto">
-          <TextBlock Grid.Column="0" Text="Start with:" FontSize="11" Foreground="{DynamicResource MutedTextBrush}"
-                     VerticalAlignment="Center" Margin="8,0,6,0" />
-          <ToggleButton x:Name="ClaudeFirstToggle" Grid.Column="1"
-                        IsChecked="{Binding IsClaudeFirst, Mode=OneWay}"
-                        Command="{Binding SetRuntimeModeCommand}" CommandParameter="Claude"
-                        Padding="8,5" ToolTip.Tip="Claude (Anthropic)">
-            <ic:SymbolIcon Symbol="Sparkle" FontSize="18" />
-          </ToggleButton>
-          <ToggleButton x:Name="CodexFirstToggle" Grid.Column="2"
-                        IsChecked="{Binding IsCodexFirst, Mode=OneWay}"
-                        Command="{Binding SetRuntimeModeCommand}" CommandParameter="Codex"
-                        Padding="8,5" ToolTip.Tip="Codex (OpenAI)">
-            <ic:SymbolIcon Symbol="BotSparkle" FontSize="18" />
-          </ToggleButton>
-          <ToggleButton x:Name="KiloFirstToggle" Grid.Column="3"
-                        IsChecked="{Binding IsKiloFirst, Mode=OneWay}"
-                        Command="{Binding SetRuntimeModeCommand}" CommandParameter="Kilo"
-                        Padding="8,5" ToolTip.Tip="Kilo (DeepSeek)">
-            <ic:SymbolIcon Symbol="Rocket" FontSize="18" />
-          </ToggleButton>
-          <ToggleButton x:Name="ClaudeDeepSeekFirstToggle" Grid.Column="4"
-                        IsChecked="{Binding IsClaudeDeepSeekFirst, Mode=OneWay}"
-                        Command="{Binding SetRuntimeModeCommand}" CommandParameter="ClaudeDeepSeek"
-                        Padding="8,5" ToolTip.Tip="Claude + DeepSeek (Claude Code with DeepSeek models)">
-            <ic:SymbolIcon Symbol="Cloud" FontSize="18" />
-          </ToggleButton>
-        </Grid>
+      <Border Grid.Row="2" Background="#151528" BorderBrush="#2B2B45" BorderThickness="1" CornerRadius="8"
+              Padding="14" Margin="0,14,0,0">
+        <StackPanel Spacing="10">
+          <StackPanel Spacing="2">
+            <TextBlock Text="Default agent runtime" FontSize="12" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentBrush}" LetterSpacing="1" />
+            <TextBlock Text="New agents start with this runtime and its models." FontSize="11"
+                       Foreground="{DynamicResource MutedTextBrush}" />
+          </StackPanel>
+          <UniformGrid Columns="2" Rows="2" ColumnSpacing="8" RowSpacing="8">
+            <ToggleButton x:Name="ClaudeFirstToggle"
+                          IsChecked="{Binding IsClaudeFirst, Mode=OneWay}"
+                          Command="{Binding SetRuntimeModeCommand}" CommandParameter="Claude"
+                          Padding="12,10" CornerRadius="6" HorizontalContentAlignment="Stretch"
+                          ToolTip.Tip="Claude (Anthropic) — Sonnet / Opus">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <ic:SymbolIcon Symbol="Sparkle" FontSize="20" VerticalAlignment="Center" />
+                <StackPanel Spacing="1">
+                  <TextBlock Text="Claude" FontSize="13" FontWeight="SemiBold" />
+                  <TextBlock Text="Anthropic · Sonnet / Opus" FontSize="10.5"
+                             Foreground="{DynamicResource MutedTextBrush}" />
+                </StackPanel>
+              </StackPanel>
+            </ToggleButton>
+            <ToggleButton x:Name="CodexFirstToggle"
+                          IsChecked="{Binding IsCodexFirst, Mode=OneWay}"
+                          Command="{Binding SetRuntimeModeCommand}" CommandParameter="Codex"
+                          Padding="12,10" CornerRadius="6" HorizontalContentAlignment="Stretch"
+                          ToolTip.Tip="Codex (OpenAI) — GPT-5 Codex">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <ic:SymbolIcon Symbol="BotSparkle" FontSize="20" VerticalAlignment="Center" />
+                <StackPanel Spacing="1">
+                  <TextBlock Text="Codex" FontSize="13" FontWeight="SemiBold" />
+                  <TextBlock Text="OpenAI · GPT-5 Codex" FontSize="10.5"
+                             Foreground="{DynamicResource MutedTextBrush}" />
+                </StackPanel>
+              </StackPanel>
+            </ToggleButton>
+            <ToggleButton x:Name="KiloFirstToggle"
+                          IsChecked="{Binding IsKiloFirst, Mode=OneWay}"
+                          Command="{Binding SetRuntimeModeCommand}" CommandParameter="Kilo"
+                          Padding="12,10" CornerRadius="6" HorizontalContentAlignment="Stretch"
+                          ToolTip.Tip="Kilo (DeepSeek) — V4 Pro overviews, V4 Flash specialists">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <ic:SymbolIcon Symbol="Rocket" FontSize="20" VerticalAlignment="Center" />
+                <StackPanel Spacing="1">
+                  <TextBlock Text="Kilo" FontSize="13" FontWeight="SemiBold" />
+                  <TextBlock Text="DeepSeek · V4 Pro / Flash" FontSize="10.5"
+                             Foreground="{DynamicResource MutedTextBrush}" />
+                </StackPanel>
+              </StackPanel>
+            </ToggleButton>
+            <ToggleButton x:Name="ClaudeDeepSeekFirstToggle"
+                          IsChecked="{Binding IsClaudeDeepSeekFirst, Mode=OneWay}"
+                          Command="{Binding SetRuntimeModeCommand}" CommandParameter="ClaudeDeepSeek"
+                          Padding="12,10" CornerRadius="6" HorizontalContentAlignment="Stretch"
+                          ToolTip.Tip="Claude Code routed through DeepSeek models">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <ic:SymbolIcon Symbol="Cloud" FontSize="20" VerticalAlignment="Center" />
+                <StackPanel Spacing="1">
+                  <TextBlock Text="Claude + DS" FontSize="13" FontWeight="SemiBold" />
+                  <TextBlock Text="Claude Code · DeepSeek" FontSize="10.5"
+                             Foreground="{DynamicResource MutedTextBrush}" />
+                </StackPanel>
+              </StackPanel>
+            </ToggleButton>
+          </UniformGrid>
+        </StackPanel>
       </Border>
 
       <Border Grid.Row="3" Height="1" Background="#222226" Margin="0,10" />

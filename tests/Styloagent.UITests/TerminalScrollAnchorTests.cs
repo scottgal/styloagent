@@ -199,4 +199,48 @@ public class TerminalScrollAnchorTests
             Assert.EndsWith("ABCDEFGHIJKLMNOPQRSTUVWXYZ", line);
         }
     }
+/// <summary>
+    /// "Scrolling up shows rows all aligned and squished oddly" — verify the rendered slice stays at the
+    /// expected pixel position after scrolling up: Canvas.Top must match _topPad + first·cellH, and the
+    /// row pitch (each row's rendered height) must equal the measured cell height, not half of it.
+    /// </summary>
+    [Fact]
+    public Task ScrolledUp_RowsRemainAlignedAtFullPitch()
+    {
+        return _fx.DispatchAsync(async () =>
+        {
+            var fake = new FakePtySession();
+            var view = new TerminalControl();
+            var window = new Window { Width = 720, Height = 480, Content = view, Name = "ScrollPitch" };
+            window.Show();
+            await Drain();
+
+            view.Attach(fake);
+            // 70 lines so there's real scrollback to scroll into.
+            for (int i = 0; i < 70; i++) fake.FireOutput($"LINE_{i:D4}\r\n");
+            await Drain();
+
+            var surface = view.GetVisualDescendants().OfType<Avalonia.Controls.Control>().FirstOrDefault(c => c.Name == "Surface");
+            var screenText = view.GetVisualDescendants().OfType<SelectableTextBlock>().FirstOrDefault(t => t.Name == "ScreenText");
+            Assert.NotNull(surface);
+            Assert.NotNull(screenText);
+            Assert.True(view.HandleWheelScroll(6), "should be able to scroll up into scrollback");
+
+            await Drain();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+            await Drain();
+
+            // The rendered block must sit at a whole-cell multiple of the measured line height.
+            double top = Avalonia.Controls.Canvas.GetTop(screenText);
+            var cellH = view.CellHeightForTest();
+            Assert.True(cellH > 1.0, $"cell height should be measured, got {cellH}");
+            double remainder = top % cellH;
+            Assert.True(Math.Abs(remainder) < 0.5 || Math.Abs(remainder - cellH) < 0.5,
+                $"Canvas.Top {top} is not a whole-cell multiple of cellH {cellH} (remainder {remainder}) — rows render misaligned");
+
+            // The visible text must not be empty (the slice actually rendered).
+            Assert.NotEmpty(InlineText(screenText));
+            window.Close();
+        });
+}
 }

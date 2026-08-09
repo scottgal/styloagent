@@ -82,6 +82,7 @@ public sealed partial class TerminalControl : UserControl
     // with sane 13pt defaults; replaced by MeasureCell() as soon as the font system is up.
     private double _cellW = 7.8;
     private double _cellH = 16.0;
+    internal double CellHeightForTest() => _cellH;
 
     // The ScrollViewer's Padding="12,4,6,4" (see XAML): 12+6 horizontal (roomier LEFT gutter), 4+4 vertical.
     // The grid must fit the padded content box, not the full control, or cols/rows are overestimated and text
@@ -432,9 +433,13 @@ public sealed partial class TerminalControl : UserControl
         // RE-ASSERT THE PTY SIZE at attach. The session is spawned (at the initial grid) BEFORE this view
         // attaches and lays out, so OnSizeChanged may have resized the ENGINE while _session was still null
         // and the PTY winsize was never updated. A freshly-started TUI (kilo/opencode reads its size from the
-        // winsize) then paints at the stale ~24-row grid and only fills the top of the pane. Forcing the
-        // current grid at attach delivers the real size (and a SIGWINCH) so the child repaints full-screen.
-        lock (_terminalGate) _session?.Resize(_terminal.Cols, _terminal.Rows);
+        // winsize) then paints at the stale ~24-row grid and only fills the top of the pane. Re-fit to THIS
+        // control's ACTUAL laid-out size (not the engine's stale default) so the child paints full-width —
+        // using the stale grid renders narrow content squished into a wide pane.
+        if (Bounds.Width > 0 && Bounds.Height > 0)
+            RefitGrid(Bounds.Size);
+        else
+            lock (_terminalGate) _session?.Resize(_terminal.Cols, _terminal.Rows);
     }
 
     /// <summary>

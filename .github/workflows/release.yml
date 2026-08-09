@@ -95,8 +95,14 @@ jobs:
           # ad-hoc (seals Info.plist + Resources), THEN verify — a bad signature must fail the build so
           # a broken bundle can never ship green again. (No Developer ID cert, so ad-hoc: users
           # right-click → Open, or `xattr -dr com.apple.quarantine`.)
-          codesign --force --deep --sign - "$APP"
-          codesign --verify --deep --strict --verbose=2 "$APP"
+          # The Playwright driver (.playwright/node + package/) is a plain directory, not a valid
+          # bundle, so 'codesign --deep' aborts on it ("bundle format unrecognized, invalid, or
+          # unsuitable"). Sign the driver's node binary and every nested dylib explicitly, then sign
+          # the bundle itself (which seals Info.plist + Resources and signs the apphost).
+          find "$APP/Contents" -type f \( -name "*.dylib" -o -path "*/Contents/MacOS/.playwright/node" \) \
+            -exec codesign --force --sign - {} \;
+          codesign --force --sign - "$APP"
+          codesign --verify --strict --verbose=2 "$APP"
           ditto -c -k --keepParent "$APP" "${ASSET}.zip"
 
       - name: Package (Windows / Linux)

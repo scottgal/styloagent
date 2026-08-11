@@ -76,4 +76,21 @@ public static class ModelTierResolver
 
     /// <summary>All tiers a spawner can pick from (in display order).</summary>
     public static readonly ModelTier[] Tiers = { ModelTier.Opus, ModelTier.Sonnet, ModelTier.Haiku };
+
+    /// <summary>
+    /// The tier one step BELOW <paramref name="tier"/> — the standing rule for a spawned child: it runs the
+    /// same runtime as the agent that spawned it, one tier down for the model. Expressing the step in tiers
+    /// (not model ids) keeps it true on every runtime, and means job-type policy never has to name a CLI or
+    /// a concrete model — naming those is what let policy override an explicit human request.
+    /// <see cref="ModelTier.Haiku"/> is the floor, so a deep spawn tree never underflows;
+    /// <see cref="ModelTier.Default"/> means "the runtime's own flagship", so one step down from it is
+    /// <see cref="ModelTier.Sonnet"/>.
+    /// </summary>
+    public static ModelTier StepDown(ModelTier tier) => tier switch
+    {
+        ModelTier.Opus => ModelTier.Sonnet,
+        ModelTier.Sonnet => ModelTier.Haiku,
+        ModelTier.Haiku => ModelTier.Haiku,
+        _ => ModelTier.Sonnet,
+    };
 }

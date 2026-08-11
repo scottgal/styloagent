@@ -2251,11 +2251,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         var runtime = string.IsNullOrWhiteSpace(req.Runtime)
             ? ParentRuntime(req.ParentPrefix)
             : AgentRuntime.Parse(req.Runtime);
-        // Spawned specialists are classified by TIER (Sonnet = the fast/cheap model per runtime) unless the
-        // spawner explicitly passes a tier, model or effort. The overview/repo-root agents keep the Opus tier.
+        // Spawned specialists are classified by TIER, never by a raw model id. Unasked, a child runs ONE TIER
+        // BELOW the agent that spawned it (overview flagship -> standard -> cheap), so depth degrades down the
+        // tree on its own and job-type policy never has to name a runtime or a model. An explicit tier/model
+        // from the spawner still wins. Haiku is the floor, so a deep tree can't underflow.
         var tier = Styloagent.Core.Model.ModelTierNames.Parse(req.Tier);
         if (tier == Styloagent.Core.Model.ModelTier.Default && string.IsNullOrWhiteSpace(req.Model))
-            tier = Styloagent.Core.Model.ModelTier.Sonnet;
+            tier = Styloagent.Core.Model.ModelTierResolver.StepDown(ParentTier(req.ParentPrefix));
         var model = req.Model;
         var runtimeName = RuntimeName(runtime);
         var capabilities = BuildAgentCapabilities();
@@ -3177,6 +3179,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         => parentPrefix is not null && Panes.FirstOrDefault(p => p.Prefix == parentPrefix) is { } parent
             ? parent.Runtime
             : _defaultAgentRuntime;
+
+    /// <summary>
+    /// The spawning agent's model tier — what a child steps down FROM. Falls back to
+    /// <see cref="Styloagent.Core.Model.ModelTier.Opus"/> (what the overview/repo-root agents run at) when
+    /// there is no live parent or the parent carries no explicit tier, so a child of the flagship still
+    /// lands one step below it rather than at the flagship itself.
+    /// </summary>
+    private Styloagent.Core.Model.ModelTier ParentTier(string? parentPrefix)
+        => parentPrefix is not null && Panes.FirstOrDefault(p => p.Prefix == parentPrefix) is { } parent
+            ? parent.Tier ?? Styloagent.Core.Model.ModelTier.Opus
+            : Styloagent.Core.Model.ModelTier.Opus;
 
     private static string RuntimeName(AgentRuntimeKind runtime) => AgentRuntime.Name(runtime);
 

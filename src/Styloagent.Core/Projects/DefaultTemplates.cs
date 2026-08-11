@@ -8,33 +8,33 @@ public static class DefaultTemplates
     /// re-syncs existing projects on the next open — so fleets already live get the updates too, not
     /// just freshly-scaffolded ones.
     /// </summary>
-    public const int Version = 4;
+    public const int Version = 5;
     public const string ModelPolicy =
 """
-# The overview may revise this file as it learns which work benefits from deeper reasoning.
-# Every rule must explain its choice; the explanation is shown to the human and available via MCP.
-# Effort is deliberately NOT set here: the reasoning effort is at the agent's own discretion — each
-# spawned agent decides how deeply to reason for the work in front of it.
+# Job-type policy: WHY a kind of work deserves more or less depth. It deliberately names NO runtime and NO
+# model — those are not policy's to choose:
+#
+#   * runtime — a spawned agent runs the SAME CLI as the agent that spawned it (the overview), unless the
+#     spawner passes an explicit runtime. An explicit human request always wins.
+#   * model   — one TIER DOWN from the spawning agent (overview flagship -> standard -> cheap), resolved to
+#     a concrete id per runtime at launch, so it stays correct as CLIs change their model names.
+#   * effort  — at the agent's own discretion; each agent decides how deeply to reason for the work in hand.
+#
+# Pinning a runtime/model here made the architect obey policy over the human ("launch codex" produced kilo)
+# and pinned model ids that later stopped existing. Keep this file to reasoning only.
+#
+# The overview may revise this file as it learns which work benefits from deeper reasoning. Every rule must
+# explain its choice; the explanation is shown to the human and available via MCP.
 default:
-  runtime: claude-deepseek
-  model: deepseek-v4-pro
-  reasoning: "No specialised policy: use the Claude+DeepSeek runtime defaults (deepseek-v4-pro for the overview, deepseek-v4-flash for spawned agents). Effort is left to the agent's discretion."
+  reasoning: "No specialised policy: inherit the spawning agent's runtime and step one tier down for the model. Effort is left to the agent's discretion."
 rules:
   - jobType: architecture
-    runtime: claude-deepseek
-    model: deepseek-v4-pro
-    reasoning: "Architecture and boundary decisions have broad downstream cost, so give the agent the strongest model and let it reason as deep as the decision needs."
+    reasoning: "Architecture and boundary decisions have broad downstream cost, so keep the agent at the deeper end of whatever runtime is in play and let it reason as deep as the decision needs."
   - jobType: implementation
-    runtime: claude-deepseek
-    model: deepseek-v4-flash
-    reasoning: "Routine implementation gets the fast model; the agent decides how much reasoning each change needs."
+    reasoning: "Routine implementation runs at the standard step-down tier; the agent decides how much reasoning each change needs."
   - jobType: tests
-    runtime: claude-deepseek
-    model: deepseek-v4-flash
     reasoning: "Test failures need careful reproduction and cross-layer diagnosis; the agent sets its own reasoning depth."
   - jobType: docs
-    runtime: claude-deepseek
-    model: deepseek-v4-flash
     reasoning: "Documentation needs context and clarity; reasoning effort is at the agent's discretion."
 """;
 

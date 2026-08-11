@@ -522,6 +522,12 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     /// <summary>The CLI/runtime backing this pane.</summary>
     public AgentRuntimeKind Runtime => _manifest.Runtime;
 
+    /// <summary>
+    /// This agent's model CLASSIFICATION (null when it runs the runtime's own default). A child spawned by
+    /// this agent runs one tier below it — see <see cref="ModelTierResolver.StepDown"/>.
+    /// </summary>
+    public ModelTier? Tier => _manifest.Tier;
+
     /// <summary>The resolved runtime/model/effort selection shown in the agent roster.</summary>
     public string SelectedModel =>
         string.IsNullOrWhiteSpace(_manifest.Model)

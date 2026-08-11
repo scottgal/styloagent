@@ -1568,10 +1568,20 @@ public sealed partial class TerminalControl : UserControl
 
         private static void Tick()
         {
-            // Snapshot: a flush may unregister itself (clean) or stay (still streaming). The tick is the
-            // single flush point for ALL background panes, so their combined cost is one pass per tick.
-            foreach (var terminal in Pending.Keys)
+            // A flush may unregister itself (clean) or stay (still streaming); ConcurrentDictionary is safe
+            // to modify while enumerating. Enumerate the dictionary DIRECTLY rather than `Pending.Keys` —
+            // that property snapshots every registered terminal into a freshly allocated List on EVERY tick,
+            // and since off-screen panes stay registered this tick now runs for as long as any hidden agent
+            // is streaming.
+            foreach (var entry in Pending)
+            {
+                var terminal = entry.Key;
+                // Skip off-screen panes WITHOUT entering RunCoalescedRebuild — that takes _rebuildGate, which
+                // the background PTY threads contend for on every output batch. They stay registered and
+                // dirty and flush on the first tick after they become visible.
+                if (!terminal.IsOnScreen) continue;
                 terminal.RunCoalescedRebuild();
+            }
             if (Pending.IsEmpty) _timer?.Stop();
         }
     }

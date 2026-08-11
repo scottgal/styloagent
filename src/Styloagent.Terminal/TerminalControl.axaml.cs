@@ -352,6 +352,12 @@ public sealed partial class TerminalControl : UserControl
         set => DeferredRenders.IntervalMs = Math.Clamp(value, 1, 3_600_000);
     }
 
+    /// <summary>
+    /// Runs one shared background-render tick synchronously. Tests drive the cadence themselves rather than
+    /// waiting on the real <see cref="DispatcherTimer"/>, which makes tick assertions deterministic.
+    /// </summary>
+    internal static void DeferredRendersTickForTest() => DeferredRenders.TickForTest();
+
     /// <summary>Builds a fresh XTerm VT engine of the given grid size, wired to forward device replies to the PTY.</summary>
     private XTerm.Terminal BuildEngine(int cols, int rows)
     {
@@ -591,6 +597,14 @@ public sealed partial class TerminalControl : UserControl
     }
 
     /// <summary>
+    /// True when this terminal is actually ON SCREEN — laid out under a live visual root AND visible through
+    /// its whole ancestor chain. A pane on an unselected dock tab fails this either by being collapsed
+    /// (<see cref="Visual.IsEffectivelyVisible"/> false) or by being detached from the tree entirely (no
+    /// visual root), so both shapes of "the operator cannot see this" are covered.
+    /// </summary>
+    private bool IsOnScreen => this.GetVisualRoot() is not null && IsEffectivelyVisible;
+
+    /// <summary>
     /// The single queued rebuild: renders the current buffer once, then (if following the tail) scrolls to
     /// the end AFTER layout has taken in the new content so the live prompt/last line stays visible. Output
     /// that arrived after the last clear-of-dirty re-arms a fresh rebuild via <see cref="ScheduleRebuild"/>.
@@ -603,6 +617,21 @@ public sealed partial class TerminalControl : UserControl
             if (!_renderDirty)
             {
                 DeferredRenders.Unregister(this);   // flushed clean — nothing left to defer
+                return;
+            }
+            // OFF-SCREEN GATE — the fleet-CPU fix. Deferring an unfocused pane bounded the FREQUENCY of its
+            // rebuilds but not whether they happen at all, so panes the operator cannot even see were still
+            // fully rebuilt 4x/second: row text re-materialised, a fresh Avalonia Run (a StyledElement with a
+            // property store and logical-parent wiring) allocated per colour span, and the whole slice
+            // re-shaped. Across a busy fleet that was the single largest allocation source in the process,
+            // which kept background GC — and a core — permanently busy and made typing in the VISIBLE pane
+            // lag. An off-screen terminal stays registered and dirty and does no work; the shared tick flushes
+            // it on the first pass after it becomes visible (and Activate flushes it immediately on focus),
+            // so no output is ever lost. The agent is untouched — the VT engine still consumes PTY output
+            // eagerly off-thread, so the deferred flush renders the LATEST buffer.
+            if (!IsOnScreen)
+            {
+                DeferredRenders.Register(this);
                 return;
             }
             _renderDirty = false;
@@ -1533,6 +1562,9 @@ public sealed partial class TerminalControl : UserControl
             }
             if (!_timer.IsEnabled) _timer.Start();
         }
+
+        /// <summary>Test seam: run one tick synchronously, without waiting on the real timer.</summary>
+        public static void TickForTest() => Tick();
 
         private static void Tick()
         {

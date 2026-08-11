@@ -102,19 +102,5 @@ public static class CodexTranscriptReader
             ? n : 0;
 
     private static IEnumerable<string> TailLines(string path, int maxBytes)
-    {
-        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        var length = fs.Length;
-        var take = (int)Math.Min(length, maxBytes);
-        fs.Seek(length - take, SeekOrigin.Begin);
-        var bytes = new byte[take];
-        _ = fs.Read(bytes, 0, take);
-        var lines = Encoding.UTF8.GetString(bytes).Split('\n');
-        var firstComplete = take < length ? 1 : 0;
-        for (var i = lines.Length - 1; i >= firstComplete; i--)
-        {
-            var line = lines[i].Trim();
-            if (line.Length > 0) yield return line;
-        }
-    }
+        => TranscriptTail.Lines(path, maxBytes);
 }

@@ -108,23 +108,7 @@ public static class TranscriptReader
 
     /// <summary>Reads up to <paramref name="maxBytes"/> from the end of the file, newest line first.</summary>
     private static IEnumerable<string> TailLines(string path, int maxBytes)
-    {
-        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        var len = fs.Length;
-        var take = (int)Math.Min(len, maxBytes);
-        fs.Seek(len - take, SeekOrigin.Begin);
-        var buf = new byte[take];
-        _ = fs.Read(buf, 0, take);
-        var text = Encoding.UTF8.GetString(buf);
-        var lines = text.Split('\n');
-        // Skip a possibly-truncated first line when we didn't start at the file's beginning.
-        var start = (take < len) ? 1 : 0;
-        for (int i = lines.Length - 1; i >= start; i--)
-        {
-            var l = lines[i].Trim();
-            if (l.Length > 0) yield return l;
-        }
-    }
+        => TranscriptTail.Lines(path, maxBytes);
 
     private static bool TryParseUsage(string line, out TranscriptUsage usage)
     {

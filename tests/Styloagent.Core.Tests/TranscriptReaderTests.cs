@@ -72,6 +72,74 @@ public class TranscriptReaderTests
     public void ReadLatest_missing_file_is_null()
         => Assert.Null(TranscriptReader.ReadLatest("/no/such/transcript.jsonl"));
 
+    /// <summary>
+    /// Builds a transcript far larger than the tail window, with the newest usage on the LAST line.
+    /// </summary>
+    private static string WriteBigTranscript(string newestLine, int padKb = 1024)
+    {
+        var path = Path.GetTempFileName();
+        var filler = "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"" + new string('x', 900) + "\"}}";
+        using var w = new StreamWriter(path);
+        for (int i = 0; i < padKb; i++) w.Write(filler + "\n");
+        w.Write(newestLine + "\n");
+        return path;
+    }
+
+    [Fact]
+    public void ReadLatest_finds_usage_on_the_last_line_of_a_large_transcript()
+    {
+        var path = WriteBigTranscript(SampleLines[2]);
+        try
+        {
+            var usage = TranscriptReader.ReadLatest(path);
+            Assert.NotNull(usage);
+            Assert.Equal(83000, usage!.ContextTokens);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void Tail_scan_does_not_corrupt_multi_byte_utf8()
+    {
+        // The tail is split on the '\n' BYTE; UTF-8 is self-synchronising so that is safe, but a naive
+        // byte-slice decode would still mangle a multi-byte glyph that straddles a slice boundary.
+        var line = "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":"
+                 + "[{\"type\":\"text\",\"text\":\"héllo — 世界 🎉 done\"}]}}";
+        var path = WriteBigTranscript(line);
+        try
+        {
+            Assert.Equal("héllo — 世界 🎉 done", TranscriptReader.ReadLastAssistantText(path));
+        }
+        finally { File.Delete(path); }
+    }
+
+    /// <summary>
+    /// The cockpit refreshes every agent's usage readout off this call every ~3s, so its cost is paid
+    /// per-pane forever. Reading the tail by decoding the WHOLE 256 KB window to a UTF-16 string and then
+    /// String.Split-ing it allocated ~1.3 MB per call — across a live fleet that was ~11% of ALL process
+    /// allocation, feeding the background-GC churn that made the cockpit sluggish. The usage line is
+    /// normally within a few lines of the end, so decode lazily, one line at a time, from the end.
+    /// </summary>
+    [Fact]
+    public void ReadLatest_does_not_allocate_the_whole_tail_window()
+    {
+        var path = WriteBigTranscript(SampleLines[2]);
+        try
+        {
+            TranscriptReader.ReadLatest(path);   // warm up JIT + the array pool
+
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            var usage = TranscriptReader.ReadLatest(path);
+            var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            Assert.NotNull(usage);
+            Assert.True(allocated < 16 * 1024,
+                $"ReadLatest allocated {allocated:N0} bytes scanning the tail; expected well under the "
+                + "256 KB tail window (it should decode only the handful of lines it actually reads).");
+        }
+        finally { File.Delete(path); }
+    }
+
     [Fact]
     public void Context_over_200k_infers_the_1m_window_even_without_a_1m_model_id()
     {

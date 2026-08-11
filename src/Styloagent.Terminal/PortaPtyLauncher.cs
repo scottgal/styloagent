@@ -30,15 +30,38 @@ public sealed class PortaPtyLauncher : IPtyLauncher
     }
 
     /// <summary>
-    /// Builds the child environment from the current process env, prepends the usual user-tool
-    /// directories to PATH (so a bundle-launched app can still find <c>claude</c>), then overlays
-    /// any explicit overrides from <paramref name="overrides"/>.
+    /// Claude Code per-session markers that must never be inherited by a spawned agent — see the scrub in
+    /// <see cref="BuildEnvironment"/> for why each one matters.
+    /// </summary>
+    private static readonly string[] InheritedSessionMarkers =
+    {
+        "CLAUDE_CODE_CHILD_SESSION",
+        "CLAUDE_CODE_SESSION_ID",
+        "CLAUDE_CODE_ENTRYPOINT",
+    };
+
+    /// <summary>
+    /// Builds the child environment from the current process env, drops the launching Claude Code session's
+    /// per-session markers, prepends the usual user-tool directories to PATH (so a bundle-launched app can
+    /// still find <c>claude</c>), then overlays any explicit overrides from <paramref name="overrides"/>.
     /// </summary>
     internal static Dictionary<string, string> BuildEnvironment(IReadOnlyDictionary<string, string>? overrides)
     {
         var env = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (System.Collections.DictionaryEntry kv in Environment.GetEnvironmentVariables())
             env[(string)kv.Key] = kv.Value as string ?? string.Empty;
+
+        // Every agent is its OWN top-level Claude Code session, so drop the launching session's per-session
+        // markers before they propagate. When the cockpit is itself started from inside a Claude Code
+        // session (`./run.sh` run from an agent), its environment carries these — and each PTY child then
+        // inherits them. CLAUDE_CODE_CHILD_SESSION makes Claude Code treat the agent as a nested child and
+        // TURN TRANSCRIPT SAVING OFF ("Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION
+        // marker" in every pane); that also kills the cockpit's own token/context readout, which is read
+        // from those transcripts (TranscriptReader.ReadLatest). CLAUDE_CODE_SESSION_ID / _ENTRYPOINT leak
+        // the launching session's identity the same way. Scrubbed BEFORE overrides are applied, so the
+        // spawn pipeline can still set any of them deliberately.
+        foreach (var marker in InheritedSessionMarkers)
+            env.Remove(marker);
 
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var toolDirs = new[]

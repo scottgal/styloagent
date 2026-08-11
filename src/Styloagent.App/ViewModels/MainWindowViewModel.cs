@@ -2844,17 +2844,57 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         if (_gitWatcher is { } watcher)
             _ = Task.Run(() => watcher.Watch(gitDir));
 
+        RefreshGitPanelForPath(gitDir);
+        if (pane is not null && _git is not null) _ = pane.RefreshGitStatusAsync(_git);
+    }
+
+    /// <summary>
+    /// Loads the Git panel for a checkout. Split out of <see cref="RefreshGitPanelFor"/> so the
+    /// path-driven half is testable without a pane.
+    /// </summary>
+    internal void RefreshGitPanelForPath(string? gitDir)
+    {
         if (gitDir is { } path && Directory.Exists(path))
         {
-            if (GitGraph is not null) _ = GitGraph.LoadAsync(path);
+            // Changes (what is about to be committed) is the panel that matters and is cheap, so it always
+            // refreshes. The HISTORY graph is the single most expensive thing the cockpit does — `git log
+            // -200` plus graph generation and commit parsing, which became the largest allocation source in
+            // the process once the terminal render was fixed. It was reloaded on every debounced .git write
+            // and every pane switch even though its tab is usually not on screen. Same rule that fixed the
+            // terminals: don't do work nobody can see — record that it is stale and load it on reveal.
+            _pendingGitGraphPath = path;
+            LoadGitGraphIfVisible();
             if (Changes is not null) _ = Changes.LoadAsync(path);
         }
         else
         {
+            _pendingGitGraphPath = null;
             GitGraph?.Clear();
             Changes?.Clear();
         }
-        if (pane is not null && _git is not null) _ = pane.RefreshGitStatusAsync(_git);
+    }
+
+    /// <summary>
+    /// True while the Git panel's History tab is the one on screen (two-way bound to the tab). Only then is
+    /// the commit graph worth building.
+    /// </summary>
+    [ObservableProperty] private bool _isGitHistorySelected;
+
+    /// <summary>Checkout whose history has NOT yet been rendered — null when the graph is up to date.</summary>
+    private string? _pendingGitGraphPath;
+
+    partial void OnIsGitHistorySelectedChanged(bool value)
+    {
+        if (value) LoadGitGraphIfVisible();
+    }
+
+    /// <summary>Renders the pending history, but only when its tab is actually visible.</summary>
+    private void LoadGitGraphIfVisible()
+    {
+        if (!IsGitHistorySelected || GitGraph is null) return;
+        if (_pendingGitGraphPath is not { } path) return;   // already current — revealing costs nothing
+        _pendingGitGraphPath = null;
+        _ = GitGraph.LoadAsync(path);
     }
 
     /// <summary>

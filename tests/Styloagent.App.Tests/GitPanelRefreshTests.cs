@@ -10,8 +10,12 @@ public class GitPanelRefreshTests
 {
     private sealed class FakeLog : IGitLog
     {
+        /// <summary>How many times `git log` was actually asked for — the cost this panel must not pay blind.</summary>
+        public int Calls;
+
         public Task<GitResult<System.Collections.Generic.IReadOnlyList<Commit>>> GetCommitsAsync(string w, int limit = 200, CancellationToken ct = default)
         {
+            Calls++;
             System.Collections.Generic.IReadOnlyList<Commit> c = new[] { new Commit { SHA = "a", Color = 0 } };
             return Task.FromResult(GitResult<System.Collections.Generic.IReadOnlyList<Commit>>.Success(c));
         }
@@ -156,6 +160,82 @@ public class GitPanelRefreshTests
         {
             if (Directory.Exists(channelRoot))
                 Directory.Delete(channelRoot, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// The commit graph is the single most expensive thing the Git panel does — `git log -200` plus graph
+    /// generation and parsing, measured as the largest allocation source in the whole cockpit once the
+    /// terminal render was fixed. It was reloaded on EVERY panel refresh (every debounced .git write, every
+    /// pane switch) even though the History tab is usually not the one on screen. Same rule as the
+    /// terminals: don't do the work when nobody can see it — stay dirty and load on reveal.
+    /// </summary>
+    [Fact]
+    public async Task History_graph_is_not_loaded_while_its_tab_is_hidden()
+    {
+        var log = new FakeLog();
+        var channelRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(channelRoot, "saved-context"));
+        File.WriteAllText(Path.Combine(channelRoot, "saved-context", "agent-context.md"), "# agent");
+        try
+        {
+            var vm = await MainWindowViewModel.InitializeAsync(channelRoot, new FakeLauncher(), new FakeWatcher());
+            vm.GitGraph = new GitGraphViewModel(log);
+            vm.Changes = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash());
+
+            // Changes is the default tab — History is not on screen.
+            Assert.False(vm.IsGitHistorySelected);
+
+            var repo = Directory.GetCurrentDirectory();
+            for (int i = 0; i < 5; i++) vm.RefreshGitPanelForPath(repo);
+
+            Assert.Equal(0, log.Calls);   // five refreshes, zero `git log`
+
+            // Revealing History loads it ONCE, from the newest requested state.
+            vm.IsGitHistorySelected = true;
+            Assert.Equal(1, log.Calls);
+
+            // While visible it tracks refreshes normally.
+            vm.RefreshGitPanelForPath(repo);
+            Assert.Equal(2, log.Calls);
+
+            // Hidden again: back to costing nothing.
+            vm.IsGitHistorySelected = false;
+            vm.RefreshGitPanelForPath(repo);
+            vm.RefreshGitPanelForPath(repo);
+            Assert.Equal(2, log.Calls);
+        }
+        finally
+        {
+            if (Directory.Exists(channelRoot)) Directory.Delete(channelRoot, recursive: true);
+        }
+    }
+
+    /// <summary>Revealing History with nothing pending must not re-run `git log` for its own sake.</summary>
+    [Fact]
+    public async Task Revealing_history_twice_does_not_reload_it()
+    {
+        var log = new FakeLog();
+        var channelRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(channelRoot, "saved-context"));
+        File.WriteAllText(Path.Combine(channelRoot, "saved-context", "agent-context.md"), "# agent");
+        try
+        {
+            var vm = await MainWindowViewModel.InitializeAsync(channelRoot, new FakeLauncher(), new FakeWatcher());
+            vm.GitGraph = new GitGraphViewModel(log);
+            vm.Changes = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash());
+
+            vm.RefreshGitPanelForPath(Directory.GetCurrentDirectory());
+            vm.IsGitHistorySelected = true;
+            Assert.Equal(1, log.Calls);
+
+            vm.IsGitHistorySelected = false;
+            vm.IsGitHistorySelected = true;   // nothing changed on disk in between
+            Assert.Equal(1, log.Calls);
+        }
+        finally
+        {
+            if (Directory.Exists(channelRoot)) Directory.Delete(channelRoot, recursive: true);
         }
     }
 }

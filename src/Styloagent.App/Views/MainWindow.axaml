@@ -367,11 +367,14 @@
                   <Setter Property="Foreground" Value="#9D7FE0" />
                 </Style>
               </TabControl.Styles>
-              <TabItem Header="History">
-                <views:GitGraphView DataContext="{Binding GitGraph}" />
-              </TabItem>
+              <!-- Changes FIRST: "what am I about to commit" is the working view. History is a commit
+                   graph that is expensive to build (git log -200 + graph generation), so it is bound to
+                   IsGitHistorySelected and only rendered while its tab is actually on screen. -->
               <TabItem Header="Changes">
                 <views:ChangesView DataContext="{Binding Changes}" />
+              </TabItem>
+              <TabItem Header="History" IsSelected="{Binding IsGitHistorySelected, Mode=TwoWay}">
+                <views:GitGraphView DataContext="{Binding GitGraph}" />
               </TabItem>
             </TabControl>
           </Grid>

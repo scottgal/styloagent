@@ -2259,9 +2259,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         var model = req.Model;
         var runtimeName = RuntimeName(runtime);
         var capabilities = BuildAgentCapabilities();
-        if (!capabilities.Supports(runtimeName, model ?? Styloagent.Core.Model.ModelTierResolver.ResolveModel(runtime, tier), req.Effort))
+        // An EXPLICIT model is checked as given (asking for something this machine lacks is a real error the
+        // spawner must see). A TIER, though, is only a classification — resolve it to a model this machine
+        // can actually run, falling back to the CLI's own configured default when the tier's preferred id has
+        // gone stale, rather than rejecting a perfectly reasonable "spawn me a codex agent".
+        var effectiveModel = model ?? capabilities.ResolveSupportedModel(runtime, tier);
+        // The pane stores the TIER and re-resolves it at launch, so a tier whose model this machine lacks
+        // must be downgraded to Default here — otherwise the launch would still pass the stale --model that
+        // the check above just rejected (codex tiers pointed at the long-dead gpt-5-codex/gpt-5).
+        if (model is null && effectiveModel is null)
+            tier = Styloagent.Core.Model.ModelTier.Default;
+        if (!capabilities.Supports(runtimeName, effectiveModel, req.Effort))
             return SpawnOutcome.Reject(RejectReason.InvalidPrefix,
-                $"unsupported agent selection: {runtimeName}/{model ?? tier.ToString().ToLowerInvariant()}/{req.Effort ?? "default"}; call agent_capabilities");
+                $"unsupported agent selection: {runtimeName}/{effectiveModel ?? tier.ToString().ToLowerInvariant()}/{req.Effort ?? "default"}; call agent_capabilities");
 
         // Re-spawn recovery: the governor allows re-spawning over a crashed ("exited") ghost. Drop the
         // dead pane so the fresh spawn reclaims its slot instead of duplicating the prefix. Refuse if the
@@ -2331,7 +2341,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// the background — the UI never waits on the process).</summary>
     public AgentCapabilities BuildAgentCapabilities()
         => AgentCapabilities.Load(_project?.Root ?? _repoRoot)
-            .WithKiloModels(Core.Mcp.KiloModelDiscovery.GetOrStartRefresh());
+            .WithKiloModels(Core.Mcp.KiloModelDiscovery.GetOrStartRefresh())
+            .WithCodexModels(Core.Mcp.CodexModelDiscovery.GetOrStartRefresh());
 
     /// <summary>Reloads the overview-owned job-type policy so a revised file affects the next spawn.</summary>
     public Styloagent.Core.Projects.ModelPolicy BuildModelPolicy()

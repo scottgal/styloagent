@@ -80,11 +80,41 @@ public sealed record AgentCapabilities(IReadOnlyList<AgentRuntimeCapabilities> A
     /// the kilo agent stays selectable even when discovery is unavailable.
     /// </summary>
     public AgentCapabilities WithKiloModels(IReadOnlyList<AgentCapability> models)
+        => WithDiscoveredModels("kilo", models);
+
+    /// <summary>
+    /// Replaces the <c>codex</c> runtime's model list with the live catalog discovered from the codex CLI's
+    /// own <c>models_cache.json</c> (see <see cref="CodexModelDiscovery"/>). Same contract as
+    /// <see cref="WithKiloModels"/>: an empty discovery leaves the static list intact, so codex stays
+    /// selectable when the CLI is absent.
+    /// </summary>
+    public AgentCapabilities WithCodexModels(IReadOnlyList<AgentCapability> models)
+        => WithDiscoveredModels("codex", models);
+
+    /// <summary>
+    /// Resolves a <see cref="Styloagent.Core.Model.ModelTier"/> to a model this machine can ACTUALLY run.
+    ///
+    /// Tiers map to hard-coded ids per runtime (see <c>ModelTierResolver</c>), and those ids go stale as
+    /// CLIs move on — codex's "gpt-5-codex"/"gpt-5" no longer exist, so every tier-based codex spawn asked
+    /// for a model the machine did not have and failed. When the preferred id is not in this (live) catalog,
+    /// fall back to the runtime's own CLI default rather than launching something that cannot run: that is
+    /// whatever the operator configured (e.g. <c>model = "gpt-5.6-terra"</c> in ~/.codex/config.toml), which
+    /// is the best available answer to "just run a codex agent".
+    /// </summary>
+    public string? ResolveSupportedModel(Styloagent.Core.Model.AgentRuntimeKind runtime, Styloagent.Core.Model.ModelTier tier)
+    {
+        var preferred = Styloagent.Core.Model.ModelTierResolver.ResolveModel(runtime, tier);
+        if (string.IsNullOrWhiteSpace(preferred)) return null;   // Default tier — the CLI default already
+        var agent = Styloagent.Core.Model.AgentRuntime.Name(runtime);
+        return Supports(agent, preferred, null) ? preferred : null;
+    }
+
+    private AgentCapabilities WithDiscoveredModels(string agent, IReadOnlyList<AgentCapability> models)
     {
         if (models is null || models.Count == 0) return this;
         var list = Agents.ToList();
-        int idx = list.FindIndex(a => a.Agent.Equals("kilo", StringComparison.OrdinalIgnoreCase));
-        var entry = new AgentRuntimeCapabilities("kilo", models);
+        int idx = list.FindIndex(a => a.Agent.Equals(agent, StringComparison.OrdinalIgnoreCase));
+        var entry = new AgentRuntimeCapabilities(agent, models);
         if (idx >= 0) list[idx] = entry;
         else list.Add(entry);
         return this with { Agents = list };

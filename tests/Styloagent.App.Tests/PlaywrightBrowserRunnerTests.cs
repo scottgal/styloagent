@@ -35,8 +35,9 @@ public sealed class PlaywrightBrowserRunnerTests : IAsyncDisposable
             $"id: local\ndisplayName: Local\nowner: overview-\ntargets:\n  webOrigin: {LocalOrigin}\n{refLine}");
     }
 
-    private static BrowserJob Job(string id, string? credentialRef, DateTimeOffset now) => new(
-        id, "test-", "local", BrowserRunMode.Observe, "capture", "/", null, false, credentialRef,
+    private static BrowserJob Job(string id, string? credentialRef, DateTimeOffset now,
+        LoginStep? login = null, BrowserRunMode mode = BrowserRunMode.Observe) => new(
+        id, "test-", "local", mode, "capture", "/", null, false, credentialRef, login,
         BrowserJobStatus.Running, "overview-", null, null, now, now);
 
     [Fact]
@@ -96,6 +97,116 @@ public sealed class PlaywrightBrowserRunnerTests : IAsyncDisposable
         Assert.Null(_seenApiKey);
     }
 
+    [Fact]
+    public async Task Login_step_fills_and_submits_then_screenshots_the_post_login_page()
+    {
+        StartServer();
+        _getBody = LoginForm;
+        _postBody = PostLoginPage;
+        WriteEnvironment();
+        var job = Job("login-run", null, DateTimeOffset.UtcNow,
+            new LoginStep("keychain://fixture-email", "keychain://fixture-password"), BrowserRunMode.Test);
+        var runner = new PlaywrightBrowserRunner(Path.Combine(_root, "environments"), Path.Combine(_root, "browser"),
+            new EnvironmentBrowserCredentialProvider(item => item switch
+            {
+                "fixture-email" => "fixture-email@test.dev",
+                "fixture-password" => "fixture-secret-456",
+                _ => null,
+            }));
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var result = await runner.RunAsync(job, timeout.Token);
+
+        Assert.True(result.Success, result.Failure);
+        var manifest = await File.ReadAllTextAsync(Path.Combine(_root, "browser", "artifacts", job.Id, "manifest.json"));
+        Assert.Contains("\"LoginUsed\": true", manifest);
+        Assert.Contains("\"LoginCompleted\": true", manifest);
+        // Secret-never-logged: resolved values never reach the manifest or any artifact file.
+        Assert.DoesNotContain("fixture-email@test.dev", manifest, StringComparison.Ordinal);
+        Assert.DoesNotContain("fixture-secret-456", manifest, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Login_step_falls_back_to_username_and_password_name_selectors()
+    {
+        StartServer();
+        _getBody = FallbackLoginForm;
+        _postBody = PostLoginPage;
+        WriteEnvironment();
+        var job = Job("login-fallback-run", null, DateTimeOffset.UtcNow,
+            new LoginStep("env:FIXTURE_EMAIL", "env:FIXTURE_PASSWORD"), BrowserRunMode.Test);
+        Environment.SetEnvironmentVariable("FIXTURE_EMAIL", "fallback@test.dev");
+        Environment.SetEnvironmentVariable("FIXTURE_PASSWORD", "fallback-secret-789");
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var result = await new PlaywrightBrowserRunner(Path.Combine(_root, "environments"),
+                Path.Combine(_root, "browser"), new EnvironmentBrowserCredentialProvider())
+                .RunAsync(job, timeout.Token);
+
+            Assert.True(result.Success, result.Failure);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FIXTURE_EMAIL", null);
+            Environment.SetEnvironmentVariable("FIXTURE_PASSWORD", null);
+        }
+    }
+
+    [Fact]
+    public async Task Login_step_that_never_completes_fails_but_still_screenshots()
+    {
+        StartServer();
+        _getBody = LoginForm;
+        _postBody = LoginForm; // wrong-credentials page keeps the password field — never detaches
+        WriteEnvironment();
+        var job = Job("login-timeout-run", null, DateTimeOffset.UtcNow,
+            new LoginStep("keychain://fixture-email", "keychain://fixture-password"), BrowserRunMode.Test);
+        var runner = new PlaywrightBrowserRunner(Path.Combine(_root, "environments"), Path.Combine(_root, "browser"),
+            new EnvironmentBrowserCredentialProvider(_ => "wrong-credentials-value"), TimeSpan.FromSeconds(1));
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var result = await runner.RunAsync(job, timeout.Token);
+
+        Assert.False(result.Success);
+        Assert.Equal("login step did not complete", result.Failure);
+        Assert.True(File.Exists(Path.Combine(_root, "browser", "artifacts", job.Id, "screenshot.png")));
+        var manifest = await File.ReadAllTextAsync(Path.Combine(_root, "browser", "artifacts", job.Id, "manifest.json"));
+        Assert.Contains("\"LoginCompleted\": false", manifest);
+        Assert.DoesNotContain("wrong-credentials-value", manifest, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Login_step_with_unresolvable_references_fails_before_launching()
+    {
+        StartServer();
+        WriteEnvironment();
+        var job = Job("login-unresolved-run", null, DateTimeOffset.UtcNow,
+            new LoginStep("env:STYLOAGENT_TEST_UNSET_LOGIN_EMAIL", "env:STYLOAGENT_TEST_UNSET_LOGIN_PASSWORD"),
+            BrowserRunMode.Test);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var result = await new PlaywrightBrowserRunner(Path.Combine(_root, "environments"),
+            Path.Combine(_root, "browser")).RunAsync(job, timeout.Token);
+
+        Assert.False(result.Success);
+        Assert.Equal("login step could not resolve its email/password references", result.Failure);
+    }
+
+    private const string SafePage = "<!doctype html><html><body><h1>Safe page</h1><input type=password value=hidden></body></html>";
+    private const string LoginForm =
+        "<!doctype html><html><body><form method=\"post\" action=\"/\">" +
+        "<input type=\"email\" name=\"email\"><input type=\"password\" name=\"password\">" +
+        "<input type=\"submit\" value=\"Sign in\"></form></body></html>";
+    private const string FallbackLoginForm =
+        "<!doctype html><html><body><form method=\"post\" action=\"/\">" +
+        "<input name=\"username\"><input name=\"password\">" +
+        "<button type=\"submit\">Sign in</button></form></body></html>";
+    private const string PostLoginPage = "<!doctype html><html><body><h1>Dashboard</h1></body></html>";
+
+    private volatile string _getBody = SafePage;
+    private volatile string _postBody = SafePage;
+
     private async Task ServeAsync(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
@@ -109,13 +220,15 @@ public sealed class PlaywrightBrowserRunnerTests : IAsyncDisposable
                 {
                     var stream = client.GetStream();
                     using var reader = new StreamReader(stream, Encoding.ASCII, false, 1024, leaveOpen: true);
+                    var requestLine = await reader.ReadLineAsync(ct);
+                    var isPost = requestLine?.StartsWith("POST", StringComparison.OrdinalIgnoreCase) == true;
                     while (await reader.ReadLineAsync(ct) is { } headerLine)
                     {
                         if (headerLine.Length == 0) break;
                         if (headerLine.StartsWith("X-SB-Api-Key:", StringComparison.OrdinalIgnoreCase))
                             _seenApiKey = headerLine[(headerLine.IndexOf(':') + 1)..].Trim();
                     }
-                    const string body = "<!doctype html><html><body><h1>Safe page</h1><input type=password value=hidden></body></html>";
+                    var body = isPost ? _postBody : _getBody;
                     var response = Encoding.UTF8.GetBytes(
                         $"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {Encoding.UTF8.GetByteCount(body)}\r\nConnection: close\r\n\r\n{body}");
                     await stream.WriteAsync(response, ct);

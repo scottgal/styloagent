@@ -48,6 +48,15 @@ public static class CredentialReference
     }
 
     /// <summary>
+    /// True when the value is unset or parses as a bare source spec (<c>env:VAR</c>,
+    /// <c>keychain://ITEM</c>, or <c>secret://NAME</c>) — the grammar used for single-value
+    /// references such as login email/password. As with entry sources, literal secret material
+    /// cannot be expressed.
+    /// </summary>
+    public static bool IsValidSource(string? value)
+        => string.IsNullOrWhiteSpace(value) || TryParseSource(value, out _, out _);
+
+    /// <summary>
     /// Parses every well-formed <c>HeaderName=source</c> entry in the reference. Malformed entries are
     /// skipped, matching the existing <c>env:</c> tolerance — an entry that cannot be expressed is not
     /// a reason to fail the whole list. The empty list is returned for an empty/unset reference.
@@ -70,26 +79,38 @@ public static class CredentialReference
         if (eq <= 0) return false;
         var name = raw[..eq].Trim();
         if (!ValidHeaderName(name)) return false;
-        var source = raw[(eq + 1)..].Trim();
+        if (!TryParseSource(raw[(eq + 1)..].Trim(), out var kind, out var sourceName)) return false;
+        entry = new CredentialRefEntry(name, kind, sourceName);
+        return true;
+    }
+
+    /// <summary>Parses a bare source spec (<c>env:VAR</c> / <c>keychain://ITEM</c> / <c>secret://NAME</c>).</summary>
+    public static bool TryParseSource(string source, out CredentialSourceKind kind, out string name)
+    {
+        kind = default;
+        name = "";
         if (source.StartsWith(EnvPrefix, StringComparison.OrdinalIgnoreCase))
         {
             var variable = source[EnvPrefix.Length..];
             if (variable.Length == 0 || variable.Contains('=')) return false;
-            entry = new CredentialRefEntry(name, CredentialSourceKind.Env, variable);
+            kind = CredentialSourceKind.Env;
+            name = variable;
             return true;
         }
         if (source.StartsWith(KeychainPrefix, StringComparison.OrdinalIgnoreCase))
         {
             var item = source[KeychainPrefix.Length..];
             if (item.Length == 0) return false;
-            entry = new CredentialRefEntry(name, CredentialSourceKind.Keychain, item);
+            kind = CredentialSourceKind.Keychain;
+            name = item;
             return true;
         }
         if (source.StartsWith(SecretPrefix, StringComparison.OrdinalIgnoreCase))
         {
             var variable = source[SecretPrefix.Length..];
             if (variable.Length == 0 || variable.Contains('=')) return false;
-            entry = new CredentialRefEntry(name, CredentialSourceKind.Secret, variable);
+            kind = CredentialSourceKind.Secret;
+            name = variable;
             return true;
         }
         return false;

@@ -13,11 +13,12 @@ public sealed class BrowserJobStore
     private string JobsRoot => Path.Combine(_root, "jobs");
 
     public BrowserJob Create(string requester, string environment, BrowserRunMode mode, string purpose,
-        string relativePath, string? selector, bool fullPage, string? credentialRef, DateTimeOffset now)
+        string relativePath, string? selector, bool fullPage, string? credentialRef, DateTimeOffset now,
+        LoginStep? login = null)
     {
         var id = $"{now.UtcDateTime:yyyyMMddTHHmmssfffffffZ}-{Guid.NewGuid():N}";
         var job = new BrowserJob(id, requester, environment, mode, purpose, relativePath, selector, fullPage,
-            credentialRef, BrowserJobStatus.Pending, null, null, null, now.ToUniversalTime(), now.ToUniversalTime());
+            credentialRef, login, BrowserJobStatus.Pending, null, null, null, now.ToUniversalTime(), now.ToUniversalTime());
         Write(job);
         return job;
     }

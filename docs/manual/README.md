@@ -327,6 +327,21 @@ recorded; entries whose source is missing at run time are skipped, and if nothin
 fails closed rather than going out keyless. Production mutation also fails closed until an
 operator-approval capability exists.
 
+### Login step
+
+A browser run can optionally log in before the screenshot: `request_browser_run` accepts
+`login_email_ref` and `login_password_ref` — single `env:VAR | keychain://ITEM | secret://NAME`
+sources, never literal values — plus an optional `submit_selector`. After the initial navigation the
+runner fills `input[type=email]` (fallback `input[name=username]`) and `input[type=password]`
+(fallback `input[name=password]`), clicks `input[type=submit]` (fallback `button[type=submit]`, or the
+given selector), then waits up to 20 seconds for the password field to detach — the post-login signal.
+The screenshot is taken after that wait, and the run fails with `login step did not complete` if the
+field never detaches (the what-you-see screenshot is still kept). Resolved values are filled directly
+into the page, are never logged or written to job files, manifests, or artifacts, and password inputs
+are always masked out of screenshots. If the email or password reference cannot be resolved the run
+fails before launching. Note that observe-mode routing still blocks non-idempotent form submissions,
+so login steps that submit over POST require test or operate mode.
+
 ---
 
 ## 10. The Issues panel

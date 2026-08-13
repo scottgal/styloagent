@@ -19,14 +19,21 @@ public sealed class BrowserTools
         => (_http, _controller, _auth) = (http, controller, auth);
 
 #pragma warning disable CA1707
-    [McpServerTool, Description("Request a governed Playwright screenshot against a registered environment. relative_path must begin with '/'; mode is observe, test, or operate. Credential values are forbidden—credential_ref must be the environment-approved comma-separated list of HeaderName=env:VAR|keychain://ITEM|secret://NAME entries.")]
+    [McpServerTool, Description("Request a governed Playwright screenshot against a registered environment. relative_path must begin with '/'; mode is observe, test, or operate. Credential values are forbidden—credential_ref must be the environment-approved comma-separated list of HeaderName=env:VAR|keychain://ITEM|secret://NAME entries. Optional login step: login_email_ref and login_password_ref are single env:VAR|keychain://ITEM|secret://NAME sources (never literal values) filled into input[type=email]/input[type=password] (fallback name=username/name=password); submit_selector overrides the default input[type=submit] (fallback button[type=submit]). The run waits up to 20s after submit for the password field to detach and screenshots after; if login does not complete the run fails with 'login step did not complete'.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name.")]
     public async Task<string> request_browser_run(string environment, string mode, string purpose,
-        string relative_path, string selector, bool full_page, string credential_ref)
+        string relative_path, string selector, bool full_page, string credential_ref,
+        string login_email_ref = "", string login_password_ref = "", string submit_selector = "")
     {
         var caller = Caller();
-        return caller is null ? "unauthorized" : await _controller.RequestAsync(caller, environment, mode,
-            purpose, relative_path, Empty(selector), full_page, Empty(credential_ref)).ConfigureAwait(false);
+        if (caller is null) return "unauthorized";
+        var email = Empty(login_email_ref);
+        var password = Empty(login_password_ref);
+        var login = email is null && password is null
+            ? null
+            : new LoginStep(email ?? "", password ?? "", Empty(submit_selector));
+        return await _controller.RequestAsync(caller, environment, mode, purpose, relative_path,
+            Empty(selector), full_page, Empty(credential_ref), login).ConfigureAwait(false);
     }
 
     [McpServerTool, Description("Approve and start a pending Playwright request. Only the environment owner or environment control owner may approve it.")]

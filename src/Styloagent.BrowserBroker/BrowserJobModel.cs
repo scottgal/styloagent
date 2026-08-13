@@ -4,6 +4,13 @@ public enum BrowserRunMode { Observe, Test, Operate }
 public enum BrowserJobStatus { Pending, Approved, Running, Completed, Failed, Cancelled }
 
 /// <summary>
+/// Optional login step for a governed run: the email and password are supplied as credential
+/// <em>references</em> (env:VAR / keychain://ITEM / secret://NAME — never literal values), resolved by
+/// the broker's credential provider at run time and never logged, persisted, or written to artifacts.
+/// </summary>
+public sealed record LoginStep(string EmailRef, string PasswordRef, string? SubmitSelector = null);
+
+/// <summary>
 /// A declarative, durable browser request. It contains credential references only—never credential values.
 /// The approved target URI is resolved from the environment registry rather than supplied as an arbitrary URL.
 /// </summary>
@@ -17,6 +24,7 @@ public sealed record BrowserJob(
     string? Selector,
     bool FullPage,
     string? CredentialRef,
+    LoginStep? Login,
     BrowserJobStatus Status,
     string? Approver,
     string? ArtifactPath,

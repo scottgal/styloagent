@@ -16,7 +16,8 @@ public sealed class BrowserJobService
         => (_environmentsRoot, _store) = (environmentsRoot, new BrowserJobStore(browserRoot));
 
     public BrowserOperationResult Request(string caller, string environmentId, string mode, string purpose,
-        string relativePath, string? selector, bool fullPage, string? credentialRef, DateTimeOffset now)
+        string relativePath, string? selector, bool fullPage, string? credentialRef, DateTimeOffset now,
+        LoginStep? login = null)
     {
         lock (Gate)
         {
@@ -39,9 +40,11 @@ public sealed class BrowserJobService
             if (!string.IsNullOrWhiteSpace(credentialRef) &&
                 !string.Equals(credentialRef.Trim(), environment.Definition.Targets.BrowserCredentialRef, StringComparison.Ordinal))
                 return BrowserOperationResult.Fail("credential_ref is not approved for this environment");
+            if (!ValidLoginStep(login))
+                return BrowserOperationResult.Fail("login requires email and password references of the form env:VAR|keychain://ITEM|secret://NAME, and a submit selector without credential material");
             var job = _store.Create(caller, environment.Definition.Id, parsedMode, purpose.Trim(), relativePath,
                 string.IsNullOrWhiteSpace(selector) ? null : selector.Trim(), fullPage,
-                string.IsNullOrWhiteSpace(credentialRef) ? null : credentialRef.Trim(), now);
+                string.IsNullOrWhiteSpace(credentialRef) ? null : credentialRef.Trim(), now, login);
             return BrowserOperationResult.Ok($"browser request {job.Id} is pending approval by {environment.Owner}", job);
         }
     }
@@ -155,6 +158,16 @@ public sealed class BrowserJobService
         path.StartsWith('/') && Uri.TryCreate(path, UriKind.Relative, out _) && !path.StartsWith("//", StringComparison.Ordinal);
 
     private static bool ValidCredentialReference(string? value) => CredentialReference.IsValid(value);
+
+    private static bool ValidLoginStep(LoginStep? login)
+    {
+        if (login is null) return true;
+        if (string.IsNullOrWhiteSpace(login.EmailRef) || string.IsNullOrWhiteSpace(login.PasswordRef))
+            return false;
+        if (!CredentialReference.IsValidSource(login.EmailRef) || !CredentialReference.IsValidSource(login.PasswordRef))
+            return false;
+        return !ContainsCredentialMaterial(login.SubmitSelector);
+    }
 
     private static bool ContainsCredentialMaterial(string? value)
     {

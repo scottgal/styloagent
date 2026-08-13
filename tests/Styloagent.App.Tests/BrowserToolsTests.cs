@@ -12,7 +12,7 @@ public sealed class BrowserToolsTests
     {
         public string? Caller { get; private set; }
         public Task<string> RequestAsync(string caller, string environment, string mode, string purpose,
-            string relativePath, string? selector, bool fullPage, string? credentialRef)
+            string relativePath, string? selector, bool fullPage, string? credentialRef, LoginStep? login = null)
         { Caller = caller; return Task.FromResult("pending request-1"); }
         public Task<string> ApproveAsync(string caller, string requestId) => Task.FromResult("approved");
         public Task<string> CancelAsync(string caller, string requestId) => Task.FromResult("cancelled");

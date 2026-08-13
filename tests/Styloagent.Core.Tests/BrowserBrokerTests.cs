@@ -135,6 +135,25 @@ public class BrowserBrokerTests : IDisposable
     }
 
     [Fact]
+    public void Credential_provider_resolves_single_values_from_bare_sources()
+    {
+        Environment.SetEnvironmentVariable("STYLOBOT_TEST_SINGLE_VAR", "single-value");
+        try
+        {
+            var provider = new EnvironmentBrowserCredentialProvider(item => item == "staging-email" ? "e2e@test.dev" : null);
+            Assert.Equal("e2e@test.dev", provider.ResolveValue("keychain://staging-email"));
+            Assert.Equal("single-value", provider.ResolveValue("env:STYLOBOT_TEST_SINGLE_VAR"));
+            Assert.Equal("single-value", provider.ResolveValue("secret://STYLOBOT_TEST_SINGLE_VAR"));
+            Assert.Null(provider.ResolveValue("env:STYLOBOT_TEST_DOES_NOT_EXIST"));
+            Assert.Null(provider.ResolveValue("keychain://missing-item"));
+            Assert.Null(provider.ResolveValue("literal-value"));           // not a source spec
+            Assert.Null(provider.ResolveValue("keychain://"));             // empty item
+            Assert.Null(provider.ResolveValue(""));                        // empty spec
+        }
+        finally { Environment.SetEnvironmentVariable("STYLOBOT_TEST_SINGLE_VAR", null); }
+    }
+
+    [Fact]
     public void Credential_provider_treats_an_empty_keychain_password_as_unresolved()
     {
         var provider = new EnvironmentBrowserCredentialProvider(_ => "");

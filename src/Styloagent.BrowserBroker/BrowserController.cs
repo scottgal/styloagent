@@ -21,11 +21,11 @@ public sealed class BrowserController : IBrowserController
         => (_host, _credentials) = (host, credentials ?? new RejectingBrowserCredentialProvider());
 
     public Task<string> RequestAsync(string caller, string environment, string mode, string purpose,
-        string relativePath, string? selector, bool fullPage, string? credentialRef)
+        string relativePath, string? selector, bool fullPage, string? credentialRef, LoginStep? login = null)
     {
         var service = Service();
         return Task.FromResult(service is null ? "no active project" : service.Request(caller, environment, mode,
-            purpose, relativePath, selector, fullPage, credentialRef, DateTimeOffset.UtcNow).Message);
+            purpose, relativePath, selector, fullPage, credentialRef, DateTimeOffset.UtcNow, login).Message);
     }
 
     public Task<string> ApproveAsync(string caller, string requestId)

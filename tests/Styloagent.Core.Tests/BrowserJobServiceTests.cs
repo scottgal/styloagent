@@ -98,6 +98,27 @@ public sealed class BrowserJobServiceTests : IDisposable
     }
 
     [Fact]
+    public void Login_step_requires_reference_sources_for_both_email_and_password()
+    {
+        var service = new BrowserJobService(Environments, Browser);
+        Assert.False(service.Request("test-", "staging", "test", "login", "/", null, false, null, T(1),
+            new LoginStep("scott@example.com", "keychain://staging-password")).Success);
+        Assert.False(service.Request("test-", "staging", "test", "login", "/", null, false, null, T(2),
+            new LoginStep("keychain://staging-email", "")).Success);
+        Assert.False(service.Request("test-", "staging", "test", "login", "/", null, false, null, T(3),
+            new LoginStep("keychain://staging-email", "sk-live-secret")).Success);
+        Assert.False(service.Request("test-", "staging", "test", "login", "/", null, false, null, T(4),
+            new LoginStep("keychain://staging-email", "env:STAGING_PASSWORD", "button.login:has-text('Bearer x')")).Success);
+
+        var accepted = service.Request("test-", "staging", "test", "login", "/", null, false, null, T(5),
+            new LoginStep("keychain://staging-email", "env:STAGING_PASSWORD", "button#sign-in")).Job;
+        Assert.NotNull(accepted);
+        Assert.NotNull(accepted.Login);
+        Assert.Equal("keychain://staging-email", accepted.Login.EmailRef);
+        Assert.Equal("env:STAGING_PASSWORD", accepted.Login.PasswordRef);
+    }
+
+    [Fact]
     public void Production_mutation_is_rejected_without_operator_capability()
     {
         var definition = Path.Combine(Environments, "definitions", "staging.yaml");

@@ -40,13 +40,7 @@ public sealed class EnvironmentBrowserCredentialProvider : IBrowserCredentialPro
         foreach (var entry in CredentialReference.ParseEntries(credentialRef))
         {
             hadEntries = true;
-            var value = entry.Source switch
-            {
-                CredentialSourceKind.Env => Environment.GetEnvironmentVariable(entry.Name),
-                CredentialSourceKind.Secret => Environment.GetEnvironmentVariable(entry.Name),
-                CredentialSourceKind.Keychain => _keychainReader(entry.Name),
-                _ => null,
-            };
+            var value = Resolve(entry.Source, entry.Name);
             // A keychain item that exists but holds an empty password is effectively missing — an
             // empty header would let the run proceed without an effective credential.
             var resolved = entry.Source == CredentialSourceKind.Keychain
@@ -58,6 +52,22 @@ public sealed class EnvironmentBrowserCredentialProvider : IBrowserCredentialPro
             throw new InvalidOperationException("approved credential reference could not be resolved");
         return Task.FromResult<IReadOnlyDictionary<string, string>>(headers);
     }
+
+    public string? ResolveValue(string sourceSpec)
+    {
+        if (!CredentialReference.TryParseSource(sourceSpec, out var kind, out var name)) return null;
+        var value = Resolve(kind, name);
+        // Same fail-closed semantics as headers: an empty keychain value is not a resolved value.
+        return kind == CredentialSourceKind.Keychain && string.IsNullOrEmpty(value) ? null : value;
+    }
+
+    private string? Resolve(CredentialSourceKind kind, string name) => kind switch
+    {
+        CredentialSourceKind.Env => Environment.GetEnvironmentVariable(name),
+        CredentialSourceKind.Secret => Environment.GetEnvironmentVariable(name),
+        CredentialSourceKind.Keychain => _keychainReader(name),
+        _ => null,
+    };
 
     /// <summary>
     /// Reads a generic password from the macOS keychain. Never logs or persists the fetched value;

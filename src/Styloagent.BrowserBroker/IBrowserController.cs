@@ -4,7 +4,7 @@ namespace Styloagent.BrowserBroker;
 public interface IBrowserController
 {
     Task<string> RequestAsync(string caller, string environment, string mode, string purpose,
-        string relativePath, string? selector, bool fullPage, string? credentialRef);
+        string relativePath, string? selector, bool fullPage, string? credentialRef, LoginStep? login = null);
     Task<string> ApproveAsync(string caller, string requestId);
     Task<string> CancelAsync(string caller, string requestId);
     Task<string> StatusAsync(string? requestId, string? environment);

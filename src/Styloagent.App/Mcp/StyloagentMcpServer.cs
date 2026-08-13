@@ -87,7 +87,7 @@ public sealed class StyloagentMcpServer : IAsyncDisposable
 
     private sealed class UnavailableBrowserController : IBrowserController
     {
-        public Task<string> RequestAsync(string caller, string environment, string mode, string purpose, string relativePath, string? selector, bool fullPage, string? credentialRef) => Task.FromResult("browser broker unavailable");
+        public Task<string> RequestAsync(string caller, string environment, string mode, string purpose, string relativePath, string? selector, bool fullPage, string? credentialRef, LoginStep? login = null) => Task.FromResult("browser broker unavailable");
         public Task<string> ApproveAsync(string caller, string requestId) => Task.FromResult("browser broker unavailable");
         public Task<string> CancelAsync(string caller, string requestId) => Task.FromResult("browser broker unavailable");
         public Task<string> StatusAsync(string? requestId, string? environment) => Task.FromResult("browser broker unavailable");

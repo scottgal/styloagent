@@ -33,6 +33,10 @@ public static class VisionInterpreter
     {
         if (string.IsNullOrWhiteSpace(imagePath)) throw new ArgumentException("image path required", nameof(imagePath));
         if (string.IsNullOrWhiteSpace(question)) throw new ArgumentException("question required", nameof(question));
+        // The question reaches us from an agent, whose context may contain text it read from elsewhere.
+        // Verified against codex 0.147: a bare "--help" prompt prints help instead of reading the image.
+        if (question.TrimStart().StartsWith('-'))
+            throw new ArgumentException("question must not start with '-'", nameof(question));
 
         return
         [
@@ -43,6 +47,7 @@ public static class VisionInterpreter
             "--sandbox", "read-only",
             "--skip-git-repo-check",
             "--output-last-message", outputPath,
+            "--", // End of options: everything after this is the prompt, never a flag.
             question,
         ];
     }

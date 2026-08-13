@@ -363,6 +363,8 @@ public sealed class FleetTools
         if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
         if (string.IsNullOrWhiteSpace(image_path)) return "rejected: image_path is required";
         if (string.IsNullOrWhiteSpace(question)) return "rejected: question is required";
+        if (question.TrimStart().StartsWith('-'))
+            return "rejected: question must not start with '-' — phrase it as a plain question";
 
         return await Styloagent.Core.Vision.VisionInterpreter.InterpretAsync(image_path, question);
     }

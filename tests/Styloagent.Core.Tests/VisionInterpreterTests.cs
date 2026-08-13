@@ -50,6 +50,32 @@ public class VisionInterpreterTests
         Assert.Contains(question, args);
     }
 
+    [Fact]
+    public void Question_is_fenced_behind_end_of_options()
+    {
+        var args = VisionInterpreter.BuildArgs("/tmp/shot.png", "what is shown?", "/tmp/out.txt");
+
+        // Verified against the real CLI: a bare "--help" as the prompt makes codex print its help
+        // instead of reading the image, so the prompt must sit after an explicit end-of-options.
+        var separator = args.IndexOf("--");
+        Assert.True(separator >= 0, "argv must fence the untrusted prompt behind '--'");
+        Assert.Equal(args.Count - 1, separator + 1);
+        Assert.Equal("what is shown?", args[^1]);
+    }
+
+    [Theory]
+    [InlineData("--help")]
+    [InlineData("--dangerously-bypass-approvals-and-sandbox")]
+    [InlineData("-m")]
+    public void Flag_shaped_questions_are_rejected(string question)
+    {
+        // Belt and braces: '--' is honoured today, but a CLI that stopped honouring it would silently
+        // turn an agent's question into a codex flag. An agent's prompt can carry injected text.
+        var ex = Assert.Throws<ArgumentException>(
+            () => VisionInterpreter.BuildArgs("/tmp/shot.png", question, "/tmp/out.txt"));
+        Assert.Contains("must not start with", ex.Message, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("   ")]

@@ -21,7 +21,7 @@ public sealed class BrowserJobServiceTests : IDisposable
             "classification: non-production\n" +
             "targets:\n" +
             "  webOrigin: https://staging.example.test\n" +
-            "  browserCredentialRef: keychain://styloagent/staging-e2e\n" +
+            "  browserCredentialRef: X-SB-Api-Key=keychain://styloagent/staging-e2e\n" +
             "capacity:\n" +
             "  browserRead: 2\n" +
             "  browserWrite: 1\n");
@@ -79,12 +79,22 @@ public sealed class BrowserJobServiceTests : IDisposable
         var service = new BrowserJobService(Environments, Browser);
         Assert.False(service.Request("test-", "staging", "observe", "raw", "/", null, false,
             "sk-secret-value", T(1)).Success);
-        Assert.False(service.Request("test-", "staging", "observe", "wrong", "/", null, false,
+        Assert.False(service.Request("test-", "staging", "observe", "bare uri", "/", null, false,
             "keychain://styloagent/other", T(2)).Success);
+        Assert.False(service.Request("test-", "staging", "observe", "no source", "/", null, false,
+            "X-SB-Api-Key=staging-debug-key", T(3)).Success);
+        Assert.False(service.Request("test-", "staging", "observe", "unknown scheme", "/", null, false,
+            "X-SB-Api-Key=infisical://staging", T(4)).Success);
+        Assert.False(service.Request("test-", "staging", "observe", "empty source", "/", null, false,
+            "X-SB-Api-Key=", T(5)).Success);
+        Assert.False(service.Request("test-", "staging", "observe", "empty item", "/", null, false,
+            "X-SB-Api-Key=keychain://", T(6)).Success);
+        Assert.False(service.Request("test-", "staging", "observe", "mixed mismatch", "/", null, false,
+            "X-SB-Api-Key=keychain://styloagent/staging-e2e, X-Trace=env:TRACE_ID", T(7)).Success);
         Assert.True(service.Request("test-", "staging", "observe", "approved", "/", null, false,
-            "keychain://styloagent/staging-e2e", T(3)).Success);
+            "X-SB-Api-Key=keychain://styloagent/staging-e2e", T(8)).Success);
         Assert.False(service.Request("test-", "staging", "observe", "use Bearer raw-value", "/", null,
-            false, null, T(4)).Success);
+            false, null, T(9)).Success);
     }
 
     [Fact]

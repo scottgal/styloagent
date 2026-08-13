@@ -140,7 +140,7 @@ public static class EnvironmentRegistry
             !string.IsNullOrEmpty(origin.UserInfo) || origin.Query.Length > 0 || origin.Fragment.Length > 0)
             return EnvironmentOperationResult.Fail("web_origin must be an http(s) origin without credentials, query, or fragment");
         if (!ValidCredentialReference(browserCredentialRef))
-            return EnvironmentOperationResult.Fail("browser_credential_ref must be an opaque keychain://, infisical://, or secret:// reference");
+            return EnvironmentOperationResult.Fail("browser_credential_ref must be a comma-separated list of HeaderName=env:VAR|keychain://ITEM|secret://NAME entries");
         if (readCapacity is < 1 or > 32 || writeCapacity is < 1 or > 8)
             return EnvironmentOperationResult.Fail("browser capacity is outside the allowed range (read 1-32, write 1-8)");
         try
@@ -178,11 +178,5 @@ public static class EnvironmentRegistry
 
     private static int Positive(int? value, int fallback) => value is > 0 ? value.Value : fallback;
 
-    private static bool ValidCredentialReference(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return true;
-        return Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
-               uri.Scheme is "keychain" or "infisical" or "secret" &&
-               string.IsNullOrEmpty(uri.UserInfo) && value.Length <= 256;
-    }
+    private static bool ValidCredentialReference(string? value) => CredentialReference.IsValid(value);
 }

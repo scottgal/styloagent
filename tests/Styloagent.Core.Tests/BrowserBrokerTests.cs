@@ -78,13 +78,93 @@ public class BrowserBrokerTests : IDisposable
     }
 
     [Fact]
-    public void Credential_provider_skips_missing_and_non_env_entries()
+    public void Credential_provider_skips_missing_entries_but_fails_closed_when_none_resolve()
     {
         var provider = new EnvironmentBrowserCredentialProvider();
-        var headers = provider.ResolveHeadersAsync(
+        // Every entry is missing or malformed, so nothing resolves — the provider must throw so a
+        // credentialed run never proceeds keyless.
+        Assert.Throws<InvalidOperationException>(() => provider.ResolveHeadersAsync(
             "X-Api-Key=env:STYLOBOT_DOES_NOT_EXIST,Authorization=Bearer inline,Keep-Alive=env:", default)
-            .GetAwaiter().GetResult();
-        Assert.Empty(headers);
+            .GetAwaiter().GetResult());
+    }
+
+    [Fact]
+    public void Credential_provider_resolves_keychain_entries_through_the_injected_reader()
+    {
+        string? readItem = null;
+        var provider = new EnvironmentBrowserCredentialProvider(item =>
+        {
+            readItem = item;
+            return "keychain-value";
+        });
+        var headers = provider.ResolveHeadersAsync(
+            "X-Api-Key=keychain://styloagent/staging-e2e", default).GetAwaiter().GetResult();
+        Assert.Equal("keychain-value", headers["X-Api-Key"]);
+        Assert.Equal("styloagent/staging-e2e", readItem);
+    }
+
+    [Fact]
+    public void Credential_provider_resolves_secret_entries_from_the_process_environment()
+    {
+        Environment.SetEnvironmentVariable("STYLOBOT_TEST_SECRET_VAR", "secret-value");
+        try
+        {
+            var provider = new EnvironmentBrowserCredentialProvider();
+            var headers = provider.ResolveHeadersAsync(
+                "X-Api-Key=secret://STYLOBOT_TEST_SECRET_VAR", default).GetAwaiter().GetResult();
+            Assert.Equal("secret-value", headers["X-Api-Key"]);
+        }
+        finally { Environment.SetEnvironmentVariable("STYLOBOT_TEST_SECRET_VAR", null); }
+    }
+
+    [Fact]
+    public void Credential_provider_mixed_lists_resolve_present_sources_and_skip_missing()
+    {
+        Environment.SetEnvironmentVariable("STYLOBOT_TEST_MIXED_VAR", "mixed-value");
+        try
+        {
+            var provider = new EnvironmentBrowserCredentialProvider(_ => "keychain-value");
+            var headers = provider.ResolveHeadersAsync(
+                "X-Api-Key=keychain://staging, X-Trace=env:STYLOBOT_TEST_MIXED_VAR, X-Meta=secret://STYLOBOT_TEST_DOES_NOT_EXIST, X-Bogus=bogus",
+                default).GetAwaiter().GetResult();
+            Assert.Equal(2, headers.Count);
+            Assert.Equal("keychain-value", headers["X-Api-Key"]);
+            Assert.Equal("mixed-value", headers["X-Trace"]);
+        }
+        finally { Environment.SetEnvironmentVariable("STYLOBOT_TEST_MIXED_VAR", null); }
+    }
+
+    [Fact]
+    public void Credential_provider_treats_an_empty_keychain_password_as_unresolved()
+    {
+        var provider = new EnvironmentBrowserCredentialProvider(_ => "");
+        Assert.Throws<InvalidOperationException>(() => provider.ResolveHeadersAsync(
+            "X-Api-Key=keychain://staging-empty", default).GetAwaiter().GetResult());
+    }
+
+    [Fact]
+    public void Credential_provider_null_or_empty_reference_returns_no_headers_without_throwing()
+    {
+        var provider = new EnvironmentBrowserCredentialProvider(_ => null);
+        Assert.Empty(provider.ResolveHeadersAsync(null!, default).GetAwaiter().GetResult());
+        Assert.Empty(provider.ResolveHeadersAsync("", default).GetAwaiter().GetResult());
+        Assert.Empty(provider.ResolveHeadersAsync("   ", default).GetAwaiter().GetResult());
+    }
+
+    [Fact]
+    public void Credential_provider_header_names_are_case_insensitive_and_last_entry_wins()
+    {
+        Environment.SetEnvironmentVariable("STYLOBOT_TEST_CASE_VAR", "case-value");
+        try
+        {
+            var provider = new EnvironmentBrowserCredentialProvider();
+            var headers = provider.ResolveHeadersAsync(
+                "X-Api-Key=env:STYLOBOT_TEST_CASE_VAR, x-api-key=env:STYLOBOT_TEST_CASE_VAR", default)
+                .GetAwaiter().GetResult();
+            Assert.Single(headers);
+            Assert.Equal("case-value", headers["X-Api-Key"]);
+        }
+        finally { Environment.SetEnvironmentVariable("STYLOBOT_TEST_CASE_VAR", null); }
     }
 
     // ── Controller surfaces a broker:// reference after a completed run ─────────────────

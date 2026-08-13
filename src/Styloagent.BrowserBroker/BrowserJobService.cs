@@ -35,7 +35,7 @@ public sealed class BrowserJobService
             if (environment.Definition.Classification == "production" && parsedMode != BrowserRunMode.Observe)
                 return BrowserOperationResult.Fail("production mutation requires an operator approval capability that is not configured");
             if (!ValidCredentialReference(credentialRef))
-                return BrowserOperationResult.Fail("credential_ref must be an opaque keychain://, infisical://, or secret:// reference");
+                return BrowserOperationResult.Fail("credential_ref must be a comma-separated list of HeaderName=env:VAR|keychain://ITEM|secret://NAME entries");
             if (!string.IsNullOrWhiteSpace(credentialRef) &&
                 !string.Equals(credentialRef.Trim(), environment.Definition.Targets.BrowserCredentialRef, StringComparison.Ordinal))
                 return BrowserOperationResult.Fail("credential_ref is not approved for this environment");
@@ -154,13 +154,7 @@ public sealed class BrowserJobService
     private static bool SafeRelativePath(string? path) => !string.IsNullOrWhiteSpace(path) &&
         path.StartsWith('/') && Uri.TryCreate(path, UriKind.Relative, out _) && !path.StartsWith("//", StringComparison.Ordinal);
 
-    private static bool ValidCredentialReference(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return true;
-        return Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
-               uri.Scheme is "keychain" or "infisical" or "secret" &&
-               string.IsNullOrEmpty(uri.UserInfo) && value.Length <= 256;
-    }
+    private static bool ValidCredentialReference(string? value) => CredentialReference.IsValid(value);
 
     private static bool ContainsCredentialMaterial(string? value)
     {

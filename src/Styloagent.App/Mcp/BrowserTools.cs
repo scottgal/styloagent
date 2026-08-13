@@ -19,7 +19,7 @@ public sealed class BrowserTools
         => (_http, _controller, _auth) = (http, controller, auth);
 
 #pragma warning disable CA1707
-    [McpServerTool, Description("Request a governed Playwright screenshot against a registered environment. relative_path must begin with '/'; mode is observe, test, or operate. Credential values are forbidden—credential_ref may only be an environment-approved opaque secret reference.")]
+    [McpServerTool, Description("Request a governed Playwright screenshot against a registered environment. relative_path must begin with '/'; mode is observe, test, or operate. Credential values are forbidden—credential_ref must be the environment-approved comma-separated list of HeaderName=env:VAR|keychain://ITEM|secret://NAME entries.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name.")]
     public async Task<string> request_browser_run(string environment, string mode, string purpose,
         string relative_path, string selector, bool full_page, string credential_ref)

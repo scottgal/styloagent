@@ -73,12 +73,19 @@ public sealed class EnvironmentOwnershipTests : IDisposable
             null, 2, 1).Success);
         Assert.False(EnvironmentRegistry.ConfigureBrowser(_root, "staging", "https://staging.example.test",
             "raw-api-key", 2, 1).Success);
+        Assert.False(EnvironmentRegistry.ConfigureBrowser(_root, "staging", "https://staging.example.test",
+            "keychain://styloagent/staging", 2, 1).Success);
+        Assert.False(EnvironmentRegistry.ConfigureBrowser(_root, "staging", "https://staging.example.test",
+            "X-SB-Api-Key=bogus", 2, 1).Success);
         Assert.True(EnvironmentRegistry.ConfigureBrowser(_root, "staging", "https://staging.example.test",
-            "keychain://styloagent/staging", 3, 1).Success);
+            "X-SB-Api-Key=keychain://styloagent/staging", 3, 1).Success);
+        Assert.True(EnvironmentRegistry.ConfigureBrowser(_root, "staging", "https://staging.example.test",
+            "X-SB-Api-Key=env:STYLOBOT_API_KEY, X-Trace=secret://TRACE_ID", 3, 1).Success);
 
         var definition = Assert.Single(EnvironmentRegistry.Read(_root));
         Assert.Equal("https://staging.example.test", definition.Targets.WebOrigin);
-        Assert.Equal("keychain://styloagent/staging", definition.Targets.BrowserCredentialRef);
+        Assert.Equal("X-SB-Api-Key=env:STYLOBOT_API_KEY, X-Trace=secret://TRACE_ID",
+            definition.Targets.BrowserCredentialRef);
         Assert.Equal(3, definition.Capacity.BrowserRead);
     }
 

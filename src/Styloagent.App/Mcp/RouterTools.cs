@@ -82,7 +82,7 @@ public sealed class RouterTools
             .RegisterEnvironmentAsync(caller, id, display_name, classification).ConfigureAwait(false);
     }
 
-    [McpServerTool, Description("Configure an environment's allow-listed Playwright origin, approved opaque credential reference, and read/write concurrency. Only the environment control owner may change this hard policy. Never pass a credential value.")]
+    [McpServerTool, Description("Configure an environment's allow-listed Playwright origin, approved credential reference (comma-separated HeaderName=env:VAR|keychain://ITEM|secret://NAME entries), and read/write concurrency. Only the environment control owner may change this hard policy. Never pass a credential value.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public async Task<string> configure_browser_environment(string environment, string web_origin,
         string browser_credential_ref, int read_capacity, int write_capacity)

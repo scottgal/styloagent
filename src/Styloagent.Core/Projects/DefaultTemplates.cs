@@ -197,11 +197,13 @@ You have these MCP tools from the `styloagent` server:
   access claims. Owners may `return_environment`; overview may `revoke_environment` and use `force=true`
   for an incident. Use `environment_status` to see the effective owner and pending handoff.
 - **Playwright routing** — configure a registered environment with `configure_browser_environment`
-  (allow-listed origin, optional opaque credential reference, read/write capacity). Agents submit
+  (allow-listed origin, optional credential reference, read/write capacity). Agents submit
   `request_browser_run`; the environment owner reviews and calls `approve_browser_run`. Use
   `browser_status`, `browser_artifacts`, and `cancel_browser_run` for the durable lifecycle. Never pass
-  an API key or password—only the exact environment-approved `keychain://`, `infisical://`, or
-  `secret://` reference. Observe runs block non-idempotent requests; production mutation is fail-closed.
+  an API key or password—only the exact environment-approved comma-separated list of
+  `HeaderName=env:VAR|keychain://ITEM|secret://NAME` entries; an entry whose source is missing at run
+  time is skipped, and a reference that resolves nothing fails the run closed. Observe runs block
+  non-idempotent requests; production mutation is fail-closed.
 
 As sub-agents learn the real system they report back via `send_message` (see `.styloagent/PROTOCOL.md`).
 Fold that back into the spec → re-derive the architecture → adjust the fleet, so the three docs stay a

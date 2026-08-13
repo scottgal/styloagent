@@ -41,6 +41,10 @@ public sealed class PlaywrightBrowserRunner
         {
             try { headers = await _credentials.ResolveHeadersAsync(job.CredentialRef, ct).ConfigureAwait(false); }
             catch { return BrowserRunResult.Failed("approved credential reference could not be resolved"); }
+            // Fail closed: a job that carried a credential ref must never run keyless, even if a
+            // custom provider returns an empty header set instead of throwing.
+            if (headers is null || headers.Count == 0)
+                return BrowserRunResult.Failed("approved credential reference could not be resolved");
         }
 
         var artifactDir = Path.Combine(_browserRoot, "artifacts", job.Id);

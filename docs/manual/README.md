@@ -310,7 +310,7 @@ browser work.
 
 ### Governed Playwright screenshots
 
-The control owner configures an environment's exact HTTP(S) origin, optional opaque credential
+The control owner configures an environment's exact HTTP(S) origin, optional credential
 reference, and read/write concurrency with `configure_browser_environment`. An agent then calls
 `request_browser_run`; the environment owner approves and starts it with `approve_browser_run`.
 Every run receives a fresh non-persistent browser context, a two-minute deadline, strict same-origin
@@ -318,9 +318,13 @@ network routing, and masked password/secret selectors. Observe-mode runs additio
 non-idempotent HTTP methods. Completed screenshots and a sanitized manifest land under
 `.styloagent/browser/artifacts/<request-id>/`.
 
-Credential values are not accepted by this API. Only an environment-approved `keychain://`,
-`infisical://`, or `secret://` reference can be recorded, and credentialed runs fail closed until a
-broker-side credential provider is configured. Production mutation also fails closed until an
+Credential values are not accepted by this API. A credential reference is a comma-separated list of
+`HeaderName=source` entries, where source is `env:VAR` (process environment variable), `keychain://ITEM`
+(macOS generic password with service `ITEM`, read at run time via the `security` CLI), or `secret://NAME`
+(process environment variable holding the literal value). The source side is always a spec — a
+reference can never carry literal secret material. Only the environment-approved reference can be
+recorded; entries whose source is missing at run time are skipped, and if nothing resolves the run
+fails closed rather than going out keyless. Production mutation also fails closed until an
 operator-approval capability exists.
 
 ---

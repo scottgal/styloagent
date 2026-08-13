@@ -13,7 +13,8 @@ public sealed class PlaywrightBrowserRunner
 {
     private static readonly JsonSerializerOptions ArtifactJson = new() { WriteIndented = true };
     private static readonly string[] SensitiveSelectors =
-        ["input[type=password]", "input[name=password]", "[data-sensitive]", ".api-key", ".secret", "[autocomplete=one-time-code]"];
+        ["input[type=password]", "input[name=password]", "input[type=email]", "input[name=username]",
+            "[data-sensitive]", ".api-key", ".secret", "[autocomplete=one-time-code]"];
     private readonly string _environmentsRoot;
     private readonly string _browserRoot;
     private readonly IBrowserCredentialProvider _credentials;

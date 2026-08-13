@@ -18,6 +18,8 @@ internal partial class EnvironmentTargetsFile
     public string? SshAccount { get; set; }
     public string? CredentialRef { get; set; }
     public string? BrowserCredentialRef { get; set; }
+    public string? LoginEmailRef { get; set; }
+    public string? LoginPasswordRef { get; set; }
 }
 
 [YamlObject]
@@ -91,7 +93,8 @@ public static class EnvironmentRegistry
                         NormalizeOwner(f.FallbackOwner, ReadControlOwner(root)),
                         string.IsNullOrWhiteSpace(f.Status) ? "available" : f.Status.Trim().ToLowerInvariant(),
                         new EnvironmentTargets(targets.WebOrigin, targets.ApiOrigin, targets.SshHost,
-                            targets.SshAccount, targets.CredentialRef, targets.BrowserCredentialRef),
+                            targets.SshAccount, targets.CredentialRef, targets.BrowserCredentialRef,
+                            targets.LoginEmailRef, targets.LoginPasswordRef),
                         new EnvironmentCapacity(Positive(capacity.BrowserRead, 1), Positive(capacity.BrowserWrite, 1),
                             Positive(capacity.Ssh, 1), Positive(capacity.Deploy, 1))));
                 }
@@ -132,7 +135,8 @@ public static class EnvironmentRegistry
 
     /// <summary>Configures the non-secret browser target and capacity for an existing environment.</summary>
     public static EnvironmentOperationResult ConfigureBrowser(string root, string id, string webOrigin,
-        string? browserCredentialRef, int readCapacity, int writeCapacity)
+        string? browserCredentialRef, int readCapacity, int writeCapacity,
+        string? loginEmailRef = null, string? loginPasswordRef = null)
     {
         var normalized = NormalizeId(id);
         if (normalized is null) return EnvironmentOperationResult.Fail("invalid environment id");
@@ -141,6 +145,8 @@ public static class EnvironmentRegistry
             return EnvironmentOperationResult.Fail("web_origin must be an http(s) origin without credentials, query, or fragment");
         if (!ValidCredentialReference(browserCredentialRef))
             return EnvironmentOperationResult.Fail("browser_credential_ref must be a comma-separated list of HeaderName=env:VAR|keychain://ITEM|secret://NAME entries");
+        if (!CredentialReference.IsValidSource(loginEmailRef) || !CredentialReference.IsValidSource(loginPasswordRef))
+            return EnvironmentOperationResult.Fail("login_email_ref/login_password_ref must be env:VAR, keychain://ITEM, or secret://NAME sources");
         if (readCapacity is < 1 or > 32 || writeCapacity is < 1 or > 8)
             return EnvironmentOperationResult.Fail("browser capacity is outside the allowed range (read 1-32, write 1-8)");
         try
@@ -152,6 +158,8 @@ public static class EnvironmentRegistry
             file.Targets ??= new EnvironmentTargetsFile();
             file.Targets.WebOrigin = origin.GetLeftPart(UriPartial.Authority);
             file.Targets.BrowserCredentialRef = string.IsNullOrWhiteSpace(browserCredentialRef) ? null : browserCredentialRef.Trim();
+            file.Targets.LoginEmailRef = string.IsNullOrWhiteSpace(loginEmailRef) ? null : loginEmailRef.Trim();
+            file.Targets.LoginPasswordRef = string.IsNullOrWhiteSpace(loginPasswordRef) ? null : loginPasswordRef.Trim();
             file.Capacity ??= new EnvironmentCapacityFile();
             file.Capacity.BrowserRead = readCapacity;
             file.Capacity.BrowserWrite = writeCapacity;

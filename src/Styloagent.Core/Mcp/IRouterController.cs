@@ -24,7 +24,8 @@ public interface IRouterController
     /// <summary>Create a displayable environment definition. Control-plane owner only.</summary>
     Task<string> RegisterEnvironmentAsync(string caller, string id, string displayName, string classification);
     Task<string> ConfigureBrowserEnvironmentAsync(string caller, string environment, string webOrigin,
-        string? browserCredentialRef, int readCapacity, int writeCapacity);
+        string? browserCredentialRef, int readCapacity, int writeCapacity,
+        string? loginEmailRef = null, string? loginPasswordRef = null);
 
     /// <summary>Immediately assign an environment to an agent. Control-plane owner only.</summary>
     Task<string> AssignEnvironmentAsync(string caller, string environment, string owner, string reason);

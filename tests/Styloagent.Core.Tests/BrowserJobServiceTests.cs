@@ -22,6 +22,8 @@ public sealed class BrowserJobServiceTests : IDisposable
             "targets:\n" +
             "  webOrigin: https://staging.example.test\n" +
             "  browserCredentialRef: X-SB-Api-Key=keychain://styloagent/staging-e2e\n" +
+            "  loginEmailRef: keychain://staging-email\n" +
+            "  loginPasswordRef: env:STAGING_PASSWORD\n" +
             "capacity:\n" +
             "  browserRead: 2\n" +
             "  browserWrite: 1\n");
@@ -116,6 +118,26 @@ public sealed class BrowserJobServiceTests : IDisposable
         Assert.NotNull(accepted.Login);
         Assert.Equal("keychain://staging-email", accepted.Login.EmailRef);
         Assert.Equal("env:STAGING_PASSWORD", accepted.Login.PasswordRef);
+    }
+
+    [Fact]
+    public void Login_step_refs_must_be_the_environment_approved_sources_exactly()
+    {
+        var service = new BrowserJobService(Environments, Browser);
+        Assert.False(service.Request("test-", "staging", "test", "login", "/", null, false, null, T(1),
+            new LoginStep("keychain://other-email", "env:STAGING_PASSWORD")).Success);
+        Assert.False(service.Request("test-", "staging", "test", "login", "/", null, false, null, T(2),
+            new LoginStep("keychain://staging-email", "keychain://staging-password")).Success);
+
+        // An environment without configured login refs rejects any login step.
+        File.WriteAllText(Path.Combine(Environments, "definitions", "nolocalogin.yaml"),
+            "id: nologin\ndisplayName: No Login\nowner: overview-\n" +
+            "targets:\n  webOrigin: https://nologin.example.test\n");
+        Assert.False(service.Request("test-", "nologin", "test", "login", "/", null, false, null, T(3),
+            new LoginStep("keychain://staging-email", "env:STAGING_PASSWORD")).Success);
+        Assert.Equal("login step is not approved for this environment",
+            service.Request("test-", "nologin", "test", "login", "/", null, false, null, T(4),
+                new LoginStep("keychain://staging-email", "env:STAGING_PASSWORD")).Message);
     }
 
     [Fact]

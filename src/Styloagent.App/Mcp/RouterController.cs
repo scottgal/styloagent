@@ -136,7 +136,8 @@ public sealed class RouterController : IRouterController
     }
 
     public Task<string> ConfigureBrowserEnvironmentAsync(string caller, string environment, string webOrigin,
-        string? browserCredentialRef, int readCapacity, int writeCapacity)
+        string? browserCredentialRef, int readCapacity, int writeCapacity,
+        string? loginEmailRef = null, string? loginPasswordRef = null)
     {
         var root = _vm.EnvironmentsRootOrNull;
         if (root is null) return Task.FromResult("no active project");
@@ -144,7 +145,7 @@ public sealed class RouterController : IRouterController
         if (caller != controlOwner)
             return Task.FromResult($"denied: {controlOwner} owns environment policy");
         return Task.FromResult(EnvironmentRegistry.ConfigureBrowser(root, environment, webOrigin,
-            browserCredentialRef, readCapacity, writeCapacity).Message);
+            browserCredentialRef, readCapacity, writeCapacity, loginEmailRef, loginPasswordRef).Message);
     }
 
     public Task<string> AssignEnvironmentAsync(string caller, string environment, string owner, string reason)

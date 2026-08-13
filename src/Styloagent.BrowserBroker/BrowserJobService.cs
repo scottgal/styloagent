@@ -42,6 +42,11 @@ public sealed class BrowserJobService
                 return BrowserOperationResult.Fail("credential_ref is not approved for this environment");
             if (!ValidLoginStep(login))
                 return BrowserOperationResult.Fail("login requires email and password references of the form env:VAR|keychain://ITEM|secret://NAME, and a submit selector without credential material");
+            // Login refs must be the environment-approved sources, exactly — a caller-supplied ref
+            // could otherwise point at arbitrary host secrets and have them rendered into a page.
+            if (login is not null && (login.EmailRef != environment.Definition.Targets.LoginEmailRef ||
+                login.PasswordRef != environment.Definition.Targets.LoginPasswordRef))
+                return BrowserOperationResult.Fail("login step is not approved for this environment");
             var job = _store.Create(caller, environment.Definition.Id, parsedMode, purpose.Trim(), relativePath,
                 string.IsNullOrWhiteSpace(selector) ? null : selector.Trim(), fullPage,
                 string.IsNullOrWhiteSpace(credentialRef) ? null : credentialRef.Trim(), now, login);

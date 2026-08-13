@@ -1096,9 +1096,16 @@ public sealed partial class TerminalControl : UserControl
             if (cols != _terminal.Cols || rows != _terminal.Rows)
             {
                 _terminal.Resize(cols, rows);
-                _session?.Resize(cols, rows);
                 RebuildRows();
             }
+
+            // The PTY's winsize is tracked SEPARATELY from the engine grid, and must be asserted even when
+            // the engine is already the right size. The view lays out (resizing the engine) while _session
+            // is still null, because a session is spawned at the seeded 80x24 grid before its pane attaches;
+            // by attach time the engine matches the pane, so a guarded resize would skip — leaving the child
+            // at 80x24 forever. A TUI that reads its size from the winsize (kilo/opencode) then paints only
+            // the top ~24 rows. Re-asserting an unchanged winsize is a cheap no-op for the child.
+            _session?.Resize(cols, rows);
         }
 
         // Re-pin to the tail AFTER layout absorbs the new extent/viewport (Loaded runs post-layout, same as the

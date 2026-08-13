@@ -29,8 +29,10 @@ public static class McpConfig
         return JsonSerializer.Serialize(config, IndentedJson);
     }
 
+    // --strict-mcp-config: without it every launched agent also starts its own stdio copy of the
+    // operator's plugin MCP servers, costing ~8 node processes and ~500MB of RSS per agent.
     public static IReadOnlyList<string> Args(string prefix, Uri url, string token)
-        => ["--mcp-config", BuildJson(prefix, url, token)];
+        => ["--mcp-config", BuildJson(prefix, url, token), "--strict-mcp-config"];
 
     public static IReadOnlyList<string> CodexArgs(string prefix, Uri url, string token) =>
     [

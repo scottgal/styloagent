@@ -70,6 +70,13 @@ public class StyloagentMcpServerTests
     }
 
     [Fact]
+    public void McpConfig_args_are_strict_so_agents_do_not_inherit_plugin_mcp_servers()
+    {
+        var args = McpConfig.Args("foss-", new Uri("http://127.0.0.1:5000/mcp"), "tok");
+        Assert.Contains("--strict-mcp-config", args);
+    }
+
+    [Fact]
     public void McpConfig_codex_args_use_config_tables_and_headers()
     {
         var args = McpConfig.CodexArgs("codex-", new Uri("http://127.0.0.1:5000/mcp"), "tok");

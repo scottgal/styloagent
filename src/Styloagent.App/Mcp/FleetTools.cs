@@ -354,6 +354,19 @@ public sealed class FleetTools
         return await _controller.CaptureScreenshotAsync(string.IsNullOrWhiteSpace(target) ? null : target);
     }
 
+    [McpServerTool, Description("Look at an image and answer a question about it in words — vision for agents whose own model cannot see (kilo, claude-deepseek). 'image_path' is an absolute path to a PNG/JPEG, typically one you just produced with screenshot or browser_artifacts. 'question' is what you need to know about it; be specific ('does the dashboard show a Cost column, and what is the top row's value?' beats 'describe this'), and say what shape of answer you want. Returns the description as text. Use it to verify UI work you cannot see, read a chart or dashboard, or check a rendered page actually looks right.")]
+    [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
+    public async Task<string> interpret_image(string image_path, string question)
+    {
+        var ctx = _http.HttpContext;
+        if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
+        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
+        if (string.IsNullOrWhiteSpace(image_path)) return "rejected: image_path is required";
+        if (string.IsNullOrWhiteSpace(question)) return "rejected: question is required";
+
+        return await Styloagent.Core.Vision.VisionInterpreter.InterpretAsync(image_path, question);
+    }
+
     [McpServerTool, Description("Signal you have finished your work in your worktree. Styloagent will guard-clean, run the project's tests, merge your branch to main and remove the worktree — or, on failure, keep your worktree and file an issue. Only call when your branch is committed and the work is complete.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public async Task<string> wrap_up()

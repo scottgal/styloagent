@@ -13,6 +13,9 @@ public sealed class AgentSession
     private readonly AgentRuntimeProfile _runtime;
     private IPtySession? _pty;
 
+    /// <summary>Completes when the child emits its first output — see <see cref="InjectBootTimeout"/>.</summary>
+    private readonly TaskCompletionSource _firstPaint = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     // Enter in a terminal TUI is carriage-return (0x0D), NOT line-feed (0x0A). Claude Code's input
     // box treats a bare "\n" as "insert a newline in the buffer" — so the prompt is typed but never
     // submitted, leaving stray text in the window (and blocking auto-rehydration). "\r" submits.
@@ -24,6 +27,20 @@ public sealed class AgentSession
     // (the FakeLauncher never runs a real claude), so the suite stays fast. Set once by the app at startup.
     public static TimeSpan InjectSettleDelay { get; set; } = TimeSpan.Zero;
     public static TimeSpan InjectEnterRetryDelay { get; set; } = TimeSpan.Zero;
+
+    // How long to wait for the child's TUI to paint its first frame BEFORE typing the prompt.
+    //
+    // The settle/retry delays above only sit BETWEEN the text and the Enter — the text itself went out
+    // the instant the PTY spawned. Verified against kilo 7.4.20 with an A/B on a real pty: typing at
+    // spawn loses the prompt entirely (the still-initialising TUI discards the bytes, so the later Enter
+    // submits an empty box and the agent sits idle having "never got its initial prompt"), while typing
+    // after the first paint submits and the model answers. The glyphs still echo on screen either way,
+    // which is why this looked like it was working. Claude's input box tolerates the early write, so
+    // only kilo ever showed the symptom.
+    //
+    // Zero (the default) disables the wait so the suite stays fast against fakes that never paint; the
+    // app sets it at startup, alongside the two delays above.
+    public static TimeSpan InjectBootTimeout { get; set; } = TimeSpan.Zero;
 
     // The PTY must spawn at ~the terminal's real grid, or claude draws its banner at one width and we
     // resize to another — reflowing the banner into wrapped garbage. We can't know the exact size before
@@ -83,7 +100,10 @@ public sealed class AgentSession
         var promptMode = _runtime.SupportsInitialPromptArgument ? "passing prompt as CLI argument" : "injecting prompt";
         SpawnDiag.Log($"AgentSession.SpawnAsync launched prefix={_manifest.Prefix}; {promptMode} ({launchPrompt?.Length ?? 0} chars, settle={InjectSettleDelay.TotalMilliseconds}ms retry={InjectEnterRetryDelay.TotalMilliseconds}ms)");
         if (!string.IsNullOrEmpty(launchPrompt) && !_runtime.SupportsInitialPromptArgument)
+        {
+            await WaitForFirstPaintAsync(ct);
             await InjectPromptAsync(_pty, launchPrompt ?? string.Empty, ct);
+        }
         CurrentPty = _pty;
         State = SessionState.Live;
         SpawnDiag.Log($"AgentSession.SpawnAsync DONE prefix={_manifest.Prefix} State=Live");
@@ -95,6 +115,24 @@ public sealed class AgentSession
     /// separate write. Interior newlines in a multi-line prompt stay as buffer content; only the
     /// trailing <see cref="Submit"/> (0x0D) submits — so nothing is left unsent in the input box.
     /// </summary>
+    /// <summary>
+    /// Waits for the child to emit its first output — the TUI's first frame — so the prompt is typed into
+    /// a terminal that is actually listening. Bounded by <see cref="InjectBootTimeout"/>; on timeout we
+    /// type anyway rather than strand the agent with no prompt at all.
+    /// </summary>
+    private async Task WaitForFirstPaintAsync(CancellationToken ct)
+    {
+        if (InjectBootTimeout <= TimeSpan.Zero) return;
+        try
+        {
+            await _firstPaint.Task.WaitAsync(InjectBootTimeout, ct).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            SpawnDiag.Log($"AgentSession first-paint wait timed out prefix={_manifest.Prefix} after {InjectBootTimeout.TotalMilliseconds}ms — typing prompt anyway");
+        }
+    }
+
     private static async Task InjectPromptAsync(IPtySession pty, string prompt, CancellationToken ct)
     {
         await pty.WriteAsync(prompt, ct);
@@ -169,7 +207,12 @@ public sealed class AgentSession
         PtyStarted?.Invoke(_pty);
     }
 
-    private void OnOutput(string chunk) => Output?.Invoke(chunk);
+    private void OnOutput(string chunk)
+    {
+        // First byte from the child means its TUI has started painting and is listening for input.
+        _firstPaint.TrySetResult();
+        Output?.Invoke(chunk);
+    }
 
     private IReadOnlyList<string> ArgsForPrompt(string prompt)
     {

@@ -239,4 +239,72 @@ public class AgentSessionTests
         Assert.NotNull(s.CurrentPty);
         Assert.Same(originalPty, s.CurrentPty);
     }
+
+    /// <summary>
+    /// A PTY whose child paints its TUI only after a delay, and which records whether any input
+    /// arrived before that first paint.
+    /// </summary>
+    private sealed class BootingPty : IPtySession
+    {
+        public List<string> Writes { get; } = new();
+        public bool SawWriteBeforeFirstPaint { get; private set; }
+        public bool Painted { get; private set; }
+        public event Action<string>? Output;
+#pragma warning disable CS0067
+        public event Action? Exited;
+#pragma warning restore CS0067
+        public bool IsIdle => true;
+        public void Resize(int cols, int rows) { }
+
+        /// <summary>Simulates the child's TUI producing its first frame.</summary>
+        public void Paint() { Painted = true; Output?.Invoke("[2J kilo ready "); }
+
+        public ValueTask WriteAsync(string text, CancellationToken ct = default)
+        {
+            if (!Painted) SawWriteBeforeFirstPaint = true;
+            Writes.Add(text);
+            return ValueTask.CompletedTask;
+        }
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class BootingLauncher : IPtyLauncher
+    {
+        public BootingPty Pty { get; } = new();
+        public Task<IPtySession> SpawnAsync(PtySpawnOptions o, CancellationToken ct = default)
+            => Task.FromResult<IPtySession>(Pty);
+    }
+
+    /// <summary>
+    /// Verified against kilo 7.4.20: typing the prompt the instant the PTY spawns loses it entirely —
+    /// the TUI is still initialising, discards the bytes, and the later Enter submits an empty box, so
+    /// the agent sits idle forever having "never got its initial prompt". Typing after the first paint
+    /// submits and the model answers. So the prompt must not be written before the child has painted.
+    /// </summary>
+    [Fact]
+    public async Task Prompt_is_not_typed_before_the_child_tui_has_painted()
+    {
+        var launcher = new BootingLauncher();
+        var entry = Entry() with { Runtime = AgentRuntimeKind.Kilo };
+        var s = new AgentSession(entry, launcher, new FakeWatcher());
+
+        AgentSession.InjectBootTimeout = TimeSpan.FromSeconds(5);
+        try
+        {
+            var spawn = s.SpawnAsync("LAUNCH PROMPT");
+            // The child is still booting: let the spawn path run, then paint.
+            await Task.Delay(150);
+            launcher.Pty.Paint();
+            await spawn;
+        }
+        finally
+        {
+            AgentSession.InjectBootTimeout = TimeSpan.Zero;
+        }
+
+        Assert.Contains(launcher.Pty.Writes, w => w.Contains("LAUNCH PROMPT"));
+        Assert.False(launcher.Pty.SawWriteBeforeFirstPaint,
+            "the prompt was typed before the TUI painted — kilo discards those bytes and the agent " +
+            "never receives its initial prompt");
+    }
 }

@@ -74,6 +74,8 @@ public class KiloRealTuiTests
                 // mirror production here or the prompt's Enter is dropped by kilo's still-booting TUI.
                 AgentSession.InjectSettleDelay = TimeSpan.FromMilliseconds(1500);
                 AgentSession.InjectEnterRetryDelay = TimeSpan.FromMilliseconds(1000);
+                // kilo discards input typed before its TUI paints, so wait for the first frame.
+                AgentSession.InjectBootTimeout = TimeSpan.FromSeconds(20);
 
                 vm = await MainWindowViewModel.InitializeAsync(
                     cfg.ChannelRoot, new PortaPtyLauncher(), new FakeWatcher(),
@@ -126,6 +128,11 @@ public class KiloRealTuiTests
             }
             finally
             {
+                // These are process-wide statics: leaving them set would make every later test in this
+                // assembly wait on fakes that never paint.
+                AgentSession.InjectSettleDelay = TimeSpan.Zero;
+                AgentSession.InjectEnterRetryDelay = TimeSpan.Zero;
+                AgentSession.InjectBootTimeout = TimeSpan.Zero;
                 window?.Close();
                 vm?.Dispose();
                 try { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); } catch { }

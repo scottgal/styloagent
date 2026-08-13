@@ -30,6 +30,10 @@ public partial class App : Application
             // agent sits idle. (Zero in tests, where no real claude runs.)
             Styloagent.Core.Sessions.AgentSession.InjectSettleDelay = TimeSpan.FromMilliseconds(2500);
             Styloagent.Core.Sessions.AgentSession.InjectEnterRetryDelay = TimeSpan.FromMilliseconds(2000);
+            // And wait for the child's FIRST FRAME before typing at all: the delays above only sit between
+            // the text and the Enter, so the text itself used to go out the instant the PTY spawned. kilo
+            // discards input typed at that point, which is why a kilo agent "never got its initial prompt".
+            Styloagent.Core.Sessions.AgentSession.InjectBootTimeout = TimeSpan.FromSeconds(20);
 
             // Same story for the message-injection fallback: one ESC doesn't reliably break a live claude
             // turn (pause between presses so it can actually die before we re-check idle), and an Enter

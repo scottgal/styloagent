@@ -14,6 +14,11 @@ public sealed class PlaywrightBrowserRunnerTests : IAsyncDisposable
     private CancellationTokenSource? _serverCts;
     private Task? _serverTask;
     private volatile string? _seenApiKey;
+    private readonly TcpListener _listenerB = new(IPAddress.Loopback, 0);
+    private CancellationTokenSource? _serverBCts;
+    private Task? _serverBTask;
+    private int _hitsB;
+    private volatile string? _seenApiKeyB;
 
     private void StartServer()
     {
@@ -22,7 +27,16 @@ public sealed class PlaywrightBrowserRunnerTests : IAsyncDisposable
         _serverTask = ServeAsync(_serverCts.Token);
     }
 
+    /// <summary>Second origin (different port) used to prove cross-origin routing rules.</summary>
+    private void StartServerB()
+    {
+        _listenerB.Start();
+        _serverBCts = new CancellationTokenSource();
+        _serverBTask = ServeBAsync(_serverBCts.Token);
+    }
+
     private string LocalOrigin => $"http://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}";
+    private string ForeignOrigin => $"http://127.0.0.1:{((IPEndPoint)_listenerB.LocalEndpoint).Port}";
 
     private void WriteEnvironment(string? credentialRef = null)
     {
@@ -237,6 +251,75 @@ public sealed class PlaywrightBrowserRunnerTests : IAsyncDisposable
         }
     }
 
+    private async Task ServeBAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            TcpClient client;
+            try { client = await _listenerB.AcceptTcpClientAsync(ct); }
+            catch (OperationCanceledException) { return; }
+            _ = Task.Run(async () =>
+            {
+                using (client)
+                {
+                    Interlocked.Increment(ref _hitsB);
+                    var stream = client.GetStream();
+                    using var reader = new StreamReader(stream, Encoding.ASCII, false, 1024, leaveOpen: true);
+                    while (await reader.ReadLineAsync(ct) is { } headerLine)
+                    {
+                        if (headerLine.Length == 0) break;
+                        if (headerLine.StartsWith("X-SB-Api-Key:", StringComparison.OrdinalIgnoreCase))
+                            _seenApiKeyB = headerLine[(headerLine.IndexOf(':') + 1)..].Trim();
+                    }
+                    var body = "<!doctype html><html><body><h1>Foreign origin</h1></body></html>";
+                    var response = Encoding.UTF8.GetBytes(
+                        $"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {Encoding.UTF8.GetByteCount(body)}\r\nConnection: close\r\n\r\n{body}");
+                    await stream.WriteAsync(response, ct);
+                }
+            }, ct);
+        }
+    }
+
+    [Fact]
+    public async Task Foreign_main_frame_navigation_is_allowed_but_never_carries_injected_headers()
+    {
+        StartServer();
+        StartServerB();
+        _getBody = $"<!doctype html><html><head><meta http-equiv=\"refresh\" content=\"0; url={ForeignOrigin}/\"></head><body></body></html>";
+        WriteEnvironment("X-SB-Api-Key=keychain://staging-debug-key");
+        var browser = Path.Combine(_root, "browser");
+        var job = Job("oidc-hop-run", "X-SB-Api-Key=keychain://staging-debug-key", DateTimeOffset.UtcNow);
+        var runner = new PlaywrightBrowserRunner(Path.Combine(_root, "environments"), browser,
+            new EnvironmentBrowserCredentialProvider(_ => "test-key-value-123"));
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var result = await runner.RunAsync(job, timeout.Token);
+
+        // The navigation reached the foreign origin (an OIDC-style hop is no longer aborted)...
+        Assert.True(result.Success, result.Failure);
+        Assert.True(_hitsB >= 1, "foreign-origin navigation was aborted");
+        // ...but the injected API key never left the environment's own origin.
+        Assert.Null(_seenApiKeyB);
+    }
+
+    [Fact]
+    public async Task Foreign_subresources_stay_aborted_by_the_origin_gate()
+    {
+        StartServer();
+        StartServerB();
+        _getBody = $"<!doctype html><html><body><img src=\"{ForeignOrigin}/track.png\"></body></html>";
+        WriteEnvironment();
+        var browser = Path.Combine(_root, "browser");
+        var job = Job("subresource-gate-run", null, DateTimeOffset.UtcNow);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var result = await new PlaywrightBrowserRunner(Path.Combine(_root, "environments"), browser)
+            .RunAsync(job, timeout.Token);
+
+        Assert.True(result.Success, result.Failure);
+        Assert.Equal(0, Volatile.Read(ref _hitsB));
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_serverCts is not null) await _serverCts.CancelAsync();
@@ -244,6 +327,11 @@ public sealed class PlaywrightBrowserRunnerTests : IAsyncDisposable
         if (_serverTask is not null)
             try { await _serverTask; } catch (OperationCanceledException) { }
         _serverCts?.Dispose();
+        if (_serverBCts is not null) await _serverBCts.CancelAsync();
+        _listenerB.Stop();
+        if (_serverBTask is not null)
+            try { await _serverBTask; } catch (OperationCanceledException) { }
+        _serverBCts?.Dispose();
         if (Directory.Exists(_root)) Directory.Delete(_root, true);
     }
 }

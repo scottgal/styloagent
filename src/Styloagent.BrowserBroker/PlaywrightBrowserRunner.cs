@@ -86,24 +86,54 @@ public sealed class PlaywrightBrowserRunner
                 TimezoneId = "Europe/London",
             }).WaitAsync(ct).ConfigureAwait(false);
             context.SetDefaultTimeout(15_000);
+            // The injected credential headers attach to every context request, so a request bound
+            // for a foreign origin must never carry them.
+            var injectedHeaderNames = headers?.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
             await context.RouteAsync("**/*", async route =>
             {
                 var request = route.Request;
-                var allowedOrigin = Uri.TryCreate(request.Url, UriKind.Absolute, out var requestUri) &&
+                var sameOrigin = Uri.TryCreate(request.Url, UriKind.Absolute, out var requestUri) &&
                     allowedOrigins.Any(allowed => SameOrigin(allowed, requestUri));
                 var allowedMethod = job.Mode != BrowserRunMode.Observe ||
                     request.Method is "GET" or "HEAD" or "OPTIONS";
-                if (!allowedOrigin || !allowedMethod) await route.AbortAsync().ConfigureAwait(false);
-                else await route.ContinueAsync().ConfigureAwait(false);
+                if (!allowedMethod) { await route.AbortAsync().ConfigureAwait(false); return; }
+                if (sameOrigin) { await route.ContinueAsync().ConfigureAwait(false); return; }
+                // Foreign-origin main-frame navigation — OIDC login hop to an identity provider, a
+                // 302 auth callback — is how the page itself browses, so it is allowed through, but
+                // with the injected credential headers stripped so they cannot leak off-origin.
+                // Foreign API/subresource calls stay aborted by the origin gate.
+                if (request.IsNavigationRequest)
+                {
+                    if (injectedHeaderNames is { Count: > 0 })
+                    {
+                        var forwarded = new Dictionary<string, string>(request.Headers,
+                            StringComparer.OrdinalIgnoreCase);
+                        foreach (var name in injectedHeaderNames) forwarded.Remove(name);
+                        await route.ContinueAsync(new RouteContinueOptions { Headers = forwarded })
+                            .ConfigureAwait(false);
+                        return;
+                    }
+                    await route.ContinueAsync().ConfigureAwait(false);
+                    return;
+                }
+                await route.AbortAsync().ConfigureAwait(false);
             }).ConfigureAwait(false);
 
             var page = await context.NewPageAsync().WaitAsync(ct).ConfigureAwait(false);
             var target = new Uri(origin, job.RelativePath);
             await page.GotoAsync(target.AbsoluteUri, new PageGotoOptions
             {
-                WaitUntil = WaitUntilState.NetworkIdle,
+                WaitUntil = WaitUntilState.Load,
                 Timeout = 30_000,
             }).WaitAsync(ct).ConfigureAwait(false);
+            // Pages with live connections (SignalR hubs, SSE) never reach network idle; settle
+            // best-effort with a bounded window instead of letting the run hang until timeout.
+            try
+            {
+                await page.WaitForLoadStateAsync(LoadState.NetworkIdle,
+                    new PageWaitForLoadStateOptions { Timeout = 5_000 }).WaitAsync(ct).ConfigureAwait(false);
+            }
+            catch (TimeoutException) { /* live-connection page — proceed with what has loaded */ }
 
             // A failed login step still screenshots what is visible — the operator needs the
             // what-you-see evidence — but the run itself is marked failed.

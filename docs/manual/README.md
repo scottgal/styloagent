@@ -327,6 +327,17 @@ recorded; entries whose source is missing at run time are skipped, and if nothin
 fails closed rather than going out keyless. Production mutation also fails closed until an
 operator-approval capability exists.
 
+### Browser origin gate
+
+Every browser request must belong to one of the environment's allowed origins: `webOrigin`, `apiOrigin`,
+and the optional `allowed_origins` list configured via `configure_browser_environment` (comma-separated
+http(s) origins). That includes main-frame navigations — an OIDC login hop to an identity provider such
+as Keycloak must list the IdP origin in `allowed_origins`, or the navigation is aborted like any other
+foreign request. The gate is strict on purpose: without an explicit allowance, a page can never drive
+the browser at unapproved origins (cloud metadata, loopback, internal hosts) and screenshot the result.
+Approved hop origins receive requests with the injected credential headers intact — they are trusted by
+operator configuration.
+
 ### Login step
 
 A browser run can optionally log in before the screenshot: `request_browser_run` accepts

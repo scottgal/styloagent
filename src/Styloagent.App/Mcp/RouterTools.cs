@@ -82,11 +82,11 @@ public sealed class RouterTools
             .RegisterEnvironmentAsync(caller, id, display_name, classification).ConfigureAwait(false);
     }
 
-    [McpServerTool, Description("Configure an environment's allow-listed Playwright origin, approved credential reference (comma-separated HeaderName=env:VAR|keychain://ITEM|secret://NAME entries), approved login email/password references (single env:VAR|keychain://ITEM|secret://NAME sources; login steps in requests must match these exactly), and read/write concurrency. Only the environment control owner may change this hard policy. Never pass a credential value.")]
+    [McpServerTool, Description("Configure an environment's allow-listed Playwright origin, approved credential reference (comma-separated HeaderName=env:VAR|keychain://ITEM|secret://NAME entries), approved login email/password references (single env:VAR|keychain://ITEM|secret://NAME sources; login steps in requests must match these exactly), optional comma-separated allowed_origins (http(s) hop origins such as the OIDC identity provider — requests to them pass the origin gate; everything else aborts), and read/write concurrency. Only the environment control owner may change this hard policy. Never pass a credential value.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public async Task<string> configure_browser_environment(string environment, string web_origin,
         string browser_credential_ref, int read_capacity, int write_capacity,
-        string login_email_ref = "", string login_password_ref = "")
+        string login_email_ref = "", string login_password_ref = "", string allowed_origins = "")
     {
         var caller = AuthorizedCaller();
         return caller is null ? "unauthorized" : await _controller.ConfigureBrowserEnvironmentAsync(
@@ -94,7 +94,8 @@ public sealed class RouterTools
             string.IsNullOrWhiteSpace(browser_credential_ref) ? null : browser_credential_ref,
             read_capacity, write_capacity,
             string.IsNullOrWhiteSpace(login_email_ref) ? null : login_email_ref,
-            string.IsNullOrWhiteSpace(login_password_ref) ? null : login_password_ref).ConfigureAwait(false);
+            string.IsNullOrWhiteSpace(login_password_ref) ? null : login_password_ref,
+            string.IsNullOrWhiteSpace(allowed_origins) ? null : allowed_origins).ConfigureAwait(false);
     }
 
     [McpServerTool, Description("Immediately assign an environment to one agent. Only the environment control owner (overview- by default) may do this.")]

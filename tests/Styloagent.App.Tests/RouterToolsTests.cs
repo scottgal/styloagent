@@ -17,7 +17,7 @@ public class RouterToolsTests
         public Task<string> LogAttemptAsync(string caller, string env, string account, bool ok) => Task.FromResult("logged");
         public Task<string> StatusAsync(string? env) => Task.FromResult("prod/deploy: held by foss-");
         public Task<string> RegisterEnvironmentAsync(string caller, string id, string displayName, string classification) => Task.FromResult("created");
-        public Task<string> ConfigureBrowserEnvironmentAsync(string caller, string environment, string webOrigin, string? browserCredentialRef, int readCapacity, int writeCapacity, string? loginEmailRef = null, string? loginPasswordRef = null) => Task.FromResult("configured");
+        public Task<string> ConfigureBrowserEnvironmentAsync(string caller, string environment, string webOrigin, string? browserCredentialRef, int readCapacity, int writeCapacity, string? loginEmailRef = null, string? loginPasswordRef = null, string? allowedOrigins = null) => Task.FromResult("configured");
         public Task<string> AssignEnvironmentAsync(string caller, string environment, string owner, string reason) => Task.FromResult("assigned");
         public Task<string> OfferEnvironmentAsync(string caller, string environment, string owner, string reason) => Task.FromResult("offered");
         public Task<string> AcceptEnvironmentAsync(string caller, string environment) => Task.FromResult("accepted");

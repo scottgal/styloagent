@@ -23,7 +23,8 @@ public sealed record EnvironmentTargets(
     string? CredentialRef,
     string? BrowserCredentialRef,
     string? LoginEmailRef = null,
-    string? LoginPasswordRef = null);
+    string? LoginPasswordRef = null,
+    IReadOnlyList<string>? AllowedOrigins = null);
 
 /// <summary>Deterministic concurrency limits advertised by an environment.</summary>
 public sealed record EnvironmentCapacity(int BrowserRead, int BrowserWrite, int Ssh, int Deploy);

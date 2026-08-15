@@ -38,15 +38,19 @@ public sealed class PlaywrightBrowserRunnerTests : IAsyncDisposable
     private string LocalOrigin => $"http://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}";
     private string ForeignOrigin => $"http://127.0.0.1:{((IPEndPoint)_listenerB.LocalEndpoint).Port}";
 
-    private void WriteEnvironment(string? credentialRef = null)
+    private void WriteEnvironment(string? credentialRef = null, string? allowedOrigins = null)
     {
         var environments = Path.Combine(_root, "environments");
         var browser = Path.Combine(_root, "browser");
         Directory.CreateDirectory(Path.Combine(environments, "definitions"));
         File.WriteAllText(Path.Combine(environments, "policy.yaml"), "controlOwner: overview-\n");
         var refLine = credentialRef is null ? "" : $"  browserCredentialRef: {credentialRef}\n";
+        var extraLine = allowedOrigins is null ? "" :
+            "  allowedOrigins:\n" + string.Join("",
+                allowedOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(origin => $"    - {origin}\n"));
         File.WriteAllText(Path.Combine(environments, "definitions", "local.yaml"),
-            $"id: local\ndisplayName: Local\nowner: overview-\ntargets:\n  webOrigin: {LocalOrigin}\n{refLine}");
+            $"id: local\ndisplayName: Local\nowner: overview-\ntargets:\n  webOrigin: {LocalOrigin}\n{refLine}{extraLine}");
     }
 
     private static BrowserJob Job(string id, string? credentialRef, DateTimeOffset now,
@@ -281,25 +285,44 @@ public sealed class PlaywrightBrowserRunnerTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Foreign_main_frame_navigation_is_allowed_but_never_carries_injected_headers()
+    public async Task Configured_hop_origin_allows_navigation_and_subresources()
     {
         StartServer();
         StartServerB();
-        _getBody = $"<!doctype html><html><head><meta http-equiv=\"refresh\" content=\"0; url={ForeignOrigin}/\"></head><body></body></html>";
-        WriteEnvironment("X-SB-Api-Key=keychain://staging-debug-key");
+        // An operator-configured hop origin (the OIDC IdP) passes the gate for navigations AND
+        // subresources — the IdP login page loads its own assets.
+        _getBody = $"<!doctype html><html><head><meta http-equiv=\"refresh\" content=\"0; url={ForeignOrigin}/\"></head><body><img src=\"{ForeignOrigin}/asset.png\"></body></html>";
+        WriteEnvironment("X-SB-Api-Key=keychain://staging-debug-key", allowedOrigins: ForeignOrigin);
         var browser = Path.Combine(_root, "browser");
-        var job = Job("oidc-hop-run", "X-SB-Api-Key=keychain://staging-debug-key", DateTimeOffset.UtcNow);
+        var job = Job("hop-allowed-run", "X-SB-Api-Key=keychain://staging-debug-key", DateTimeOffset.UtcNow);
         var runner = new PlaywrightBrowserRunner(Path.Combine(_root, "environments"), browser,
             new EnvironmentBrowserCredentialProvider(_ => "test-key-value-123"));
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var result = await runner.RunAsync(job, timeout.Token);
 
-        // The navigation reached the foreign origin (an OIDC-style hop is no longer aborted)...
         Assert.True(result.Success, result.Failure);
-        Assert.True(_hitsB >= 1, "foreign-origin navigation was aborted");
-        // ...but the injected API key never left the environment's own origin.
-        Assert.Null(_seenApiKeyB);
+        Assert.True(_hitsB >= 2, "configured hop origin did not receive navigation + subresource");
+        // An operator-approved hop origin keeps the injected credentials (it is trusted by config).
+        Assert.Equal("test-key-value-123", _seenApiKeyB);
+    }
+
+    [Fact]
+    public async Task Unconfigured_foreign_navigation_is_aborted_by_the_origin_gate()
+    {
+        StartServer();
+        StartServerB();
+        _getBody = $"<!doctype html><html><head><meta http-equiv=\"refresh\" content=\"0; url={ForeignOrigin}/\"></head><body></body></html>";
+        WriteEnvironment();
+        var browser = Path.Combine(_root, "browser");
+        var job = Job("hop-denied-run", null, DateTimeOffset.UtcNow);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var result = await new PlaywrightBrowserRunner(Path.Combine(_root, "environments"), browser)
+            .RunAsync(job, timeout.Token);
+
+        Assert.True(result.Success, result.Failure);
+        Assert.Equal(0, Volatile.Read(ref _hitsB));
     }
 
     [Fact]

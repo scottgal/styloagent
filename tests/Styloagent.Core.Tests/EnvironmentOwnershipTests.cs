@@ -5,6 +5,8 @@ namespace Styloagent.Core.Tests;
 
 public sealed class EnvironmentOwnershipTests : IDisposable
 {
+    private static readonly string[] ExpectedAllowedOrigins =
+        ["https://auth-staging.stylobot.net", "https://idp.other.example"];
     private readonly string _root = Path.Combine(Path.GetTempPath(), "env-" + Guid.NewGuid().ToString("N"));
 
     public EnvironmentOwnershipTests()
@@ -83,7 +85,12 @@ public sealed class EnvironmentOwnershipTests : IDisposable
             "X-SB-Api-Key=keychain://styloagent/staging", 3, 1).Success);
         Assert.True(EnvironmentRegistry.ConfigureBrowser(_root, "staging", "https://staging.example.test",
             "X-SB-Api-Key=env:STYLOBOT_API_KEY, X-Trace=secret://TRACE_ID", 3, 1,
-            "keychain://staging-email", "env:STAGING_PASSWORD").Success);
+            "keychain://staging-email", "env:STAGING_PASSWORD",
+            "https://auth-staging.stylobot.net, https://idp.other.example").Success);
+        Assert.False(EnvironmentRegistry.ConfigureBrowser(_root, "staging", "https://staging.example.test",
+            null, 2, 1, null, null, "https://user:pass@auth.example.test").Success);
+        Assert.False(EnvironmentRegistry.ConfigureBrowser(_root, "staging", "https://staging.example.test",
+            null, 2, 1, null, null, "not-an-origin").Success);
 
         var definition = Assert.Single(EnvironmentRegistry.Read(_root));
         Assert.Equal("https://staging.example.test", definition.Targets.WebOrigin);
@@ -91,6 +98,7 @@ public sealed class EnvironmentOwnershipTests : IDisposable
             definition.Targets.BrowserCredentialRef);
         Assert.Equal("keychain://staging-email", definition.Targets.LoginEmailRef);
         Assert.Equal("env:STAGING_PASSWORD", definition.Targets.LoginPasswordRef);
+        Assert.Equal(ExpectedAllowedOrigins, definition.Targets.AllowedOrigins);
         Assert.Equal(3, definition.Capacity.BrowserRead);
     }
 

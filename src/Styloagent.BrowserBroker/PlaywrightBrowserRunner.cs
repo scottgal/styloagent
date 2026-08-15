@@ -34,7 +34,10 @@ public sealed class PlaywrightBrowserRunner
         if (environment is null || !Uri.TryCreate(originText, UriKind.Absolute, out var origin) ||
             origin.Scheme is not ("http" or "https"))
             return BrowserRunResult.Failed("environment webOrigin is missing or invalid");
+        // WebOrigin + ApiOrigin + the operator-configured hop origins (e.g. the OIDC identity
+        // provider). The gate lets ONLY these origins through — for navigations and subresources.
         var allowedOrigins = new[] { environment.Definition.Targets.WebOrigin, environment.Definition.Targets.ApiOrigin }
+            .Concat(environment.Definition.Targets.AllowedOrigins ?? Array.Empty<string>())
             .Where(value => Uri.TryCreate(value, UriKind.Absolute, out _))
             .Select(value => new Uri(value!, UriKind.Absolute))
             .ToArray();
@@ -86,37 +89,20 @@ public sealed class PlaywrightBrowserRunner
                 TimezoneId = "Europe/London",
             }).WaitAsync(ct).ConfigureAwait(false);
             context.SetDefaultTimeout(15_000);
-            // The injected credential headers attach to every context request, so a request bound
-            // for a foreign origin must never carry them.
-            var injectedHeaderNames = headers?.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
             await context.RouteAsync("**/*", async route =>
             {
                 var request = route.Request;
-                var sameOrigin = Uri.TryCreate(request.Url, UriKind.Absolute, out var requestUri) &&
-                    allowedOrigins.Any(allowed => SameOrigin(allowed, requestUri));
+                var allowed = Uri.TryCreate(request.Url, UriKind.Absolute, out var requestUri) &&
+                    allowedOrigins.Any(allowedOrigin => SameOrigin(allowedOrigin, requestUri));
                 var allowedMethod = job.Mode != BrowserRunMode.Observe ||
                     request.Method is "GET" or "HEAD" or "OPTIONS";
-                if (!allowedMethod) { await route.AbortAsync().ConfigureAwait(false); return; }
-                if (sameOrigin) { await route.ContinueAsync().ConfigureAwait(false); return; }
-                // Foreign-origin main-frame navigation — OIDC login hop to an identity provider, a
-                // 302 auth callback — is how the page itself browses, so it is allowed through, but
-                // with the injected credential headers stripped so they cannot leak off-origin.
-                // Foreign API/subresource calls stay aborted by the origin gate.
-                if (request.IsNavigationRequest)
-                {
-                    if (injectedHeaderNames is { Count: > 0 })
-                    {
-                        var forwarded = new Dictionary<string, string>(request.Headers,
-                            StringComparer.OrdinalIgnoreCase);
-                        foreach (var name in injectedHeaderNames) forwarded.Remove(name);
-                        await route.ContinueAsync(new RouteContinueOptions { Headers = forwarded })
-                            .ConfigureAwait(false);
-                        return;
-                    }
-                    await route.ContinueAsync().ConfigureAwait(false);
-                    return;
-                }
-                await route.AbortAsync().ConfigureAwait(false);
+                // The origin gate is the whole policy: WebOrigin, ApiOrigin, and the configured hop
+                // origins (OIDC IdP etc.) pass — navigations and subresources alike, headers intact.
+                // Everything else aborts, including foreign main-frame navigations: a page must never
+                // be able to drive the browser at unapproved origins (cloud metadata, loopback,
+                // internal hosts) and screenshot the result.
+                if (!allowed || !allowedMethod) await route.AbortAsync().ConfigureAwait(false);
+                else await route.ContinueAsync().ConfigureAwait(false);
             }).ConfigureAwait(false);
 
             var page = await context.NewPageAsync().WaitAsync(ct).ConfigureAwait(false);

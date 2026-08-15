@@ -20,6 +20,7 @@ internal partial class EnvironmentTargetsFile
     public string? BrowserCredentialRef { get; set; }
     public string? LoginEmailRef { get; set; }
     public string? LoginPasswordRef { get; set; }
+    public List<string>? AllowedOrigins { get; set; }
 }
 
 [YamlObject]
@@ -94,7 +95,7 @@ public static class EnvironmentRegistry
                         string.IsNullOrWhiteSpace(f.Status) ? "available" : f.Status.Trim().ToLowerInvariant(),
                         new EnvironmentTargets(targets.WebOrigin, targets.ApiOrigin, targets.SshHost,
                             targets.SshAccount, targets.CredentialRef, targets.BrowserCredentialRef,
-                            targets.LoginEmailRef, targets.LoginPasswordRef),
+                            targets.LoginEmailRef, targets.LoginPasswordRef, targets.AllowedOrigins),
                         new EnvironmentCapacity(Positive(capacity.BrowserRead, 1), Positive(capacity.BrowserWrite, 1),
                             Positive(capacity.Ssh, 1), Positive(capacity.Deploy, 1))));
                 }
@@ -136,7 +137,7 @@ public static class EnvironmentRegistry
     /// <summary>Configures the non-secret browser target and capacity for an existing environment.</summary>
     public static EnvironmentOperationResult ConfigureBrowser(string root, string id, string webOrigin,
         string? browserCredentialRef, int readCapacity, int writeCapacity,
-        string? loginEmailRef = null, string? loginPasswordRef = null)
+        string? loginEmailRef = null, string? loginPasswordRef = null, string? allowedOrigins = null)
     {
         var normalized = NormalizeId(id);
         if (normalized is null) return EnvironmentOperationResult.Fail("invalid environment id");
@@ -147,6 +148,9 @@ public static class EnvironmentRegistry
             return EnvironmentOperationResult.Fail("browser_credential_ref must be a comma-separated list of HeaderName=env:VAR|keychain://ITEM|secret://NAME entries");
         if (!CredentialReference.IsValidSource(loginEmailRef) || !CredentialReference.IsValidSource(loginPasswordRef))
             return EnvironmentOperationResult.Fail("login_email_ref/login_password_ref must be env:VAR, keychain://ITEM, or secret://NAME sources");
+        var parsedAllowed = ParseAllowedOrigins(allowedOrigins);
+        if (parsedAllowed is null)
+            return EnvironmentOperationResult.Fail("allowed_origins must be a comma-separated list of http(s) origins without credentials, query, or fragment");
         if (readCapacity is < 1 or > 32 || writeCapacity is < 1 or > 8)
             return EnvironmentOperationResult.Fail("browser capacity is outside the allowed range (read 1-32, write 1-8)");
         try
@@ -160,6 +164,7 @@ public static class EnvironmentRegistry
             file.Targets.BrowserCredentialRef = string.IsNullOrWhiteSpace(browserCredentialRef) ? null : browserCredentialRef.Trim();
             file.Targets.LoginEmailRef = string.IsNullOrWhiteSpace(loginEmailRef) ? null : loginEmailRef.Trim();
             file.Targets.LoginPasswordRef = string.IsNullOrWhiteSpace(loginPasswordRef) ? null : loginPasswordRef.Trim();
+            file.Targets.AllowedOrigins = parsedAllowed;
             file.Capacity ??= new EnvironmentCapacityFile();
             file.Capacity.BrowserRead = readCapacity;
             file.Capacity.BrowserWrite = writeCapacity;
@@ -169,6 +174,24 @@ public static class EnvironmentRegistry
             return EnvironmentOperationResult.Ok($"configured Playwright routing for '{normalized}' at {file.Targets.WebOrigin}");
         }
         catch (Exception ex) { return EnvironmentOperationResult.Fail($"could not configure browser routing: {ex.Message}"); }
+    }
+
+    /// <summary>
+    /// Parses a comma-separated allow-list of http(s) origins. Returns null when any entry is invalid;
+    /// null/empty input yields an empty list (no extra origins allowed).
+    /// </summary>
+    private static List<string>? ParseAllowedOrigins(string? allowedOrigins)
+    {
+        var result = new List<string>();
+        if (string.IsNullOrWhiteSpace(allowedOrigins)) return result;
+        foreach (var raw in allowedOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https") ||
+                !string.IsNullOrEmpty(uri.UserInfo) || uri.Query.Length > 0 || uri.Fragment.Length > 0)
+                return null;
+            result.Add(uri.GetLeftPart(UriPartial.Authority));
+        }
+        return result;
     }
 
     internal static string NormalizeOwner(string? owner, string fallback)

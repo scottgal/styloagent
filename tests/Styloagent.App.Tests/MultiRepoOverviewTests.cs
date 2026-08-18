@@ -166,16 +166,28 @@ public class MultiRepoOverviewTests
             var pane = vm.Panes[0];
             Assert.Equal(SessionState.Live, pane.State);   // FakeLauncher + zero inject-delays spawn synchronously
 
-            pane.ContextFraction = 0.92;
+            void SetUsage(double usedFraction)
+            {
+                const long limit = 1000;
+                var used = (long)(limit * usedFraction);
+                var key = ContextSnapshotKey.Create("/repo", pane.Prefix, "session");
+                pane.ContextSnapshot = new ContextTelemetrySnapshot(key, pane.Runtime, null, null,
+                    limit, used, limit - used, 1 - usedFraction,
+                    ContextPressurePolicy.For(usedFraction), DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+                    ContextTelemetrySource.CodexTranscript, ContextTelemetryConfidence.Observed);
+                pane.ContextFraction = usedFraction;
+            }
+
+            SetUsage(0.92);
             vm.CheckContextDilution();
             vm.CheckContextDilution();                     // must not double-nudge
 
             Assert.Equal(1, vm.Timeline.Entries.Count(e => e.Description.Contains("dehydrating")));
 
             // Drops well below the line → re-arms, so a later fill nudges again.
-            pane.ContextFraction = 0.5;
+            SetUsage(0.5);
             vm.CheckContextDilution();
-            pane.ContextFraction = 0.92;
+            SetUsage(0.92);
             vm.CheckContextDilution();
             Assert.Equal(2, vm.Timeline.Entries.Count(e => e.Description.Contains("dehydrating")));
         }

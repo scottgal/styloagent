@@ -1,5 +1,6 @@
 using Styloagent.App.ViewModels;
 using Styloagent.Core.Model;
+using Styloagent.Core.Sessions;
 using Styloagent.Core.Workspace;
 using Xunit;
 
@@ -108,6 +109,48 @@ public class MultiRepoOverviewTests
             var beta = vm.BuildFleetStatus().Agents.FirstOrDefault(a => a.Prefix == "beta-");
             Assert.NotNull(beta);
             Assert.Equal("beta", beta!.Repo);
+        }
+        finally { if (Directory.Exists(channel)) Directory.Delete(channel, recursive: true); }
+    }
+
+    [Fact]
+    public async Task FleetStatus_projects_unavailable_snapshot_without_zero_telemetry()
+    {
+        var channel = MainWindowViewModelTests.MakeTwoAgentChannel();
+        try
+        {
+            var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
+            var status = Assert.Single(vm.BuildFleetStatus().Agents);
+            Assert.False(status.IsAvailable);
+            Assert.Null(status.RemainingTokens);
+            Assert.Null(status.LimitTokens);
+            Assert.Null(status.UsedTokens);
+            Assert.Equal("unavailable", status.Confidence);
+            Assert.NotEmpty(status.ConfiguredModel);
+        }
+        finally { if (Directory.Exists(channel)) Directory.Delete(channel, recursive: true); }
+    }
+
+    [Fact]
+    public async Task FleetStatus_projects_observed_snapshot_separately_from_configured_model()
+    {
+        var channel = MainWindowViewModelTests.MakeTwoAgentChannel();
+        try
+        {
+            var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
+            var pane = vm.Panes[0];
+            var key = ContextSnapshotKey.Create("/repo-a", pane.Prefix, "session-a");
+            pane.ContextSnapshot = new ContextTelemetrySnapshot(key, AgentRuntimeKind.Codex,
+                "gpt-5.6-luna", "medium", 1000, 0, 1000, 1, ContextPressure.Normal,
+                DateTimeOffset.UtcNow, ContextTelemetrySource.CodexTranscript, ContextTelemetryConfidence.Observed);
+
+            var status = Assert.Single(vm.BuildFleetStatus().Agents);
+            Assert.True(status.IsAvailable);
+            Assert.Equal(0, status.UsedTokens);
+            Assert.Equal(1000, status.RemainingTokens);
+            Assert.Equal("gpt-5.6-luna", status.Model);
+            Assert.Equal("session-a", status.SessionId);
+            Assert.NotEqual(status.Model, status.ConfiguredModel);
         }
         finally { if (Directory.Exists(channel)) Directory.Delete(channel, recursive: true); }
     }

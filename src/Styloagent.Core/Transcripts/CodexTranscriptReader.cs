@@ -84,11 +84,11 @@ public static class CodexTranscriptReader
                 || last.ValueKind != JsonValueKind.Object)
                 return false;
 
-            var used = Num(last, "input_tokens");
+            if (!TryNum(last, "input_tokens", out var used)) return false;
             var window = Num(info, "model_context_window");
-            if (used <= 0 || window <= 0) return false;
+            if (used < 0 || window <= 0 || used > window) return false;
 
-            usage = new TranscriptUsage(used, window, null);
+            usage = new TranscriptUsage(used, window, Str(info, "model") ?? Str(payload, "model") ?? Str(root, "model"));
             return true;
         }
         catch (JsonException) { return false; }
@@ -100,6 +100,12 @@ public static class CodexTranscriptReader
     private static long Num(JsonElement obj, string name)
         => obj.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var n)
             ? n : 0;
+
+    private static bool TryNum(JsonElement obj, string name, out long value)
+    {
+        value = 0;
+        return obj.TryGetProperty(name, out var candidate) && candidate.ValueKind == JsonValueKind.Number && candidate.TryGetInt64(out value);
+    }
 
     private static IEnumerable<string> TailLines(string path, int maxBytes)
         => TranscriptTail.Lines(path, maxBytes);

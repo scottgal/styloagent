@@ -6,7 +6,7 @@ namespace Styloagent.Core.Tests;
 public sealed class ContextPressurePolicyTests
 {
     [Theory]
-    [InlineData(0, ContextPressure.Unknown)]
+    [InlineData(0, ContextPressure.Normal)]
     [InlineData(0.50, ContextPressure.Normal)]
     [InlineData(0.65, ContextPressure.Elevated)]
     [InlineData(0.80, ContextPressure.High)]

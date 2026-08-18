@@ -121,10 +121,12 @@ public static class TranscriptReader
             if (!root.TryGetProperty("message", out var msg) || msg.ValueKind != JsonValueKind.Object) return false;
             if (!msg.TryGetProperty("usage", out var u) || u.ValueKind != JsonValueKind.Object) return false;
 
-            long ctx = Num(u, "input_tokens")
-                     + Num(u, "cache_read_input_tokens")
-                     + Num(u, "cache_creation_input_tokens");
-            if (ctx <= 0) return false;
+            var inputTokens = Num(u, "input_tokens");
+            var cacheReadTokens = Num(u, "cache_read_input_tokens");
+            var cacheCreationTokens = Num(u, "cache_creation_input_tokens");
+            if (!HasNumber(u, "input_tokens") && !HasNumber(u, "cache_read_input_tokens") && !HasNumber(u, "cache_creation_input_tokens")) return false;
+            long ctx = inputTokens + cacheReadTokens + cacheCreationTokens;
+            if (ctx < 0) return false;
 
             var model = msg.TryGetProperty("model", out var m) && m.ValueKind == JsonValueKind.String
                 ? m.GetString() : null;
@@ -137,6 +139,9 @@ public static class TranscriptReader
 
     private static long Num(JsonElement obj, string name)
         => obj.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt64() : 0;
+
+    private static bool HasNumber(JsonElement obj, string name)
+        => obj.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out _);
 
     /// <summary>
     /// Context window in tokens. The transcript's model id does NOT reliably encode the 1M-context

@@ -7,7 +7,7 @@ public static class ContextPressurePolicy
 {
     public static ContextPressure For(double usedFraction)
     {
-        if (usedFraction <= 0) return ContextPressure.Unknown;
+        if (double.IsNaN(usedFraction) || double.IsInfinity(usedFraction) || usedFraction < 0) return ContextPressure.Unknown;
         if (usedFraction >= 0.90) return ContextPressure.Critical;
         if (usedFraction >= 0.80) return ContextPressure.High;
         if (usedFraction >= 0.65) return ContextPressure.Elevated;

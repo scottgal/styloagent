@@ -3061,6 +3061,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string? protocolPath, IEnumerable<string>? claudeOnlyArgs = null)
     {
         var runtime = AgentRuntimeProfile.For(entry.Runtime);
+        var runtimeInstructions = RuntimeInstructionArgs(entry, repoRoot, protocolPath, claudeOnlyArgs);
 
         // Codex: --config hooks.*=, --config mcp_servers.*=, --sandbox, positional prompt
         if (runtime.UsesConfigLayerHooks)
@@ -3080,7 +3081,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                     hookId, hooks.HooksDirectory, file,
                     Styloagent.Core.Hooks.HookSettings.DefaultGateInvocation(), repoRoot, entry.Prefix));
             }
-            args.AddRange(CodexDeveloperInstructionArgs(claudeOnlyArgs));
+            args.AddRange(CodexDeveloperInstructionArgs(runtimeInstructions));
             args.AddRange(CodexMcpArgsFor(entry.Prefix));
             args.AddRange(runtime.PermissionArgs(PermissionMode));
             return args;
@@ -3091,10 +3092,33 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return runtime.PermissionArgs(PermissionMode);
 
         return HookArgs(hookId, entry, hooks, channelRoot, repoRoot, protocolPath)
-            .Concat(claudeOnlyArgs ?? Array.Empty<string>())
+            .Concat(runtimeInstructions)
             .Concat(McpArgsFor(entry.Prefix))
             .Concat(runtime.ModelEffortArgs(entry.Model, entry.Effort, entry.Tier))
             .ToArray();
+    }
+
+    /// <summary>Composes project overlays with the current canonical runtime instructions for every launch.</summary>
+    private static IReadOnlyList<string> RuntimeInstructionArgs(
+        AgentManifestEntry entry, string? repoRoot, string? protocolPath, IEnumerable<string>? launchArgs)
+    {
+        string? systemOverlay = null;
+        var args = launchArgs?.ToList() ?? new List<string>();
+        for (var i = 0; i + 1 < args.Count; i++)
+            if (args[i] == "--append-system-prompt") systemOverlay = args[i + 1];
+
+        string? protocolOverlay = null;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(protocolPath) && File.Exists(protocolPath))
+                protocolOverlay = File.ReadAllText(protocolPath);
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+
+        var root = string.IsNullOrWhiteSpace(entry.Repo) ? repoRoot ?? "" : entry.Repo;
+        return new[] { "--append-system-prompt",
+            RuntimeInstructionBuilder.Build(systemOverlay, protocolOverlay, root, entry.Prefix) };
     }
 
     /// <summary>

@@ -523,6 +523,9 @@ public class MainWindowViewModelTests : IDisposable
             Assert.DoesNotContain("--append-system-prompt", args);
             Assert.Contains(args, arg => arg.StartsWith("developer_instructions=", StringComparison.Ordinal)
                                          && arg.Contains(promptContent, StringComparison.Ordinal));
+            Assert.Contains(args, arg => arg.Contains("Runtime repository identity", StringComparison.Ordinal)
+                                         && arg.Contains($"Repository root: {repoRoot}", StringComparison.Ordinal)
+                                         && arg.Contains("Styloagent canonical runtime instructions", StringComparison.Ordinal));
             Assert.DoesNotContain(args, arg => arg is "gpt-5" or "gpt-5-codex");
         }
         finally

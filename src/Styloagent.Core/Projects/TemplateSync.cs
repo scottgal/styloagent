@@ -80,7 +80,8 @@ public static class TemplateSync
                         state.TemplateVersions[tpl.Name] = bundledVersion;
                         continue;
                     }
-                    MigrateCurrent(cfg, tpl, current, state, bundledVersion);
+                    if (!MigrateCurrent(cfg, tpl, current, state, bundledVersion))
+                        continue;
                     continue;
                 }
 
@@ -185,7 +186,7 @@ public static class TemplateSync
             "delete this notice.");
     }
 
-    private static void MigrateCurrent(ProjectConfig cfg, BundledTemplate tpl, string current, TemplateState state, int version)
+    private static bool MigrateCurrent(ProjectConfig cfg, BundledTemplate tpl, string current, TemplateState state, int version)
     {
         if (tpl.IsMarkdown)
         {
@@ -204,13 +205,76 @@ public static class TemplateSync
         }
         else
         {
-            // Model policy is data, not prose. Preserve the existing document until a structural schema
-            // migrator can prove a safe merge; never inject model/runtime choices from a template.
-            WriteCompactNotice(cfg, tpl, version, "Local YAML policy retained; no runtime or model was injected.");
+            if (!TryMergeModelPolicyYaml(current, out var merged, out var problem))
+            {
+                WriteCompactNotice(cfg, tpl, version, $"YAML migration needs review: {problem}");
+                return false;
+            }
+            if (!string.Equals(current, merged, StringComparison.Ordinal))
+                File.WriteAllText(PathFor(cfg, tpl.Name), merged);
+            current = merged;
+            WriteCompactNotice(cfg, tpl, version, "YAML schema merged while retaining local rules, reasoning, and unknown keys; no runtime or model was injected.");
         }
 
         state.Files[tpl.Name] = Hash(current);
         state.TemplateVersions[tpl.Name] = version;
+        return true;
+    }
+
+    /// <summary>
+    /// Small structural merger for model-policy's top-level mapping. It deliberately operates on YAML
+    /// blocks (not replacement text): unknown blocks and every existing child key are retained verbatim.
+    /// Only a missing <c>default</c> mapping, its required <c>reasoning</c> child, or a missing
+    /// <c>rules</c> sequence is added. Scalars where mappings/sequences are required are conflicts.
+    /// </summary>
+    private static bool TryMergeModelPolicyYaml(string yaml, out string merged, out string problem)
+    {
+        merged = yaml; problem = "";
+        var lines = yaml.Replace("\r\n", "\n").Split('\n').ToList();
+        var roots = RootBlocks(lines);
+        if (roots.Any(b => b.Key == "<non-mapping>")) { problem = "the document root is not a mapping"; return false; }
+        var defaultBlock = roots.FirstOrDefault(b => b.Key == "default");
+        if (defaultBlock is not null && defaultBlock.Header.Trim() != "default:")
+        { problem = "`default` must be a mapping"; return false; }
+        var rulesBlock = roots.FirstOrDefault(b => b.Key == "rules");
+        if (rulesBlock is not null && rulesBlock.Header.Trim() is not "rules:" and not "rules: []")
+        { problem = "`rules` must be a sequence"; return false; }
+
+        if (defaultBlock is null)
+        {
+            lines.Add("default:");
+            lines.Add("  reasoning: \"No specialised policy: inherit the spawning agent's runtime and step one tier down for the model. Effort is left to the agent's discretion.\"");
+        }
+        else if (!defaultBlock.Lines.Skip(1).Any(line => line.TrimStart().StartsWith("reasoning:", StringComparison.Ordinal)))
+        {
+            lines.Insert(defaultBlock.End, "  reasoning: \"No specialised policy: inherit the spawning agent's runtime and step one tier down for the model. Effort is left to the agent's discretion.\"");
+        }
+        if (rulesBlock is null) lines.Add("rules: []");
+        merged = string.Join("\n", lines).TrimEnd() + "\n";
+        return true;
+    }
+
+    private sealed record YamlRootBlock(string Key, string Header, int End, IReadOnlyList<string> Lines);
+
+    private static List<YamlRootBlock> RootBlocks(IReadOnlyList<string> lines)
+    {
+        var starts = new List<(int Index, string Key, string Header)>();
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var line = lines[i];
+            if (string.IsNullOrWhiteSpace(line) || line.TrimStart().StartsWith('#')) continue;
+            if (char.IsWhiteSpace(line[0]) || line.StartsWith('-')) continue;
+            var colon = line.IndexOf(':');
+            if (colon <= 0) { starts.Add((i, "<non-mapping>", line)); continue; }
+            starts.Add((i, line[..colon].Trim(), line));
+        }
+        var blocks = new List<YamlRootBlock>();
+        for (var i = 0; i < starts.Count; i++)
+        {
+            var end = i + 1 < starts.Count ? starts[i + 1].Index : lines.Count;
+            blocks.Add(new(starts[i].Key, starts[i].Header, end, lines.Skip(starts[i].Index).Take(end - starts[i].Index).ToList()));
+        }
+        return blocks;
     }
 
     private static void ArchiveLegacy(ProjectConfig cfg, BundledTemplate tpl, string removed)

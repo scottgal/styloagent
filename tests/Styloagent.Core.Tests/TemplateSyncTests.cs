@@ -253,6 +253,53 @@ public class TemplateSyncTests
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
     }
 
+    [Fact]
+    public void V6_merges_yaml_schema_without_losing_unknown_keys_or_local_reasoning()
+    {
+        var root = Root();
+        try
+        {
+            var cfg = ProjectConfig.For(root);
+            Directory.CreateDirectory(cfg.ConfigDir);
+            var policy = Path.Combine(cfg.ConfigDir, "model-policy.yaml");
+            File.WriteAllText(policy, "default:\n  reasoning: local reason\n  customFlag: true\nrules:\n  - jobType: docs\n    reasoning: local docs\nexperimental:\n  owner: operator\n");
+
+            TemplateSync.Ensure(cfg, V2Templates, bundledVersion: 6);
+
+            var merged = File.ReadAllText(policy);
+            Assert.Contains("reasoning: local reason", merged);
+            Assert.Contains("customFlag: true", merged);
+            Assert.Contains("experimental:", merged);
+            Assert.DoesNotContain("runtime: kilo", merged);
+            Assert.DoesNotContain("model: deepseek", merged);
+            var before = merged;
+            TemplateSync.Ensure(cfg, V2Templates, bundledVersion: 6);
+            Assert.Equal(before, File.ReadAllText(policy));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void V6_leaves_incompatible_yaml_untouched_and_writes_a_concise_notice()
+    {
+        var root = Root();
+        try
+        {
+            var cfg = ProjectConfig.For(root);
+            Directory.CreateDirectory(cfg.ConfigDir);
+            var policy = Path.Combine(cfg.ConfigDir, "model-policy.yaml");
+            File.WriteAllText(policy, "default: not-a-mapping\n");
+
+            TemplateSync.Ensure(cfg, V2Templates, bundledVersion: 6);
+
+            Assert.Equal("default: not-a-mapping\n", File.ReadAllText(policy));
+            var notice = Path.Combine(TemplateSync.UpdateNoticesDir(cfg), "model-policy.yaml.md");
+            Assert.Contains("needs review", File.ReadAllText(notice));
+            Assert.DoesNotContain("deepseek", File.ReadAllText(notice));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
     private static StateShape YamlDeserialize(string path)
         => VYaml.Serialization.YamlSerializer.Deserialize<StateShape>(File.ReadAllBytes(path))!;
 }

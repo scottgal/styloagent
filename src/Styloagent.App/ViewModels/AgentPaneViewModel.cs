@@ -376,6 +376,10 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     private string? _sessionId;
     private string? _cwd;
     private int _usageRefreshInFlight;
+    private static readonly ContextTelemetryStore ContextTelemetry = new();
+
+    [ObservableProperty]
+    private ContextTelemetrySnapshot? _contextSnapshot;
 
     /// <summary>The agent's Claude transcript path (cwd + session id), or null before the first hook event.</summary>
     public string? TranscriptPath
@@ -433,18 +437,20 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
                     ? Styloagent.Core.Transcripts.CodexTranscriptReader.ReadLatestForSession(sid)
                     : Styloagent.Core.Transcripts.TranscriptReader.ReadLatest(
                         Styloagent.Core.Transcripts.TranscriptReader.PathFor(cwd, sid));
-                var text = usage is null ? "" : $"{FormatTokens(usage.RemainingTokens)} left · {usage.ContextFraction * 100:0}% used";
-                var frac = usage?.ContextFraction ?? 0;
-                var remaining = usage?.RemainingTokens ?? 0;
-                var remainingFraction = usage?.RemainingFraction ?? 0;
-                var pressure = Styloagent.Core.Sessions.ContextPressurePolicy.For(frac).ToString().ToLowerInvariant();
+                var key = ContextSnapshotKey.Create(cwd, Prefix, sid);
+                var snapshot = ContextTelemetry.Observe(key, _manifest.Runtime, usage, _manifest.Model, _manifest.Effort);
+                var usedFraction = snapshot.RemainingFraction is { } remainingFractionValue ? 1 - remainingFractionValue : 0;
+                var text = snapshot.IsAvailable
+                    ? $"{FormatTokens(snapshot.RemainingTokens!.Value)} left · {usedFraction * 100:0}% used"
+                    : "Context unavailable";
                 global::Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
+                    ContextSnapshot = snapshot;
                     UsageText = text;
-                    ContextFraction = frac;
-                    RemainingTokens = remaining;
-                    RemainingFraction = remainingFraction;
-                    ContextPressure = pressure;
+                    ContextFraction = usedFraction;
+                    RemainingTokens = snapshot.RemainingTokens ?? 0;
+                    RemainingFraction = snapshot.RemainingFraction ?? 0;
+                    ContextPressure = snapshot.Pressure.ToString().ToLowerInvariant();
                 });
             }
             catch (Exception ex)

@@ -251,7 +251,10 @@ public class MainWindowViewModelTests : IDisposable
             Assert.Contains(launcher.Options[1].Args, a => a.Contains("hooks.SessionStart", StringComparison.Ordinal));
             Assert.DoesNotContain(launcher.Options[1].Args, a => a == "--settings");
             Assert.DoesNotContain(launcher.Options[1].Args, a => a == "--mcp-config");
-            Assert.DoesNotContain(launcher.Options[1].Args, a => a.Contains("You are", StringComparison.Ordinal));
+            Assert.Contains(launcher.Options[1].Args, a => a.StartsWith("developer_instructions=", StringComparison.Ordinal)
+                                                       && a.Contains("Styloagent canonical runtime instructions", StringComparison.Ordinal));
+            // The blank toolbar agent has no positional launch prompt; identity lives only in config.
+            Assert.DoesNotContain(launcher.Options[1].Args, a => a == "You are agent 'agent-1-'. Begin your work.");
         }
         finally { Directory.Delete(root, recursive: true); }
     }

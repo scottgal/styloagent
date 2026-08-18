@@ -45,6 +45,12 @@ public partial class AppPreferences
     /// </summary>
     public bool EnableUiAutomation { get; set; }
 
+    /// <summary>Expose the isolated Chrome DevTools MCP server to new agents.</summary>
+    public bool EnableChromeDevTools { get; set; } = true;
+
+    /// <summary>Run Chrome DevTools MCP without a visible browser window.</summary>
+    public bool ChromeDevToolsHeadless { get; set; } = true;
+
     /// <summary>
     /// How much permission fleet agents launch with: <c>Prompt</c> (approve every action), <c>Scoped</c>
     /// (auto-accept edits + styloagent MCP tools; default — agents can coordinate and work without a prompt

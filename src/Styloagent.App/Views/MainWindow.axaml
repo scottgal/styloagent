@@ -222,6 +222,9 @@
                   <TextBlock Text="Automation" FontWeight="SemiBold" FontSize="12"
                              Foreground="{DynamicResource AccentBrush}" />
                   <ToggleSwitch Content="Enable UI automation" IsChecked="{Binding UiAutomationEnabled}" />
+                  <ToggleSwitch Content="Enable Chrome DevTools for new agents" IsChecked="{Binding ChromeDevToolsEnabled}" />
+                  <ToggleSwitch Content="Run Chrome DevTools headlessly" IsChecked="{Binding ChromeDevToolsHeadless}"
+                                IsEnabled="{Binding ChromeDevToolsEnabled}" />
                   <TextBlock Text="Lets agents request cockpit screenshots via the MCP screenshot tool. Off by default; enabling broadcasts a bus notice and shows a shot button."
                              FontSize="10" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" />
                 </StackPanel>

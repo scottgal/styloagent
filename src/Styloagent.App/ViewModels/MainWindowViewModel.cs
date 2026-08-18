@@ -203,6 +203,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     [ObservableProperty]
     private bool _uiAutomationEnabled;
 
+    [ObservableProperty] private bool _chromeDevToolsEnabled = true;
+    partial void OnChromeDevToolsEnabledChanged(bool value) => SavePreferences();
+    [ObservableProperty] private bool _chromeDevToolsHeadless = true;
+    partial void OnChromeDevToolsHeadlessChanged(bool value) => SavePreferences();
+
     partial void OnUiAutomationEnabledChanged(bool value)
     {
         if (_prefsLoaded && value)
@@ -309,6 +314,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         AutoDehydrateIdleAgents = prefs.AutoDehydrateIdleAgents;
         IdleDehydrateMinutes = Math.Clamp(prefs.IdleDehydrateMinutes, 5, 1440);
         UiAutomationEnabled = prefs.EnableUiAutomation;
+        ChromeDevToolsEnabled = prefs.EnableChromeDevTools;
+        ChromeDevToolsHeadless = prefs.ChromeDevToolsHeadless;
         SelectedPermissionMode = Enum.TryParse<Styloagent.Core.Hooks.FleetPermissionMode>(prefs.PermissionMode, out var pm)
             ? pm : Styloagent.Core.Hooks.FleetPermissionMode.Scoped;
         TerminalScrollbackLines = Math.Clamp(prefs.TerminalScrollbackLines, 200, 50_000);
@@ -329,6 +336,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _prefs.TerminalScrollbackLines = TerminalScrollbackLines;
         _prefs.MarkdownFontSize = MarkdownFontSize;
         _prefs.EnableUiAutomation = UiAutomationEnabled;
+        _prefs.EnableChromeDevTools = ChromeDevToolsEnabled;
+        _prefs.ChromeDevToolsHeadless = ChromeDevToolsHeadless;
         _prefs.PermissionMode = SelectedPermissionMode.ToString();
         _prefs.ShowRosterLastOutput = ShowRosterLastOutput;
         _prefs.ShowRosterModel = ShowRosterModel;

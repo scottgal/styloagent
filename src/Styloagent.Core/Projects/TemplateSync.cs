@@ -70,6 +70,20 @@ public static class TemplateSync
 
                 var current = File.ReadAllText(path);
 
+                // v6 ends copied-template delivery. Historical test/template versions retain the old
+                // compatibility path below; every real project open now uses the compact migration.
+                if (bundledVersion >= 6)
+                {
+                    if (string.Equals(current.TrimEnd(), tpl.Content.TrimEnd(), StringComparison.Ordinal))
+                    {
+                        state.Files[tpl.Name] = Hash(current);
+                        state.TemplateVersions[tpl.Name] = bundledVersion;
+                        continue;
+                    }
+                    MigrateCurrent(cfg, tpl, current, state, bundledVersion);
+                    continue;
+                }
+
                 // AGENT-OWNED files are append-only, forever: the operator/agents customized them, so the
                 // sync NEVER overwrites them. We deliver each new version as an appended update block (or a
                 // YAML notice) and let the owner fold it in. A file is agent-owned when the state says so,
@@ -171,6 +185,50 @@ public static class TemplateSync
             "delete this notice.");
     }
 
+    private static void MigrateCurrent(ProjectConfig cfg, BundledTemplate tpl, string current, TemplateState state, int version)
+    {
+        if (tpl.IsMarkdown)
+        {
+            const string legacyHeading = "## Styloagent template update";
+            var marker = current.IndexOf(legacyHeading, StringComparison.OrdinalIgnoreCase);
+            if (marker >= 0)
+            {
+                var overlay = current[..marker].TrimEnd() + "\n";
+                ArchiveLegacy(cfg, tpl, current[marker..]);
+                File.WriteAllText(PathFor(cfg, tpl.Name), overlay);
+                current = overlay;
+            }
+            WriteCompactNotice(cfg, tpl, version, marker >= 0
+                ? "Legacy copied template blocks were archived; the remaining document is your local overlay."
+                : "Local overlay retained; current canonical instructions are supplied by the running Styloagent runtime.");
+        }
+        else
+        {
+            // Model policy is data, not prose. Preserve the existing document until a structural schema
+            // migrator can prove a safe merge; never inject model/runtime choices from a template.
+            WriteCompactNotice(cfg, tpl, version, "Local YAML policy retained; no runtime or model was injected.");
+        }
+
+        state.Files[tpl.Name] = Hash(current);
+        state.TemplateVersions[tpl.Name] = version;
+    }
+
+    private static void ArchiveLegacy(ProjectConfig cfg, BundledTemplate tpl, string removed)
+    {
+        var dir = UpdateNoticesDir(cfg);
+        Directory.CreateDirectory(dir);
+        var archive = Path.Combine(dir, tpl.Name + ".legacy.md");
+        if (!File.Exists(archive)) File.WriteAllText(archive, removed.TrimEnd() + "\n");
+    }
+
+    private static void WriteCompactNotice(ProjectConfig cfg, BundledTemplate tpl, int version, string detail)
+    {
+        var dir = UpdateNoticesDir(cfg);
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, tpl.Name + ".md"),
+            $"# Template migration: {tpl.Name} (v{version})\n\n{detail}\n");
+    }
+
     private static TemplateState LoadState(string path)
     {
         if (!File.Exists(path)) return new TemplateState();
@@ -181,6 +239,7 @@ public static class TemplateSync
             // null); normalize so the sync logic never NREs on old state files.
             state.AgentOwned ??= new HashSet<string>(StringComparer.Ordinal);
             state.Files ??= new Dictionary<string, string>(StringComparer.Ordinal);
+            state.TemplateVersions ??= new Dictionary<string, int>(StringComparer.Ordinal);
             return state;
         }
         catch { return new TemplateState(); }
@@ -209,4 +268,7 @@ internal partial class TemplateState
     /// existing update marker as proof of ownership.
     /// </summary>
     public HashSet<string> AgentOwned { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>Per-template migration ledger introduced in v6.</summary>
+    public Dictionary<string, int> TemplateVersions { get; set; } = new(StringComparer.Ordinal);
 }

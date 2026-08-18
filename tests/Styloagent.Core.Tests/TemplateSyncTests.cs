@@ -228,6 +228,31 @@ public class TemplateSyncTests
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
     }
 
+    [Fact]
+    public void V6_strips_and_archives_repeated_legacy_markdown_blocks_without_rewriting_the_overlay()
+    {
+        var root = Root();
+        try
+        {
+            var cfg = ProjectConfig.For(root);
+            Directory.CreateDirectory(cfg.ConfigDir);
+            var path = Path.Combine(cfg.ConfigDir, "system-prompt.md");
+            File.WriteAllText(path, "# Local overlay\nkeep this\n\n## Styloagent template update (v1 → v2)\nold full template\n\n## Styloagent template update (v2 → v3)\nanother full template\n");
+
+            TemplateSync.Ensure(cfg, V2Templates, bundledVersion: 6);
+
+            Assert.Equal("# Local overlay\nkeep this\n", File.ReadAllText(path));
+            var archive = Path.Combine(TemplateSync.UpdateNoticesDir(cfg), "system-prompt.md.legacy.md");
+            Assert.Contains("v1 → v2", File.ReadAllText(archive));
+            Assert.Contains("v2 → v3", File.ReadAllText(archive));
+            Assert.DoesNotContain("new guidance", File.ReadAllText(path));
+            var before = File.ReadAllText(path);
+            TemplateSync.Ensure(cfg, V2Templates, bundledVersion: 6);
+            Assert.Equal(before, File.ReadAllText(path));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
     private static StateShape YamlDeserialize(string path)
         => VYaml.Serialization.YamlSerializer.Deserialize<StateShape>(File.ReadAllBytes(path))!;
 }

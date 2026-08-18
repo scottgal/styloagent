@@ -8,7 +8,7 @@ public static class DefaultTemplates
     /// re-syncs existing projects on the next open — so fleets already live get the updates too, not
     /// just freshly-scaffolded ones.
     /// </summary>
-    public const int Version = 5;
+    public const int Version = 6;
     public const string ModelPolicy =
 """
 # Job-type policy: WHY a kind of work deserves more or less depth. It deliberately names NO runtime and NO

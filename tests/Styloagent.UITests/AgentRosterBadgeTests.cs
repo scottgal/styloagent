@@ -64,6 +64,12 @@ public class AgentRosterBadgeTests
                 var pane = vm.Pane!;
                 pane.UsageText = "28k left · 72% used";
                 pane.ContextFraction = 0.72;
+                var observedAt = DateTimeOffset.UtcNow;
+                pane.ContextSnapshot = new ContextTelemetrySnapshot(
+                    ContextSnapshotKey.Create("/repo", pane.Prefix, "session"), pane.Runtime,
+                    null, null, 100000, 72000, 28000, 0.28, ContextPressure.High,
+                    observedAt, observedAt, ContextTelemetrySource.ClaudeTranscript,
+                    ContextTelemetryConfidence.Observed);
 
                 Assert.False(vm.ShowRosterLastOutput);
                 Assert.False(vm.ShowRosterModel);

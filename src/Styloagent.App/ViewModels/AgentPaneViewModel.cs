@@ -216,6 +216,11 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     [NotifyPropertyChangedFor(nameof(PaneStatusDetail))]
     private string _waitingQuestion = "";
 
+    /// <summary>Stable identity and presentation metadata for a terminal-detected approval frame.</summary>
+    [ObservableProperty] private string _approvalRequestId = "";
+    [ObservableProperty] private string _approvalSelectionMode = "";
+    [ObservableProperty] private IReadOnlyList<string> _approvalOptions = Array.Empty<string>();
+
     /// <summary>True when a pending question is available to show in the tooltip.</summary>
     public bool HasWaitingQuestion => !string.IsNullOrEmpty(WaitingQuestion);
 

@@ -598,7 +598,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     {
         if (pane?.CurrentPty is not { } pty) return;
         _ = pty.WriteAsync(AgentRuntimeProfile.For(pane.Runtime).PtyWakeString);
+        if (_codexApprovals.TryGetValue(pane, out var approval)) approval.Detector.Resolve();
         if (pane.NoteTerminalInteraction()) RefreshAttention();
+        RefreshAttention();
         Timeline.Add(DateTimeOffset.Now, pane.DisplayName, "approved prompt", pane.BorderColorHex);
     }
 
@@ -963,6 +965,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                     _paneState[p] = p.State;
                     p.PropertyChanged += OnPaneLifecycleChanged;
                     WireThrottle(p);   // watch its output for API-error / rate-limit episodes
+                    WireCodexApproval(p);
                 }
             if (e.OldItems is not null)
                 foreach (AgentPaneViewModel p in e.OldItems)
@@ -972,6 +975,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                     CancelAutoDehydrateAttempt(p);
                     _autoDehydrateRetryAfter.Remove(p);
                     UnwireThrottle(p);
+                    UnwireCodexApproval(p);
                 }
 
             ScheduleActiveAgentLayoutRefresh();
@@ -983,6 +987,49 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     // One detector per pane, subscribed to its PTY output; kept with its feed handler so removal can
     // unsubscribe (no leaked closure pinning a dead pane's session).
     private readonly Dictionary<AgentPaneViewModel, (Styloagent.Core.Sessions.ApiThrottleDetector Detector, Action<string> Feed)> _throttle = new();
+    private readonly Dictionary<AgentPaneViewModel, (Styloagent.Core.Sessions.CodexApprovalDetector Detector, Action<string> Feed)> _codexApprovals = new();
+
+    private void WireCodexApproval(AgentPaneViewModel pane)
+    {
+        if (pane.Runtime != AgentRuntimeKind.Codex || _codexApprovals.ContainsKey(pane)) return;
+        var detector = new Styloagent.Core.Sessions.CodexApprovalDetector();
+        detector.Changed += prompt =>
+        {
+            void Apply()
+            {
+                if (prompt is null)
+                {
+                    pane.HookState = AgentHookState.Idle;
+                    pane.WaitingQuestion = "";
+                    pane.ApprovalRequestId = "";
+                    pane.ApprovalSelectionMode = "";
+                    pane.ApprovalOptions = Array.Empty<string>();
+                    pane.WaitingSince = null;
+                }
+                else
+                {
+                    pane.HookState = AgentHookState.WaitingForHuman;
+                    pane.WaitingQuestion = prompt.Prompt;
+                    pane.ApprovalRequestId = prompt.RequestId;
+                    pane.ApprovalSelectionMode = prompt.SelectionMode;
+                    pane.ApprovalOptions = prompt.Options;
+                    pane.WaitingSince ??= DateTimeOffset.UtcNow;
+                }
+                RefreshAttention();
+                RefreshInstruments();
+            }
+            try { if (Dispatcher.UIThread.CheckAccess()) Apply(); else Dispatcher.UIThread.Post(Apply); }
+            catch { Apply(); }
+        };
+        Action<string> feed = detector.Feed;
+        pane.Output += feed;
+        _codexApprovals[pane] = (detector, feed);
+    }
+
+    private void UnwireCodexApproval(AgentPaneViewModel pane)
+    {
+        if (_codexApprovals.Remove(pane, out var approval)) pane.Output -= approval.Feed;
+    }
 
     // One fleet-wide retry scheduler (session-'s ThrottleRetryScheduler): a throttled agent that doesn't
     // self-clear gets escalating "retry" bus messages (backoff-bounded); resuming cancels its pending retries.

@@ -18,6 +18,9 @@ public sealed class ContextTelemetrySnapshotTests
         Assert.True(snapshot.IsAvailable);
         Assert.Equal(source, snapshot.Source);
         Assert.Equal("actual-model", snapshot.Model);
+        Assert.Null(snapshot.Effort);
+        Assert.Equal("stale-default", snapshot.ConfiguredModel);
+        Assert.Equal("medium", snapshot.ConfiguredEffort);
         Assert.Equal(80, snapshot.RemainingTokens);
         Assert.Equal(0.8, snapshot.RemainingFraction);
         Assert.Equal(ContextPressure.Normal, snapshot.Pressure);
@@ -33,6 +36,19 @@ public sealed class ContextTelemetrySnapshotTests
         Assert.Null(snapshot.RemainingTokens);
         Assert.Null(snapshot.RemainingFraction);
         Assert.Equal(ContextPressure.Unknown, snapshot.Pressure);
+    }
+
+    [Fact]
+    public void Configured_metadata_never_masquerades_as_observed_runtime_metadata()
+    {
+        var key = ContextSnapshotKey.Create("/repo-a", "worker-", "session-1");
+        var snapshot = new ContextTelemetryStore().Observe(key, AgentRuntimeKind.Codex,
+            new TranscriptUsage(20, 100, null), "gpt-5-codex", "default");
+
+        Assert.Null(snapshot.Model);
+        Assert.Null(snapshot.Effort);
+        Assert.Equal("gpt-5-codex", snapshot.ConfiguredModel);
+        Assert.Equal("default", snapshot.ConfiguredEffort);
     }
 
     [Fact]

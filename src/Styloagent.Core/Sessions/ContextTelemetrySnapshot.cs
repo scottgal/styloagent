@@ -43,13 +43,16 @@ public sealed record ContextTelemetrySnapshot(
     DateTimeOffset? ObservedAt,
     DateTimeOffset CheckedAt,
     ContextTelemetrySource Source,
-    ContextTelemetryConfidence Confidence)
+    ContextTelemetryConfidence Confidence,
+    string? ConfiguredModel = null,
+    string? ConfiguredEffort = null)
 {
     public bool IsAvailable => Confidence != ContextTelemetryConfidence.Unavailable;
 
     public static ContextTelemetrySnapshot Unavailable(ContextSnapshotKey key, AgentRuntimeKind runtime, string? model = null, string? effort = null)
-        => new(key, runtime, model, effort, null, null, null, null, ContextPressure.Unknown,
-            null, DateTimeOffset.UtcNow, ContextTelemetrySource.Unavailable, ContextTelemetryConfidence.Unavailable);
+        => new(key, runtime, null, null, null, null, null, null, ContextPressure.Unknown,
+            null, DateTimeOffset.UtcNow, ContextTelemetrySource.Unavailable, ContextTelemetryConfidence.Unavailable,
+            model, effort);
 
     public static bool TryCreate(ContextSnapshotKey key, AgentRuntimeKind runtime, TranscriptUsage? usage,
         string? configuredModel, string? effort, ContextTelemetrySource source, DateTimeOffset observedAt,
@@ -63,15 +66,21 @@ public sealed record ContextTelemetrySnapshot(
         var limit = usage.WindowTokens;
         var remaining = limit - used;
         var usedFraction = (double)used / limit;
-        snapshot = new ContextTelemetrySnapshot(key, runtime, usage.Model ?? configuredModel, effort,
+        snapshot = new ContextTelemetrySnapshot(key, runtime, usage.Model, null,
             limit, used, remaining, (double)remaining / limit, ContextPressurePolicy.For(usedFraction),
-            observedAt, observedAt, source, ContextTelemetryConfidence.Observed);
+            observedAt, observedAt, source, ContextTelemetryConfidence.Observed, configuredModel, effort);
         return true;
     }
 
     /// <summary>Records a successful check without misrepresenting the age of the last actual observation.</summary>
-    public ContextTelemetrySnapshot Retain(DateTimeOffset checkedAt)
-        => this with { CheckedAt = checkedAt, Confidence = ContextTelemetryConfidence.Retained };
+    public ContextTelemetrySnapshot Retain(DateTimeOffset checkedAt, string? configuredModel, string? configuredEffort)
+        => this with
+        {
+            CheckedAt = checkedAt,
+            Confidence = ContextTelemetryConfidence.Retained,
+            ConfiguredModel = configuredModel,
+            ConfiguredEffort = configuredEffort
+        };
 }
 
 /// <summary>
@@ -96,7 +105,7 @@ public sealed class ContextTelemetryStore
 
         if (_snapshots.TryGetValue(key, out var previous) && previous.Runtime == runtime)
         {
-            var retained = previous.Retain(now);
+            var retained = previous.Retain(now, configuredModel, effort);
             _snapshots[key] = retained;
             return retained;
         }

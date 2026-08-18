@@ -248,6 +248,7 @@ public class MainWindowViewModelTests : IDisposable
             Assert.Equal("New Codex", vm.Panes[1].DisplayName);
             Assert.Equal("codex", launcher.Options[1].Command);
             Assert.Contains("--config", launcher.Options[1].Args);
+            Assert.Contains("--dangerously-bypass-hook-trust", launcher.Options[1].Args);
             Assert.Contains(launcher.Options[1].Args, a => a.Contains("hooks.SessionStart", StringComparison.Ordinal));
             Assert.DoesNotContain(launcher.Options[1].Args, a => a == "--settings");
             Assert.DoesNotContain(launcher.Options[1].Args, a => a == "--mcp-config");
@@ -279,6 +280,7 @@ public class MainWindowViewModelTests : IDisposable
             // ClaudeDeepSeek uses the `claude` CLI, so it gets the same
             // --settings, --mcp-config, and --model flags as regular Claude.
             Assert.Equal("claude", launcher.Options[1].Command);
+            Assert.DoesNotContain("--dangerously-bypass-hook-trust", launcher.Options[1].Args);
             Assert.Contains(launcher.Options[1].Args, a => a == "--model");
             Assert.Contains(launcher.Options[1].Args, a => a == "deepseek-v4-pro");
             // A positional Codex prompt must not apply — ClaudeDeepSeek is the Claude CLI.

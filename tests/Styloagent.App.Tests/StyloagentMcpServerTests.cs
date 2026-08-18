@@ -83,6 +83,7 @@ public class StyloagentMcpServerTests
 
         Assert.Contains("--config", args);
         Assert.Contains("mcp_servers.styloagent.enabled=true", args);
+        Assert.Contains("mcp_servers.styloagent.default_tools_approval_mode=\"approve\"", args);
         Assert.Contains(args, a => a == "mcp_servers.styloagent.url=\"http://127.0.0.1:5000/mcp\"");
         Assert.Contains(args, a => a.Contains("\"X-Styloagent-Agent\"=\"codex-\"", StringComparison.Ordinal));
         Assert.Contains(args, a => a.Contains("\"Authorization\"=\"Bearer tok\"", StringComparison.Ordinal));
@@ -103,7 +104,8 @@ public class StyloagentMcpServerTests
         Assert.Contains("--redact-network-headers", json);
         Assert.DoesNotContain("user-data", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ws-endpoint", json, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(codex, a => a.Contains("mcp_servers.chrome-devtools.args", StringComparison.Ordinal));
+        Assert.Contains(codex, a => a ==
+            "mcp_servers.chrome-devtools.args=[\"-y\",\"chrome-devtools-mcp@latest\",\"--isolated\",\"--headless=true\",\"--no-usage-statistics\",\"--no-performance-crux\",\"--redact-network-headers\",\"--screenshot-format=jpeg\",\"--screenshot-quality=60\"]");
     }
 
     [Fact]

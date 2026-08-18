@@ -41,11 +41,11 @@ public static class McpConfig
         {
         "--config", "mcp_servers.styloagent.enabled=true",
         "--config", $"mcp_servers.styloagent.url={AgentRuntimeProfile.TomlString(url.ToString())}",
-        "--config", "mcp_servers.styloagent.default_tools_approval_mode=\"auto\"",
+        "--config", "mcp_servers.styloagent.default_tools_approval_mode=\"approve\"",
         "--config", $"mcp_servers.styloagent.http_headers={{\"X-Styloagent-Agent\"={AgentRuntimeProfile.TomlString(prefix)},\"Authorization\"={AgentRuntimeProfile.TomlString($"Bearer {token}")}}}",
         };
         if (includeChromeDevTools)
-            args.AddRange(["--config", "mcp_servers.chrome-devtools.enabled=true", "--config", "mcp_servers.chrome-devtools.command=\"npx\"", "--config", $"mcp_servers.chrome-devtools.args=[{string.Join(',', ChromeDevToolsArgs.Select(AgentRuntimeProfile.TomlString))}"]);
+            args.AddRange(["--config", "mcp_servers.chrome-devtools.enabled=true", "--config", "mcp_servers.chrome-devtools.command=\"npx\"", "--config", $"mcp_servers.chrome-devtools.args=[{string.Join(',', ChromeDevToolsArgs.Select(AgentRuntimeProfile.TomlString))}]"]);
         return args;
     }
 

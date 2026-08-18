@@ -1,6 +1,7 @@
 using Styloagent.App.ViewModels;
 using Styloagent.Core.Model;
 using Styloagent.Core.Projects;
+using System.Text.Json;
 
 namespace Styloagent.App.Tests;
 
@@ -40,6 +41,11 @@ public class FleetWiringTests
             Assert.Single(launcher.Options);
             var spawnArgs = launcher.Options[0].Args.ToList();
             Assert.Contains("--mcp-config", spawnArgs);
+            Assert.DoesNotContain(spawnArgs, a => a.StartsWith("mcp_servers.", StringComparison.Ordinal));
+            var mcpIndex = spawnArgs.IndexOf("--mcp-config");
+            using var mcpConfig = JsonDocument.Parse(spawnArgs[mcpIndex + 1]);
+            Assert.Equal(JsonValueKind.Array, mcpConfig.RootElement
+                .GetProperty("mcpServers").GetProperty("chrome-devtools").GetProperty("args").ValueKind);
         }
         finally
         {
@@ -68,7 +74,10 @@ public class FleetWiringTests
             var spawnArgs = launcher.Options[0].Args.ToList();
             Assert.Equal("codex", launcher.Options[0].Command);
             Assert.DoesNotContain("--mcp-config", spawnArgs);
+            Assert.Contains("--dangerously-bypass-hook-trust", spawnArgs);
             Assert.Contains(spawnArgs, a => a.Contains("mcp_servers.styloagent.url", StringComparison.Ordinal));
+            Assert.Contains(spawnArgs, a => a.StartsWith("mcp_servers.chrome-devtools.args=[", StringComparison.Ordinal)
+                                            && a.EndsWith(']'));
             Assert.Contains(spawnArgs, a => a.Contains("\"X-Styloagent-Agent\"=\"overview-\"", StringComparison.Ordinal));
             Assert.Contains(spawnArgs, a => a.StartsWith("developer_instructions=", StringComparison.Ordinal)
                                             && a.Contains("overview / architect", StringComparison.OrdinalIgnoreCase));
@@ -105,6 +114,9 @@ public class FleetWiringTests
             Assert.True(vm.McpServerRunning);
             var spawn = Assert.Single(launcher.Options);
             Assert.Equal("claude", spawn.Command);
+            Assert.Contains("--mcp-config", spawn.Args);
+            Assert.DoesNotContain("--dangerously-bypass-hook-trust", spawn.Args);
+            Assert.DoesNotContain(spawn.Args, a => a.StartsWith("mcp_servers.", StringComparison.Ordinal));
 
             // Opus tier on claude-deepseek -> deepseek-v4-pro, NEVER the literal claude 'opus' model.
             var modelIdx = spawn.Args.ToList().IndexOf("--model");

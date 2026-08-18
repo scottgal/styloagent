@@ -2436,8 +2436,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             Confidence: snapshot?.Confidence.ToString().ToLowerInvariant() ?? "unavailable",
             Source: snapshot?.Source.ToString().ToLowerInvariant() ?? "unavailable",
             ObservedAt: snapshot?.ObservedAt,
-            ConfiguredModel: p.SelectedModel,
-            ConfiguredEffort: p.SelectedEffort);
+            ConfiguredModel: snapshot?.ConfiguredModel ?? "",
+            ConfiguredEffort: snapshot?.ConfiguredEffort ?? "");
         }).ToList();
         return new FleetStatusReport(agents, WorkingCount, WaitingCount, FleetPaused);
     }

@@ -120,13 +120,17 @@ public class MultiRepoOverviewTests
         try
         {
             var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
+            var pane = vm.Panes[0];
+            pane.ContextSnapshot = ContextTelemetrySnapshot.Unavailable(
+                ContextSnapshotKey.Create("/repo", pane.Prefix, "session"), pane.Runtime,
+                "configured-model", "configured-effort");
             var status = Assert.Single(vm.BuildFleetStatus().Agents);
             Assert.False(status.IsAvailable);
             Assert.Null(status.RemainingTokens);
             Assert.Null(status.LimitTokens);
             Assert.Null(status.UsedTokens);
             Assert.Equal("unavailable", status.Confidence);
-            Assert.NotEmpty(status.ConfiguredModel);
+            Assert.Equal("configured-model", status.ConfiguredModel);
         }
         finally { if (Directory.Exists(channel)) Directory.Delete(channel, recursive: true); }
     }
@@ -143,7 +147,8 @@ public class MultiRepoOverviewTests
             var observedAt = DateTimeOffset.UtcNow;
             pane.ContextSnapshot = new ContextTelemetrySnapshot(key, AgentRuntimeKind.Codex,
                 "gpt-5.6-luna", "medium", 1000, 0, 1000, 1, ContextPressure.Normal,
-                observedAt, observedAt, ContextTelemetrySource.CodexTranscript, ContextTelemetryConfidence.Observed);
+                observedAt, observedAt, ContextTelemetrySource.CodexTranscript, ContextTelemetryConfidence.Observed,
+                "configured-model", "configured-effort");
 
             var status = Assert.Single(vm.BuildFleetStatus().Agents);
             Assert.True(status.IsAvailable);
@@ -151,7 +156,7 @@ public class MultiRepoOverviewTests
             Assert.Equal(1000, status.RemainingTokens);
             Assert.Equal("gpt-5.6-luna", status.Model);
             Assert.Equal("session-a", status.SessionId);
-            Assert.NotEqual(status.Model, status.ConfiguredModel);
+            Assert.Equal("configured-model", status.ConfiguredModel);
         }
         finally { if (Directory.Exists(channel)) Directory.Delete(channel, recursive: true); }
     }

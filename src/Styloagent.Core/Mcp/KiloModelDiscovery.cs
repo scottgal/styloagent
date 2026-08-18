@@ -13,6 +13,8 @@ namespace Styloagent.Core.Mcp;
 /// </summary>
 public static class KiloModelDiscovery
 {
+    // Compatibility-only while callers in the cockpit are removed with the retired runtime.
+    private static readonly string[] RetiringRuntimeEfforts = { "default", "low", "medium", "high", "max" };
     /// <summary>How long a discovered catalog stays fresh before the next call re-queries the CLI.</summary>
     public static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
 
@@ -114,7 +116,7 @@ public static class KiloModelDiscovery
     private static IReadOnlyList<string> AgentRuntimeProfileEfforts()
     {
         // Kept behind a property so this file never hard-codes the effort list twice.
-        return AgentRuntimeProfile.KiloEfforts;
+        return RetiringRuntimeEfforts;
     }
 
     /// <summary>

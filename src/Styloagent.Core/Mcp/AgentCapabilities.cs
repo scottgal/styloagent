@@ -23,7 +23,9 @@ public sealed record AgentCapabilities(IReadOnlyList<AgentRuntimeCapabilities> A
             {
                 var loaded = JsonSerializer.Deserialize<AgentCapabilitiesFile>(File.ReadAllText(path), LoadJson);
                 if (loaded?.Agents is { Count: > 0 })
-                    return new(loaded.Agents.Select(a => new AgentRuntimeCapabilities(
+                    return new(loaded.Agents
+                        .Where(a => !a.Agent.Equals("kilo", StringComparison.OrdinalIgnoreCase))
+                        .Select(a => new AgentRuntimeCapabilities(
                         a.Agent, a.Models.Select(m => new AgentCapability(m.Id, m.Label ?? m.Id,
                             m.Efforts is { } efforts ? efforts : new List<string> { "default" })).ToList())).ToList(), path);
             }
@@ -35,6 +37,7 @@ public sealed record AgentCapabilities(IReadOnlyList<AgentRuntimeCapabilities> A
 
     public bool Supports(string agent, string? model, string? effort)
     {
+        if (agent.Equals("kilo", StringComparison.OrdinalIgnoreCase)) return false;
         var runtime = Agents.FirstOrDefault(a => a.Agent.Equals(agent, StringComparison.OrdinalIgnoreCase));
         if (runtime is null) return false;
         var selectedModel = string.IsNullOrWhiteSpace(model) ? "default" : model.Trim();
@@ -42,8 +45,6 @@ public sealed record AgentCapabilities(IReadOnlyList<AgentRuntimeCapabilities> A
         return capability is not null && (string.IsNullOrWhiteSpace(effort) ||
             capability.Efforts.Any(e => e.Equals(effort.Trim(), StringComparison.OrdinalIgnoreCase)));
     }
-
-    private static readonly string[] KiloEfforts = { "default", "low", "medium", "high", "max" };
 
     private static readonly IReadOnlyList<AgentRuntimeCapabilities> Default = new[]
     {
@@ -57,14 +58,6 @@ public sealed record AgentCapabilities(IReadOnlyList<AgentRuntimeCapabilities> A
         new AgentRuntimeCapabilities("codex", new[]
         {
             new AgentCapability("default", "CLI default", new[] { "default", "low", "medium", "high", "xhigh" }),
-            new AgentCapability("gpt-5-codex", "GPT-5 Codex", new[] { "default", "low", "medium", "high", "xhigh" }),
-            new AgentCapability("gpt-5", "GPT-5", new[] { "default", "low", "medium", "high", "xhigh" }),
-        }),
-        new AgentRuntimeCapabilities("kilo", new[]
-        {
-            new AgentCapability("default", "DeepSeek V4 Pro (overview default)", KiloEfforts),
-            new AgentCapability("deepseek/deepseek-v4-pro", "DeepSeek V4 Pro", KiloEfforts),
-            new AgentCapability("deepseek/deepseek-v4-flash", "DeepSeek V4 Flash", KiloEfforts),
         }),
         new AgentRuntimeCapabilities("claude-deepseek", new[]
         {
@@ -75,12 +68,11 @@ public sealed record AgentCapabilities(IReadOnlyList<AgentRuntimeCapabilities> A
     };
 
     /// <summary>
-    /// Replaces the <c>kilo</c> runtime's model list with a live catalog discovered from the installed
-    /// <c>kilo models</c> CLI. Unknown model ids are dropped; the runtime entry itself is always kept so
-    /// the kilo agent stays selectable even when discovery is unavailable.
+    /// Compatibility no-op while cockpit callers for the retired runtime are removed. Kilo is never
+    /// advertised or accepted as a supported runtime.
     /// </summary>
     public AgentCapabilities WithKiloModels(IReadOnlyList<AgentCapability> models)
-        => WithDiscoveredModels("kilo", models);
+        => this;
 
     /// <summary>
     /// Replaces the <c>codex</c> runtime's model list with the live catalog discovered from the codex CLI's

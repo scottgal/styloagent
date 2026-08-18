@@ -275,18 +275,12 @@ public class AgentSessionTests
             => Task.FromResult<IPtySession>(Pty);
     }
 
-    /// <summary>
-    /// Verified against kilo 7.4.20: typing the prompt the instant the PTY spawns loses it entirely —
-    /// the TUI is still initialising, discards the bytes, and the later Enter submits an empty box, so
-    /// the agent sits idle forever having "never got its initial prompt". Typing after the first paint
-    /// submits and the model answers. So the prompt must not be written before the child has painted.
-    /// </summary>
+    /// <summary>Initial prompts are held until an interactive CLI has painted its first frame.</summary>
     [Fact]
     public async Task Prompt_is_not_typed_before_the_child_tui_has_painted()
     {
         var launcher = new BootingLauncher();
-        var entry = Entry() with { Runtime = AgentRuntimeKind.Kilo };
-        var s = new AgentSession(entry, launcher, new FakeWatcher());
+        var s = new AgentSession(Entry(), launcher, new FakeWatcher());
 
         AgentSession.InjectBootTimeout = TimeSpan.FromSeconds(5);
         try

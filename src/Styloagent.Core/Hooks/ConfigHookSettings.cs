@@ -37,10 +37,7 @@ public static class ConfigHookSettings
         bool reHydrate = !string.IsNullOrWhiteSpace(hydrationFile);
         bool gate = !string.IsNullOrWhiteSpace(gateInvocation) && !string.IsNullOrWhiteSpace(repoRoot);
 
-        var args = new List<string>(ObservedEvents.Length * 2 + 1)
-        {
-            "--dangerously-bypass-hook-trust",
-        };
+        var args = new List<string>(ObservedEvents.Length * 2);
 
         foreach (string ev in ObservedEvents)
         {

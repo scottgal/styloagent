@@ -16,6 +16,9 @@ namespace Styloagent.Core.Hooks;
 /// </summary>
 public static class KiloHooksPlugin
 {
+    // Compatibility-only while the cockpit still references this retiring plugin. The supported-runtime
+    // registry no longer supplies Kilo model defaults.
+    private const string RetiringSmallModelId = "deepseek/deepseek-v4-flash";
     /// <summary>The plugin file name inside a project's <c>.kilo/plugins/</c> directory.</summary>
     public const string FileName = "styloagent-hooks.js";
 
@@ -74,7 +77,7 @@ public static class KiloHooksPlugin
                 },
             },
             ["permission"] = PermissionBlock(mode),
-            ["small_model"] = AgentRuntimeProfile.KiloFlashModelId,
+            ["small_model"] = RetiringSmallModelId,
         };
         if (instructionPaths is { Count: > 0 })
             root["instructions"] = instructionPaths;

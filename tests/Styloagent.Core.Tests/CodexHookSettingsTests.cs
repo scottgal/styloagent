@@ -9,7 +9,7 @@ public class ConfigHookSettingsTests
     {
         var args = ConfigHookSettings.BuildConfigArgs("agent/one-", "/tmp/stylo hooks");
 
-        Assert.Contains("--dangerously-bypass-hook-trust", args);
+        Assert.DoesNotContain("--dangerously-bypass-hook-trust", args);
         Assert.Contains("--config", args);
         Assert.Contains(args, a => a.StartsWith("hooks.SessionStart=", StringComparison.Ordinal));
         Assert.Contains(args, a => a.StartsWith("hooks.PreToolUse=", StringComparison.Ordinal));

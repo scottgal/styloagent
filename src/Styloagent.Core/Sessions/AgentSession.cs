@@ -30,13 +30,8 @@ public sealed class AgentSession
 
     // How long to wait for the child's TUI to paint its first frame BEFORE typing the prompt.
     //
-    // The settle/retry delays above only sit BETWEEN the text and the Enter — the text itself went out
-    // the instant the PTY spawned. Verified against kilo 7.4.20 with an A/B on a real pty: typing at
-    // spawn loses the prompt entirely (the still-initialising TUI discards the bytes, so the later Enter
-    // submits an empty box and the agent sits idle having "never got its initial prompt"), while typing
-    // after the first paint submits and the model answers. The glyphs still echo on screen either way,
-    // which is why this looked like it was working. Claude's input box tolerates the early write, so
-    // only kilo ever showed the symptom.
+    // The settle/retry delays above only sit BETWEEN the text and the Enter. Waiting for the first paint
+    // prevents an initial prompt being lost while an interactive CLI is still initialising.
     //
     // Zero (the default) disables the wait so the suite stays fast against fakes that never paint; the
     // app sets it at startup, alongside the two delays above.
@@ -219,7 +214,7 @@ public sealed class AgentSession
         if (!_runtime.SupportsInitialPromptArgument || string.IsNullOrEmpty(prompt))
             return _launchArgs;
 
-        // Kilo (`kilo run <prompt>`) and Codex take the prompt as a bare positional argument.
+        // Codex takes the prompt as a bare positional argument.
         return _launchArgs.Concat(new[] { prompt }).ToArray();
     }
 }

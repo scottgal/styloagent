@@ -68,17 +68,9 @@ public sealed record AgentCapabilities(IReadOnlyList<AgentRuntimeCapabilities> A
     };
 
     /// <summary>
-    /// Compatibility no-op while cockpit callers for the retired runtime are removed. Kilo is never
-    /// advertised or accepted as a supported runtime.
-    /// </summary>
-    public AgentCapabilities WithKiloModels(IReadOnlyList<AgentCapability> models)
-        => this;
-
-    /// <summary>
     /// Replaces the <c>codex</c> runtime's model list with the live catalog discovered from the codex CLI's
-    /// own <c>models_cache.json</c> (see <see cref="CodexModelDiscovery"/>). Same contract as
-    /// <see cref="WithKiloModels"/>: an empty discovery leaves the static list intact, so codex stays
-    /// selectable when the CLI is absent.
+    /// own <c>models_cache.json</c> (see <see cref="CodexModelDiscovery"/>). An empty discovery leaves
+    /// the static list intact, so Codex stays selectable when its CLI catalog is unavailable.
     /// </summary>
     public AgentCapabilities WithCodexModels(IReadOnlyList<AgentCapability> models)
         => WithDiscoveredModels("codex", models);
@@ -86,12 +78,9 @@ public sealed record AgentCapabilities(IReadOnlyList<AgentRuntimeCapabilities> A
     /// <summary>
     /// Resolves a <see cref="Styloagent.Core.Model.ModelTier"/> to a model this machine can ACTUALLY run.
     ///
-    /// Tiers map to hard-coded ids per runtime (see <c>ModelTierResolver</c>), and those ids go stale as
-    /// CLIs move on — codex's "gpt-5-codex"/"gpt-5" no longer exist, so every tier-based codex spawn asked
-    /// for a model the machine did not have and failed. When the preferred id is not in this (live) catalog,
-    /// fall back to the runtime's own CLI default rather than launching something that cannot run: that is
-    /// whatever the operator configured (e.g. <c>model = "gpt-5.6-terra"</c> in ~/.codex/config.toml), which
-    /// is the best available answer to "just run a codex agent".
+    /// Tiers map to concrete ids only where those ids are stable. Codex tiers intentionally resolve to its
+    /// configured CLI default instead of a guessed model id; explicit Codex model selections are validated
+    /// against the live catalog below.
     /// </summary>
     public string? ResolveSupportedModel(Styloagent.Core.Model.AgentRuntimeKind runtime, Styloagent.Core.Model.ModelTier tier)
     {

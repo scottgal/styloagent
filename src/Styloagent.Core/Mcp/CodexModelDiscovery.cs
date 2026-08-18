@@ -4,8 +4,7 @@ namespace Styloagent.Core.Mcp;
 
 /// <summary>
 /// Dynamically discovers the model catalog for the Codex runtime, so <c>agent_capabilities</c> reflects the
-/// models actually available on this machine rather than a hard-coded list — the same contract
-/// <see cref="KiloModelDiscovery"/> provides for kilo.
+/// models actually available on this machine rather than a hard-coded list.
 ///
 /// The codex CLI already maintains its own catalog at <c>~/.codex/models_cache.json</c> (slug, display name,
 /// supported reasoning levels), so this reads that file rather than spawning a process — cheap enough to

@@ -30,6 +30,11 @@ public class CodexModelDiscoveryTests
             {"effort": "low"}, {"effort": "medium"}, {"effort": "high"}, {"effort": "xhigh"}]
         },
         {
+          "slug": "gpt-5.6-luna", "display_name": "GPT-5.6-Luna", "visibility": "list",
+          "supported_reasoning_levels": [
+            {"effort": "low"}, {"effort": "medium"}, {"effort": "high"}]
+        },
+        {
           "slug": "gpt-5.6-sol-wm", "display_name": "GPT-5.6-Sol-WM", "visibility": "hide",
           "supported_reasoning_levels": [{"effort": "low"}]
         }
@@ -73,10 +78,20 @@ public class CodexModelDiscoveryTests
 
         // The real model the operator actually runs is now spawnable...
         Assert.True(caps.Supports("codex", "gpt-5.6-terra", "high"));
+        Assert.True(caps.Supports("codex", "gpt-5.6-luna", "medium"));
         // ...and the models that no longer exist are gone.
         Assert.False(caps.Supports("codex", "gpt-5-codex", null));
         // Other runtimes are untouched.
         Assert.True(caps.Supports("claude", "opus", "high"));
+    }
+
+    [Fact]
+    public void Explicit_luna_medium_is_preserved_by_the_live_catalog()
+    {
+        var caps = AgentCapabilities.Load(null).WithCodexModels(CodexModelDiscovery.ParseCatalog(Catalog));
+
+        Assert.True(caps.Supports("codex", "gpt-5.6-luna", "medium"));
+        Assert.False(caps.Supports("codex", "gpt-5.6-luna", "xhigh"));
     }
 
     [Fact]
@@ -116,4 +131,11 @@ public class CodexModelDiscoveryTests
         Assert.Equal("opus", caps.ResolveSupportedModel(AgentRuntimeKind.Claude, ModelTier.Opus));
         Assert.Equal("sonnet", caps.ResolveSupportedModel(AgentRuntimeKind.Claude, ModelTier.Sonnet));
     }
+
+    [Theory]
+    [InlineData(ModelTier.Opus)]
+    [InlineData(ModelTier.Sonnet)]
+    [InlineData(ModelTier.Haiku)]
+    public void Codex_tiers_never_map_to_retired_model_ids(ModelTier tier)
+        => Assert.Null(ModelTierResolver.ResolveModel(AgentRuntimeKind.Codex, tier));
 }

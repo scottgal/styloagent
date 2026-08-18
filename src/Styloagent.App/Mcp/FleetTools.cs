@@ -53,7 +53,7 @@ public sealed class FleetTools
              documentOpen ?? new DocumentOpenHub());
 
 #pragma warning disable CA1707 // Identifiers should not contain underscores — tool names are MCP contract and must match the wire protocol
-    [McpServerTool, Description("Launch a child agent under you. prefix is a short lowercase tag ending in '-'. The child runs the SAME CLI you started in by default — pass an explicit runtime to override (e.g. runtime='codex' to 'start a codex agent'; valid: claude, codex, kilo, claude-deepseek). tier classifies the model (opus/sonnet/haiku; spawned children default to sonnet = the fast/cheap model per runtime) and model/effort override it directly — call agent_capabilities for the live catalog. Set worktree=true when this agent's work overlaps files another agent owns, so it runs isolated on its own git worktree/branch; otherwise false to share the repo. Keep launchPrompt SHORT (identity + 'read your mission doc'); pass the full brief as missionDoc — Styloagent writes it to .styloagent/missions/<prefix>.md in the new agent's tree and tells the agent to read it. Leave missionDoc empty to inject launchPrompt alone.")]
+    [McpServerTool, Description("Launch a child agent under you. prefix is a short lowercase tag ending in '-'. The child runs the SAME CLI you started in by default — pass an explicit runtime to override (e.g. runtime='codex' to start a Codex agent; valid: claude, codex, claude-deepseek). tier classifies the model (opus/sonnet/haiku; spawned children default to sonnet = the fast/cheap model per runtime) and model/effort override it directly — call agent_capabilities for the live catalog. Set worktree=true when this agent's work overlaps files another agent owns, so it runs isolated on its own git worktree/branch; otherwise false to share the repo. Keep launchPrompt SHORT (identity + 'read your mission doc'); pass the full brief as missionDoc — Styloagent writes it to .styloagent/missions/<prefix>.md in the new agent's tree and tells the agent to read it. Leave missionDoc empty to inject launchPrompt alone.")]
     public async Task<string> spawn_agent(string prefix, string responsibility, string dir, string launchPrompt,
         bool worktree, string missionDoc = "", string runtime = "", string tier = "",
         string model = "", string effort = "")
@@ -84,7 +84,7 @@ public sealed class FleetTools
         return await _controller.RenameAgentAsync(prefix, name);
     }
 
-    [McpServerTool, Description("Return the live model and reasoning-effort choices for every supported agent runtime (claude, codex, kilo, claude-deepseek). Each runtime lists its available models with human-readable labels and the effort levels each model accepts (low, medium, high, etc.). The kilo runtime's model list is discovered live from the installed `kilo models` CLI, so it reflects every model actually available on this machine. Use this BEFORE calling spawn_agent so you pass a valid runtime/model/effort combination. Reloaded from .styloagent/agent-capabilities.json + the live kilo catalog on every call, so the list stays current without restarting Styloagent.")]
+    [McpServerTool, Description("Return the live model and reasoning-effort choices for every supported agent runtime (claude, codex, claude-deepseek). Each runtime lists its available models with human-readable labels and the effort levels each model accepts (low, medium, high, etc.). Codex models are discovered live from its local catalog. Use this BEFORE calling spawn_agent so you pass a valid runtime/model/effort combination. Reloaded from .styloagent/agent-capabilities.json plus the live Codex catalog on every call, so the list stays current without restarting Styloagent.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public string agent_capabilities()
     {
@@ -242,7 +242,7 @@ public sealed class FleetTools
         return (repos.FirstOrDefault(r => r.Primary) ?? repos[0]).Path;
     }
 
-    [McpServerTool, Description("Rich live status of the whole fleet: each agent's stable prefix, display name, runtime (claude/codex/kilo/claude-deepseek), model, reasoning effort, responsibility, state (working | idle | needs-you | exited), current activity, seconds since its last output, remaining context tokens and pressure (normal | elevated | high | critical), and whether it has a git worktree — plus working/waiting counts and the paused flag. Use this to see which agents are at what effort level before spawning more.")]
+    [McpServerTool, Description("Rich live status of the whole fleet: each agent's stable prefix, display name, runtime (claude/codex/claude-deepseek), model, reasoning effort, responsibility, state (working | idle | needs-you | exited), current activity, seconds since its last output, remaining context tokens and pressure (normal | elevated | high | critical), and whether it has a git worktree — plus working/waiting counts and the paused flag. Use this to see which agents are at what effort level before spawning more.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public string fleet_status()
     {
@@ -354,7 +354,7 @@ public sealed class FleetTools
         return await _controller.CaptureScreenshotAsync(string.IsNullOrWhiteSpace(target) ? null : target);
     }
 
-    [McpServerTool, Description("Look at an image and answer a question about it in words — vision for agents whose own model cannot see (kilo, claude-deepseek). 'image_path' is an absolute path to a PNG/JPEG, typically one you just produced with screenshot or browser_artifacts. 'question' is what you need to know about it; be specific ('does the dashboard show a Cost column, and what is the top row's value?' beats 'describe this'), and say what shape of answer you want. Returns the description as text. Use it to verify UI work you cannot see, read a chart or dashboard, or check a rendered page actually looks right.")]
+    [McpServerTool, Description("Look at an image and answer a question about it in words. 'image_path' is an absolute path to a PNG/JPEG, typically one you just produced with screenshot or browser_artifacts. 'question' is what you need to know about it; be specific ('does the dashboard show a Cost column, and what is the top row's value?' beats 'describe this'), and say what shape of answer you want. Returns the description as text. Use it to verify UI work you cannot see, read a chart or dashboard, or check a rendered page actually looks right.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public async Task<string> interpret_image(string image_path, string question)
     {

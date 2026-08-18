@@ -3,8 +3,9 @@ namespace Styloagent.Core.Model;
 /// <summary>
 /// A portable model CLASSIFICATION — agents store which tier they need, not a concrete model id. The
 /// cockpit resolves <c>(runtime, tier)</c> → a concrete model via <see cref="ModelTierResolver"/>, so a
-/// fleet is runtime-agnostic: an "opus-tier" architect uses DeepSeek V4 Pro on kilo, Opus on Claude,
-/// GPT-5 on Codex — and switching runtimes never touches every agent's config. Effort is deliberately
+/// fleet is runtime-agnostic: an "opus-tier" architect uses a runtime's supported tier on Claude or
+/// ClaudeDeepSeek. Codex uses its live-configured default unless a caller explicitly selects a model.
+/// Effort is deliberately
 /// NOT stored (it stays at the agent's discretion, per cockpit policy).
 /// </summary>
 public enum ModelTier
@@ -53,22 +54,19 @@ public static class ModelTierResolver
         ModelTier.Opus => runtime switch
         {
             AgentRuntimeKind.Claude => "opus",
-            AgentRuntimeKind.Codex => "gpt-5",
-            AgentRuntimeKind.Kilo => "deepseek/deepseek-v4-pro",
+            AgentRuntimeKind.Codex or AgentRuntimeKind.Kilo => null,
             _ => "deepseek-v4-pro",   // ClaudeDeepSeek — direct DeepSeek id (no [1m] suffix; the API rejects it)
         },
         ModelTier.Sonnet => runtime switch
         {
             AgentRuntimeKind.Claude => "sonnet",
-            AgentRuntimeKind.Codex => "gpt-5-codex",
-            AgentRuntimeKind.Kilo => "deepseek/deepseek-v4-flash",
+            AgentRuntimeKind.Codex or AgentRuntimeKind.Kilo => null,
             _ => "deepseek-v4-flash",
         },
         ModelTier.Haiku => runtime switch
         {
             AgentRuntimeKind.Claude => "haiku",
-            AgentRuntimeKind.Codex => "gpt-5-codex",
-            AgentRuntimeKind.Kilo => "deepseek/deepseek-v4-flash",
+            AgentRuntimeKind.Codex or AgentRuntimeKind.Kilo => null,
             _ => "deepseek-v4-flash",
         },
         _ => null,

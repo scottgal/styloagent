@@ -29,12 +29,16 @@ public class ModelTierStepDownTests
         => Assert.Equal(ModelTier.Sonnet, ModelTierResolver.StepDown(ModelTier.Default));
 
     [Fact]
-    public void Stepping_down_resolves_to_a_real_model_on_every_runtime()
+    public void Stepping_down_resolves_to_a_stable_model_for_tiered_runtimes()
     {
-        foreach (var runtime in Enum.GetValues<AgentRuntimeKind>())
+        foreach (var runtime in new[] { AgentRuntimeKind.Claude, AgentRuntimeKind.ClaudeDeepSeek })
         {
             var child = ModelTierResolver.StepDown(ModelTier.Opus);
             Assert.NotNull(ModelTierResolver.ResolveModel(runtime, child));
         }
     }
+
+    [Fact]
+    public void Codex_tiers_use_the_live_cli_default_instead_of_a_guessed_model_id()
+        => Assert.Null(ModelTierResolver.ResolveModel(AgentRuntimeKind.Codex, ModelTier.Sonnet));
 }

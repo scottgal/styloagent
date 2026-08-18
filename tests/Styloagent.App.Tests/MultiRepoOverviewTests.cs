@@ -121,9 +121,6 @@ public class MultiRepoOverviewTests
         {
             var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
             var pane = vm.Panes[0];
-            pane.ContextSnapshot = ContextTelemetrySnapshot.Unavailable(
-                ContextSnapshotKey.Create("/repo", pane.Prefix, "session"), pane.Runtime,
-                "configured-model", "configured-effort");
             var status = Assert.Single(vm.BuildFleetStatus().Agents);
             Assert.False(status.IsAvailable);
             Assert.Null(status.RemainingTokens);
@@ -132,8 +129,8 @@ public class MultiRepoOverviewTests
             Assert.Equal("unavailable", status.Confidence);
             Assert.Empty(status.Model);
             Assert.Empty(status.Effort);
-            Assert.Equal("configured-model", status.ConfiguredModel);
-            Assert.Equal("configured-effort", status.ConfiguredEffort);
+            Assert.Equal(pane.SelectedModel, status.ConfiguredModel);
+            Assert.Equal(pane.SelectedEffort, status.ConfiguredEffort);
         }
         finally { if (Directory.Exists(channel)) Directory.Delete(channel, recursive: true); }
     }

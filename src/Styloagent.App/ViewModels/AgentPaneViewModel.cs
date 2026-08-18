@@ -436,7 +436,7 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
                 var usage = profile.UseCodexTranscriptReader
                     ? Styloagent.Core.Transcripts.CodexTranscriptReader.ReadLatestForSession(sid)
                     : Styloagent.Core.Transcripts.TranscriptReader.ReadLatest(
-                        Styloagent.Core.Transcripts.TranscriptReader.PathFor(cwd, sid));
+                        Styloagent.Core.Transcripts.TranscriptReader.PathFor(cwd, sid), _manifest.Model);
                 var key = ContextSnapshotKey.Create(cwd, Prefix, sid);
                 var snapshot = ContextTelemetry.Observe(key, _manifest.Runtime, usage, _manifest.Model, _manifest.Effort);
                 var usedFraction = snapshot.RemainingFraction is { } remainingFractionValue ? 1 - remainingFractionValue : 0;

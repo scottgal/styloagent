@@ -2460,6 +2460,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         foreach (var pane in Panes)
         {
             if (pane.State != SessionState.Live) { pane.DilutionNudged = false; continue; }
+            var snapshot = pane.ContextSnapshot;
+            if (snapshot is null || !snapshot.IsAvailable)
+            {
+                pane.DilutionNudged = false;
+                pane.AdaptiveBudgetNudged = false;
+                continue;
+            }
 
             if (pane.ContextFraction >= DilutionThreshold && !pane.DilutionNudged)
             {
@@ -2474,7 +2481,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 pane.DilutionNudged = false;   // hysteresis: re-arm once it drops well below the line
             }
 
-            var pressure = Styloagent.Core.Sessions.ContextPressurePolicy.For(pane.ContextFraction);
+            var pressure = snapshot.Pressure;
             var pressured = pressure is Styloagent.Core.Sessions.ContextPressure.Elevated
                 or Styloagent.Core.Sessions.ContextPressure.High
                 or Styloagent.Core.Sessions.ContextPressure.Critical;

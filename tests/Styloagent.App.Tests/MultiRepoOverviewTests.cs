@@ -130,7 +130,10 @@ public class MultiRepoOverviewTests
             Assert.Null(status.LimitTokens);
             Assert.Null(status.UsedTokens);
             Assert.Equal("unavailable", status.Confidence);
+            Assert.Empty(status.Model);
+            Assert.Empty(status.Effort);
             Assert.Equal("configured-model", status.ConfiguredModel);
+            Assert.Equal("configured-effort", status.ConfiguredEffort);
         }
         finally { if (Directory.Exists(channel)) Directory.Delete(channel, recursive: true); }
     }

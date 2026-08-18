@@ -90,6 +90,31 @@ public class StyloagentMcpServerTests
     }
 
     [Fact]
+    public void McpConfig_adds_safe_isolated_chrome_devtools_to_claude_and_codex()
+    {
+        var json = McpConfig.BuildJson("foss-", new Uri("http://127.0.0.1:5000/mcp"), "tok");
+        var codex = McpConfig.CodexArgs("foss-", new Uri("http://127.0.0.1:5000/mcp"), "tok");
+
+        Assert.Contains("chrome-devtools", json);
+        Assert.Contains("--isolated", json);
+        Assert.Contains("--headless=true", json);
+        Assert.Contains("--no-usage-statistics", json);
+        Assert.Contains("--no-performance-crux", json);
+        Assert.Contains("--redact-network-headers", json);
+        Assert.DoesNotContain("user-data", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ws-endpoint", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(codex, a => a.Contains("mcp_servers.chrome-devtools.args", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void McpConfig_can_omit_only_chrome_devtools()
+    {
+        var json = McpConfig.BuildJson("foss-", new Uri("http://127.0.0.1:5000/mcp"), "tok", includeChromeDevTools: false);
+        Assert.Contains("styloagent", json);
+        Assert.DoesNotContain("chrome-devtools", json);
+    }
+
+    [Fact]
     public async Task Server_starts_on_loopback_and_lists_the_two_tools()
     {
         await using var server = await StyloagentMcpServer.StartAsync(new FakeController(), new FakeRouter());

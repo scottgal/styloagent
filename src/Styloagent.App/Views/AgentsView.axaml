@@ -139,8 +139,10 @@
               <Button Content="Approve" FontSize="9" Padding="6,1" VerticalAlignment="Center"
                       Background="#5A4A00" Foreground="#FFE9A8"
                       IsVisible="{Binding NeedsYou}"
+                      IsEnabled="{Binding NeedsYou}"
                       Command="{Binding Host.ApprovePermissionCommand}"
                       CommandParameter="{Binding}"
+                      AutomationProperties.Name="Approve this agent's pending prompt"
                       ToolTip.Tip="{Binding WaitingTooltip}" />
             </StackPanel>
           </Grid>

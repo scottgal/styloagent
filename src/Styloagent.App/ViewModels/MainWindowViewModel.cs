@@ -2409,22 +2409,36 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// <summary>Rich, live per-agent status — an orchestrator's situational-awareness snapshot.</summary>
     public FleetStatusReport BuildFleetStatus()
     {
-        var agents = Panes.Select(p => new AgentStatus(
+        var agents = Panes.Select(p =>
+        {
+            var snapshot = p.ContextSnapshot;
+            var available = snapshot?.IsAvailable == true;
+            return new AgentStatus(
             Prefix: p.Prefix,
             Responsibility: p.Responsibility,
             State: HookStateName(p.HookState),
             Activity: p.StatusHeadline,
             IdleSeconds: p.LastActivityAt is { } t ? (int)Math.Max(0, (DateTimeOffset.UtcNow - t).TotalSeconds) : -1,
-            Usage: p.UsageText,
+            Usage: available ? p.UsageText : "Context unavailable",
             Worktree: p.WorktreePath is not null,
             Repo: RepoNameForPrefix(p.Prefix),
-            RemainingTokens: p.RemainingTokens,
-            RemainingFraction: p.RemainingFraction,
-            Pressure: p.ContextPressure,
+            RemainingTokens: snapshot?.RemainingTokens,
+            RemainingFraction: snapshot?.RemainingFraction,
+            Pressure: snapshot?.Pressure.ToString().ToLowerInvariant() ?? "unknown",
             Runtime: RuntimeName(p.Runtime),
-            Model: p.SelectedModel,
-            Effort: p.SelectedEffort,
-            Name: p.DisplayName)).ToList();
+            Model: available ? snapshot!.Model ?? "" : "",
+            Effort: available ? snapshot!.Effort ?? "" : "",
+            Name: p.DisplayName,
+            SessionId: snapshot?.Key.SessionId ?? "",
+            LimitTokens: snapshot?.LimitTokens,
+            UsedTokens: snapshot?.UsedTokens,
+            IsAvailable: available,
+            Confidence: snapshot?.Confidence.ToString().ToLowerInvariant() ?? "unavailable",
+            Source: snapshot?.Source.ToString().ToLowerInvariant() ?? "unavailable",
+            ObservedAt: snapshot?.ObservedAt,
+            ConfiguredModel: p.SelectedModel,
+            ConfiguredEffort: p.SelectedEffort);
+        }).ToList();
         return new FleetStatusReport(agents, WorkingCount, WaitingCount, FleetPaused);
     }
 

@@ -141,7 +141,7 @@ public class TranscriptReaderTests
     }
 
     [Fact]
-    public void Context_over_200k_infers_the_1m_window_even_without_a_1m_model_id()
+    public void Context_over_200k_establishes_the_1m_window_even_without_a_1m_model_id()
     {
         // Real transcripts read model "claude-opus-4-8" even on a 1M session, so size must decide.
         var path = Path.GetTempFileName();
@@ -153,6 +153,34 @@ public class TranscriptReaderTests
             Assert.Equal(1_000_000, usage!.WindowTokens);
             Assert.Equal(0.584, usage.ContextFraction, 3);
             Assert.Equal(416_000, usage.RemainingTokens);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void Explicit_configured_1m_signal_establishes_window_below_200k()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path,
+                "{\"type\":\"assistant\",\"message\":{\"model\":\"claude-opus-4-8\",\"usage\":{\"input_tokens\":50000}}}");
+            var usage = TranscriptReader.ReadLatest(path, configuredModel: "claude-opus-4-8[1m]");
+            Assert.NotNull(usage);
+            Assert.Equal(1_000_000, usage!.WindowTokens);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void Ambiguous_early_1m_capable_model_is_unavailable_without_a_reliable_signal()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path,
+                "{\"type\":\"assistant\",\"message\":{\"model\":\"claude-opus-4-8\",\"usage\":{\"input_tokens\":50000}}}");
+            Assert.Null(TranscriptReader.ReadLatest(path));
         }
         finally { File.Delete(path); }
     }

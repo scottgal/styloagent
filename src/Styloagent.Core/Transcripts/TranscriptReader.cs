@@ -41,13 +41,13 @@ public static class TranscriptReader
     /// Reads the most recent usage from the transcript at <paramref name="path"/> (scanning the tail
     /// backwards for the last assistant message with a usage block). Null if unavailable.
     /// </summary>
-    public static TranscriptUsage? ReadLatest(string? path)
+    public static TranscriptUsage? ReadLatest(string? path, string? configuredModel = null)
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
         try
         {
             foreach (var line in TailLines(path, maxBytes: 256 * 1024))
-                if (TryParseUsage(line, out var usage))
+                if (TryParseUsage(line, configuredModel, out var usage))
                     return usage;
             return null;
         }
@@ -110,7 +110,7 @@ public static class TranscriptReader
     private static IEnumerable<string> TailLines(string path, int maxBytes)
         => TranscriptTail.Lines(path, maxBytes);
 
-    private static bool TryParseUsage(string line, out TranscriptUsage usage)
+    private static bool TryParseUsage(string line, string? configuredModel, out TranscriptUsage usage)
     {
         usage = null!;
         try
@@ -131,7 +131,9 @@ public static class TranscriptReader
             var model = msg.TryGetProperty("model", out var m) && m.ValueKind == JsonValueKind.String
                 ? m.GetString() : null;
 
-            usage = new TranscriptUsage(ctx, WindowFor(model, ctx), model);
+            var window = WindowFor(model, configuredModel, ctx);
+            if (window is null) return false;
+            usage = new TranscriptUsage(ctx, window.Value, model);
             return true;
         }
         catch (JsonException) { return false; }
@@ -144,13 +146,22 @@ public static class TranscriptReader
         => obj.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out _);
 
     /// <summary>
-    /// Context window in tokens. The transcript's model id does NOT reliably encode the 1M-context
-    /// variant (it reads e.g. "claude-opus-4-8" even on a 1M session), so we also infer from size: a
-    /// context already past 200k can only be a 1M window.
+    /// Context window in tokens. The transcript's <c>claude-opus-4-8</c> id is ambiguous: it can be a
+    /// 1M session without carrying a suffix. An explicit configured 1M selection or a context already
+    /// past 200k establishes the 1M limit; an early ambiguous session stays unavailable rather than being
+    /// falsely treated as a 200k session.
     /// </summary>
-    private static long WindowFor(string? model, long contextTokens)
+    private static long? WindowFor(string? model, string? configuredModel, long contextTokens)
     {
-        if (model is not null && model.Contains("1m", StringComparison.OrdinalIgnoreCase)) return 1_000_000;
-        return contextTokens > 200_000 ? 1_000_000 : 200_000;
+        if (Has1MSignal(model) || Has1MSignal(configuredModel)) return 1_000_000;
+        if (contextTokens > 200_000) return 1_000_000;
+        if (IsAmbiguous1MCapableModel(model)) return null;
+        return !string.IsNullOrWhiteSpace(model) ? 200_000 : null;
     }
+
+    private static bool Has1MSignal(string? model)
+        => model?.Contains("1m", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static bool IsAmbiguous1MCapableModel(string? model)
+        => string.Equals(model, "claude-opus-4-8", StringComparison.OrdinalIgnoreCase);
 }

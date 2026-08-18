@@ -21,10 +21,10 @@ public partial class AppPreferences
 
     /// <summary>
     /// The agent runtime the welcome screen starts with (and new agents default to):
-    /// <c>claude</c> | <c>codex</c> | <c>kilo</c> | <c>claude-deepseek</c>. Stored as the runtime name;
-    /// parsed with <c>AgentRuntime.Parse</c> (unknown values fall back to kilo).
+    /// <c>claude</c> | <c>codex</c> | <c>claude-deepseek</c>. Stored as the runtime name.
+    /// Unknown or retired runtime values are normalized to Codex by the startup path.
     /// </summary>
-    public string DefaultRuntime { get; set; } = "kilo";
+    public string DefaultRuntime { get; set; } = "codex";
 
     /// <summary>Terminal font size in points. Clamped to a sane range when applied.</summary>
     public double TerminalFontSize { get; set; } = 13;

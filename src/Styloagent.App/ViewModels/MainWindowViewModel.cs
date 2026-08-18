@@ -789,7 +789,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private IFileWatcher? _watcher;
     private IGitService? _git;
     private int _genericAgentCounter;
-    private AgentRuntimeKind _defaultAgentRuntime = AgentRuntimeKind.Kilo;
+    private AgentRuntimeKind _defaultAgentRuntime = AgentRuntimeKind.Codex;
 
     // Extra args appended to the first pane's session when launched in overview mode.
     private IReadOnlyList<string> _overviewSystemPromptArgs = Array.Empty<string>();
@@ -885,9 +885,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 new RouterController(this, browserController), _hookChannel?.HooksDirectory,
                 _operatorQuestionHub, _documentOpenHub, browserController).ConfigureAwait(false);
 
-            // Warm the dynamic Kilo model catalog in the background so agent_capabilities reflects the
-            // installed CLI's models without blocking the UI thread (or the first spawn).
-            _ = Task.Run(() => Core.Mcp.KiloModelDiscovery.RefreshAsync());
+            // Warm the Codex model catalog without blocking the UI thread (or the first spawn).
+            _ = Task.Run(() => Core.Mcp.CodexModelDiscovery.RefreshAsync());
         }
         catch (Exception ex)
         {
@@ -1261,7 +1260,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         IGitLog? gitLog = null,
         string? overviewColorHex = null,
         IReadOnlyList<Styloagent.Core.Workspace.RepoOverview>? extraOverviews = null,
-        AgentRuntimeKind defaultAgentRuntime = AgentRuntimeKind.Kilo,
+        AgentRuntimeKind defaultAgentRuntime = AgentRuntimeKind.Codex,
         CancellationToken ct = default)
     {
         var vm = new MainWindowViewModel();
@@ -1489,7 +1488,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string firstHookId = vm.ReserveHookId(first.Prefix);
         var session = new AgentSession(first, launcher, watcher,
             vm.LaunchArgsFor(firstHookId, first, vm._overviewSystemPromptArgs),
-            vm.BuildEnv(first, repoRoot, vm._overviewSystemPromptArgs));
+            BuildEnv(first, repoRoot));
 
         vm.Pane = new AgentPaneViewModel(
             session,
@@ -1570,9 +1569,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     [RelayCommand]
     public void AddCodex() => AddAgent(AgentRuntimeKind.Codex);
-
-    [RelayCommand]
-    public void AddKilo() => AddAgent(AgentRuntimeKind.Kilo);
 
     [RelayCommand]
     public void AddClaudeDeepSeek() => AddAgent(AgentRuntimeKind.ClaudeDeepSeek);
@@ -1708,7 +1704,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string hookId = ReserveHookId(entry.Prefix);
         var session = new AgentSession(entry, _launcher, _watcher,
             LaunchArgsFor(hookId, entry, hooks, channelRoot, repoRoot, protocolPath, systemPromptArgs),
-            BuildEnv(entry, repoRoot, systemPromptArgs));
+            BuildEnv(entry, repoRoot));
 
         var paneVm = new AgentPaneViewModel(session, entry, overview.Prefix.TrimEnd('-'), overview.ColorHex)
         {
@@ -2267,8 +2263,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         // gone stale, rather than rejecting a perfectly reasonable "spawn me a codex agent".
         var effectiveModel = model ?? capabilities.ResolveSupportedModel(runtime, tier);
         // The pane stores the TIER and re-resolves it at launch, so a tier whose model this machine lacks
-        // must be downgraded to Default here — otherwise the launch would still pass the stale --model that
-        // the check above just rejected (codex tiers pointed at the long-dead gpt-5-codex/gpt-5).
+        // must be downgraded to Default here — otherwise the launch would still pass the stale model that
+        // the check above rejected.
         if (model is null && effectiveModel is null)
             tier = Styloagent.Core.Model.ModelTier.Default;
         if (!capabilities.Supports(runtimeName, effectiveModel, req.Effort))
@@ -2338,13 +2334,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         return new FleetSnapshot(members, FleetPolicy.MaxFleet, FleetPolicy.MaxDepth, FleetPaused);
     }
 
-    /// <summary>Reloads the repo capability catalog so MCP and new agents see edits immediately, and overlays
-    /// the live Kilo model catalog discovered from the installed <c>kilo models</c> CLI (cached/refreshed in
-    /// the background — the UI never waits on the process).</summary>
+    /// <summary>Reloads the repo capability catalog and overlays the live Codex catalog.</summary>
     public AgentCapabilities BuildAgentCapabilities()
         => AgentCapabilities.Load(_project?.Root ?? _repoRoot)
-            .WithKiloModels(Core.Mcp.KiloModelDiscovery.GetOrStartRefresh())
             .WithCodexModels(Core.Mcp.CodexModelDiscovery.GetOrStartRefresh());
+
+    private static string? LiveCodexDefaultModel()
+        => Core.Mcp.CodexModelDiscovery.GetOrStartRefresh()
+            .FirstOrDefault(model => !model.Id.Equals("default", StringComparison.OrdinalIgnoreCase))?.Id;
 
     /// <summary>Reloads the overview-owned job-type policy so a revised file affects the next spawn.</summary>
     public Styloagent.Core.Projects.ModelPolicy BuildModelPolicy()
@@ -3065,21 +3062,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     {
         var runtime = AgentRuntimeProfile.For(entry.Runtime);
 
-        // Kilo: `kilo run` headless. Model/effort + autonomous permission flags go on the CLI; the MCP
-        // server, permission block and hooks observation ride the per-agent KILO_CONFIG_CONTENT env built
-        // in BuildEnv — no repo config file is touched, and each agent reaches the MCP server as itself.
-        if (entry.Runtime == AgentRuntimeKind.Kilo)
-        {
-            // Kilo runs as its interactive TUI (`kilo --model …`); the prompt is injected by typing via
-            // the PTY, and approvals come from the KILO_CONFIG_CONTENT permission block.
-            return runtime.ModelEffortArgs(entry.Model, entry.Effort, entry.Tier).ToArray();
-        }
-
         // Codex: --config hooks.*=, --config mcp_servers.*=, --sandbox, positional prompt
         if (runtime.UsesConfigLayerHooks)
         {
             var args = new List<string>();
-            args.AddRange(runtime.ModelEffortArgs(entry.Model, entry.Effort, entry.Tier));
+            // Explicit selections are passed unchanged. Implicit defaults are selected only from the
+            // live catalog; without one, Codex uses its configured CLI default rather than a retired id.
+            args.AddRange(runtime.ModelEffortArgs(entry.Model ?? LiveCodexDefaultModel(), entry.Effort, tier: null));
             if (hooks is not null)
             {
                 var hydration = Styloagent.Core.Hooks.HydrationText.For(
@@ -3110,14 +3099,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     /// <summary>
     /// Per-agent environment variables. ClaudeDeepSeek gets its DeepSeek routing vars from
-    /// <c>deepseek.env</c>; Kilo gets the per-agent <c>KILO_CONFIG_CONTENT</c> (MCP + permissions +
-    /// instruction files) plus the hooks-dir/agent-id env the observation plugin reads.
-    /// <paramref name="claudeOnlyArgs"/> may carry <c>--append-system-prompt</c> entries (the overview /
-    /// repo system prompts); for Kilo those are written to instruction files and referenced by path.
-    /// Other runtimes get nothing.
+    /// <c>deepseek.env</c>; other cockpit runtimes need no per-agent environment.
     /// </summary>
-    private IReadOnlyDictionary<string, string>? BuildEnv(AgentManifestEntry entry, string? repoRoot,
-        IEnumerable<string>? claudeOnlyArgs = null)
+    private static IReadOnlyDictionary<string, string>? BuildEnv(AgentManifestEntry entry, string? repoRoot)
     {
         if (entry.Runtime == AgentRuntimeKind.ClaudeDeepSeek)
         {
@@ -3125,62 +3109,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return vars.Count > 0 ? vars : null;
         }
 
-        if (entry.Runtime == AgentRuntimeKind.Kilo)
-        {
-            if (_mcpServer is not { IsRunning: true } server) return null;
-
-            // Install the observation plugin into the agent's working tree so kilo auto-loads it at
-            // startup (worktrees are separate checkouts, so it must exist there too).
-            Styloagent.Core.Hooks.KiloHooksPlugin.EnsureInstalled(entry.Worktree);
-            Styloagent.Core.Hooks.KiloHooksPlugin.EnsureInstalled(_repoRoot);
-
-            var vars = new Dictionary<string, string>
-            {
-                ["KILO_CONFIG_CONTENT"] = Styloagent.Core.Hooks.KiloHooksPlugin.BuildConfigContent(
-                    entry.Prefix, server.BaseUrl, server.Token, PermissionMode,
-                    KiloInstructionFiles(entry, claudeOnlyArgs)),
-                ["STYLOAGENT_AGENT_ID"] = entry.Prefix,
-            };
-            if (_hookChannel is not null)
-                vars["STYLOAGENT_HOOKS_DIR"] = _hookChannel.HooksDirectory;
-            return vars;
-        }
-
         return null;
-    }
-
-    /// <summary>
-    /// Converts any <c>--append-system-prompt &lt;text&gt;</c> entries in <paramref name="claudeOnlyArgs"/>
-    /// into instruction files written under the agent's <c>.kilo/instructions/</c> (so the Kilo CLI loads
-    /// them at startup via the config <c>instructions</c> key). Returns their absolute paths, or null.
-    /// </summary>
-    private static IEnumerable<string>? KiloInstructionFiles(AgentManifestEntry entry, IEnumerable<string>? claudeOnlyArgs)
-    {
-        if (claudeOnlyArgs is null) return null;
-        var prompts = new List<string>();
-        var args = claudeOnlyArgs.ToList();
-        for (int i = 0; i < args.Count - 1; i++)
-        {
-            if (args[i] == "--append-system-prompt" && !string.IsNullOrWhiteSpace(args[i + 1]))
-                prompts.Add(args[i + 1]);
-        }
-        if (prompts.Count == 0) return null;
-
-        var paths = new List<string>();
-        try
-        {
-            var dir = Path.Combine(string.IsNullOrWhiteSpace(entry.Worktree) ? entry.Repo : entry.Worktree,
-                ".kilo", "instructions");
-            Directory.CreateDirectory(dir);
-            for (int i = 0; i < prompts.Count; i++)
-            {
-                var path = Path.Combine(dir, $"{HookSettings.SanitizeAgentId(entry.Prefix)}-{i + 1}.md");
-                File.WriteAllText(path, prompts[i]);
-                paths.Add(path);
-            }
-        }
-        catch { /* best-effort: a failed instruction write degrades to no extra instructions */ }
-        return paths.Count > 0 ? paths : null;
     }
 
     /// <summary>
@@ -3745,7 +3674,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// <summary>
     /// The repo a spawned/manual agent should run in: the active project, else the repo root, else
     /// STYLOAGENT_REPO — NEVER the user's home. The old fallback to DefaultWorkingDirectory() (~/)
-    /// made toolbar "+ Kilo / + Claude" agents spawn in the home directory with no project context.
+    /// made runtime-specific toolbar agents spawn in the home directory with no project context.
     /// </summary>
     private string RepoRootForSpawn()
         => _project?.Root

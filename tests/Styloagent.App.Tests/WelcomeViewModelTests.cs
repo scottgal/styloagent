@@ -51,11 +51,11 @@ public class WelcomeViewModelTests
             initialRuntime: AgentRuntimeKind.Claude,
             onRuntimeChanged: kind => changed = kind);
 
-        vm.SetRuntimeModeCommand.Execute("Kilo");
+        vm.SetRuntimeModeCommand.Execute("Codex");
 
-        Assert.Equal(AgentRuntimeKind.Kilo, vm.SelectedRuntime);
-        Assert.Equal(AgentRuntimeKind.Kilo, changed);
-        Assert.True(vm.IsKiloFirst);
+        Assert.Equal(AgentRuntimeKind.Codex, vm.SelectedRuntime);
+        Assert.Equal(AgentRuntimeKind.Codex, changed);
+        Assert.True(vm.IsCodexFirst);
         Assert.False(vm.IsClaudeFirst);
     }
 
@@ -65,12 +65,12 @@ public class WelcomeViewModelTests
         // Clicking the already-selected card must not leave the selector with nothing selected:
         // the OneWay Is* bindings are re-pushed even when the source value is unchanged.
         var vm = new WelcomeViewModel(new RecentProjectsStore(), "/tmp/none.yaml",
-            new FakePicker(null), _ => { }, initialRuntime: AgentRuntimeKind.Kilo);
+            new FakePicker(null), _ => { }, initialRuntime: AgentRuntimeKind.Codex);
 
-        vm.SetRuntimeModeCommand.Execute("Kilo");
+        vm.SetRuntimeModeCommand.Execute("Codex");
 
-        Assert.Equal(AgentRuntimeKind.Kilo, vm.SelectedRuntime);
-        Assert.True(vm.IsKiloFirst);
+        Assert.Equal(AgentRuntimeKind.Codex, vm.SelectedRuntime);
+        Assert.True(vm.IsCodexFirst);
     }
 
     [Fact]

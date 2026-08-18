@@ -81,56 +81,6 @@ public class FleetWiringTests
     }
 
     /// <summary>
-    /// Kilo overview launches as `kilo run` with the pro DeepSeek default; the MCP server rides the
-    /// per-agent KILO_CONFIG_CONTENT env (no --mcp-config/--settings CLI args), and the observation
-    /// plugin is installed into the repo's .kilo/plugins/.
-    /// </summary>
-    [Fact]
-    public async Task Kilo_overview_launches_headless_with_config_content_env()
-    {
-        var proj = Path.Combine(Path.GetTempPath(), "wire-kilo-" + Guid.NewGuid().ToString("N"));
-        var cfg = ProjectScaffolder.Ensure(proj);
-        var launcher = new CapturingLauncher();
-        MainWindowViewModel? vm = null;
-        try
-        {
-            vm = await MainWindowViewModel.InitializeAsync(
-                cfg.ChannelRoot, launcher, new FakeWatcher(),
-                repoRoot: cfg.Root,
-                overviewSystemPromptPath: cfg.SystemPromptPath,
-                defaultAgentRuntime: AgentRuntimeKind.Kilo);
-
-            Assert.True(vm.McpServerRunning);
-            Assert.Single(launcher.Options);
-            var spawn = launcher.Options[0];
-            Assert.Equal("kilo", spawn.Command);
-            // Interactive TUI launch: --model only (prompt typed via PTY; approvals from config).
-            Assert.Equal("--model", spawn.Args[0]);
-            Assert.Contains(spawn.Args, a => a == Styloagent.Core.Sessions.AgentRuntimeProfile.KiloDefaultModelId);
-            Assert.DoesNotContain("run", spawn.Args);
-            Assert.DoesNotContain("--auto", spawn.Args);
-            Assert.DoesNotContain("--mcp-config", spawn.Args);
-            Assert.DoesNotContain("--settings", spawn.Args);
-
-            // MCP identity rides the per-agent config content env, carrying THIS agent's prefix.
-            Assert.NotNull(spawn.Env);
-            Assert.True(spawn.Env.ContainsKey("KILO_CONFIG_CONTENT"));
-            var content = spawn.Env["KILO_CONFIG_CONTENT"];
-            Assert.Contains("\"styloagent\"", content);
-            Assert.Contains("overview-", content);
-            Assert.Equal("overview-", spawn.Env["STYLOAGENT_AGENT_ID"]);
-
-            // The fleet-observation plugin was installed for the worktree/repo root.
-            Assert.True(File.Exists(Styloagent.Core.Hooks.KiloHooksPlugin.PathFor(cfg.Root)));
-        }
-        finally
-        {
-            vm?.Dispose();
-            if (Directory.Exists(proj)) Directory.Delete(proj, recursive: true);
-        }
-    }
-
-    /// <summary>
     /// THE acceptance test: the stylobot-commercial-style overview must launch as Claude Code routed
     /// through DeepSeek (not real-Anthropic Opus). The Opus TIER on the claude-deepseek runtime must
     /// resolve to --model deepseek-v4-pro (no [1m] suffix — the DeepSeek API rejects it), with the

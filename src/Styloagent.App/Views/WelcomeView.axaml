@@ -56,26 +56,12 @@
                           IsChecked="{Binding IsCodexFirst, Mode=TwoWay}"
                           Command="{Binding SetRuntimeModeCommand}" CommandParameter="Codex"
                           Padding="12,10" CornerRadius="6" HorizontalContentAlignment="Stretch"
-                          ToolTip.Tip="Codex (OpenAI) — GPT-5 Codex">
+                          ToolTip.Tip="Codex (OpenAI)">
               <StackPanel Orientation="Horizontal" Spacing="10">
                 <ic:SymbolIcon Symbol="BotSparkle" FontSize="20" VerticalAlignment="Center" />
                 <StackPanel Spacing="1">
                   <TextBlock Text="Codex" FontSize="13" FontWeight="SemiBold" />
-                  <TextBlock Text="OpenAI · GPT-5 Codex" FontSize="10.5"
-                             Foreground="{DynamicResource MutedTextBrush}" />
-                </StackPanel>
-              </StackPanel>
-            </ToggleButton>
-            <ToggleButton x:Name="KiloFirstToggle"
-                          IsChecked="{Binding IsKiloFirst, Mode=TwoWay}"
-                          Command="{Binding SetRuntimeModeCommand}" CommandParameter="Kilo"
-                          Padding="12,10" CornerRadius="6" HorizontalContentAlignment="Stretch"
-                          ToolTip.Tip="Kilo (DeepSeek) — V4 Pro overviews, V4 Flash specialists">
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <ic:SymbolIcon Symbol="Rocket" FontSize="20" VerticalAlignment="Center" />
-                <StackPanel Spacing="1">
-                  <TextBlock Text="Kilo" FontSize="13" FontWeight="SemiBold" />
-                  <TextBlock Text="DeepSeek · V4 Pro / Flash" FontSize="10.5"
+                  <TextBlock Text="OpenAI · live model catalog" FontSize="10.5"
                              Foreground="{DynamicResource MutedTextBrush}" />
                 </StackPanel>
               </StackPanel>

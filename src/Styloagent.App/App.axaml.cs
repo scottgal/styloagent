@@ -31,8 +31,7 @@ public partial class App : Application
             Styloagent.Core.Sessions.AgentSession.InjectSettleDelay = TimeSpan.FromMilliseconds(2500);
             Styloagent.Core.Sessions.AgentSession.InjectEnterRetryDelay = TimeSpan.FromMilliseconds(2000);
             // And wait for the child's FIRST FRAME before typing at all: the delays above only sit between
-            // the text and the Enter, so the text itself used to go out the instant the PTY spawned. kilo
-            // discards input typed at that point, which is why a kilo agent "never got its initial prompt".
+            // the text and the Enter, so the text itself used to go out the instant the PTY spawned.
             Styloagent.Core.Sessions.AgentSession.InjectBootTimeout = TimeSpan.FromSeconds(20);
 
             // Same story for the message-injection fallback: one ESC doesn't reliably break a live claude
@@ -58,7 +57,7 @@ public partial class App : Application
             ThemeApplier.ApplyAccent(this, AccentPalette.Resolve(prefs.Accent));
 
             async Task OpenProjectAsync(string root, Window? welcomeWindow, MainWindow? existing = null,
-                AgentRuntimeKind defaultRuntime = AgentRuntimeKind.Kilo)
+                AgentRuntimeKind defaultRuntime = AgentRuntimeKind.Codex)
             {
                 try
                 {
@@ -173,7 +172,11 @@ public partial class App : Application
                 WelcomeViewModel? welcome = null;
                 // The "start with" runtime choice is persisted in preferences, so the next app start
                 // opens with the same default (and the welcome screen preselects it).
-                var initialRuntime = Styloagent.Core.Model.AgentRuntime.Parse(prefs.DefaultRuntime);
+                var initialRuntime = prefs.DefaultRuntime.Equals("claude", StringComparison.OrdinalIgnoreCase)
+                    ? AgentRuntimeKind.Claude
+                    : prefs.DefaultRuntime.Equals("claude-deepseek", StringComparison.OrdinalIgnoreCase)
+                        ? AgentRuntimeKind.ClaudeDeepSeek
+                        : AgentRuntimeKind.Codex;
                 welcome = new WelcomeViewModel(recents, recentsPath,
                     new StorageFolderPicker(welcomeWindow),
                     root => _ = OpenProjectAsync(root, welcomeWindow,

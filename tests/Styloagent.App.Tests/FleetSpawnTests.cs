@@ -56,7 +56,7 @@ public class FleetSpawnTests
     /// <summary>
     /// A spawned child inherits the SPAWNER's CLI by default ("spin up the same cli you started in"),
     /// and an explicit runtime overrides it ("start a codex agent"). A claude-deepseek fleet must not
-    /// silently spawn kilo children.
+    /// silently change a child's runtime.
     /// </summary>
     [Fact]
     public async Task Child_inherits_parent_runtime_unless_overridden()
@@ -82,6 +82,63 @@ public class FleetSpawnTests
             Assert.Equal(AgentRuntimeKind.Codex, vm.Panes.First(p => p.Prefix == "ctx-").Runtime);
         }
         finally { if (Directory.Exists(channelRoot)) Directory.Delete(channelRoot, recursive: true); }
+    }
+
+    [Fact]
+    public async Task SpawnChild_preserves_an_explicit_codex_luna_medium_selection_in_launch_args()
+    {
+        var channelRoot = MainWindowViewModelTests.MakeTwoAgentChannel();
+        var catalogPath = Path.Combine(Path.GetTempPath(), "codex-catalog-" + Guid.NewGuid().ToString("N") + ".json");
+        await File.WriteAllTextAsync(catalogPath, """
+            { "models": [{ "slug": "gpt-5.6-luna", "display_name": "GPT-5.6 Luna", "supported_reasoning_levels": ["low", "medium", "high"] }] }
+            """);
+        await CodexModelDiscovery.RefreshAsync(catalogPath);
+        var launcher = new FakeLauncher();
+        try
+        {
+            var vm = await MainWindowViewModel.InitializeAsync(
+                channelRoot, launcher, new FakeWatcher(), defaultAgentRuntime: AgentRuntimeKind.Codex);
+            var outcome = await vm.SpawnChildAsync(new SpawnRequest(
+                vm.Panes[0].Prefix, "luna-", "owns X", ".", "p", false,
+                Runtime: "codex", Model: "gpt-5.6-luna", Effort: "medium"));
+
+            Assert.True(outcome.Spawned);
+            var args = launcher.Options[^1].Args;
+            Assert.Contains("--model", args);
+            Assert.Contains("gpt-5.6-luna", args);
+            Assert.Contains("model_reasoning_effort=\"medium\"", args);
+            Assert.DoesNotContain(args, arg => arg is "gpt-5" or "gpt-5-codex");
+            vm.Dispose();
+        }
+        finally
+        {
+            if (Directory.Exists(channelRoot)) Directory.Delete(channelRoot, recursive: true);
+            if (File.Exists(catalogPath)) File.Delete(catalogPath);
+        }
+    }
+
+    [Fact]
+    public async Task SpawnChild_rejects_the_retired_kilo_runtime()
+    {
+        var channelRoot = MainWindowViewModelTests.MakeTwoAgentChannel();
+        var launcher = new FakeLauncher();
+        try
+        {
+            var vm = await MainWindowViewModel.InitializeAsync(
+                channelRoot, launcher, new FakeWatcher(), defaultAgentRuntime: AgentRuntimeKind.Codex);
+
+            var outcome = await vm.SpawnChildAsync(new SpawnRequest(
+                vm.Panes[0].Prefix, "retired-", "owns X", ".", "p", false, Runtime: "kilo"));
+
+            Assert.False(outcome.Spawned);
+            Assert.Equal(RejectReason.InvalidPrefix, outcome.Reason);
+            Assert.Contains("unsupported agent selection", outcome.Message);
+            vm.Dispose();
+        }
+        finally
+        {
+            if (Directory.Exists(channelRoot)) Directory.Delete(channelRoot, recursive: true);
+        }
     }
 
     [Fact]

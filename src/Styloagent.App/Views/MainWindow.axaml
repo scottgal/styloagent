@@ -46,11 +46,6 @@
                   ToolTip.Tip="Open a new Codex agent">
             <ic:SymbolIcon Symbol="BotSparkle" FontSize="18" />
           </Button>
-          <Button x:Name="NewKiloButton"
-                  Command="{Binding AddKiloCommand}" Padding="6,4"
-                  ToolTip.Tip="Open a new Kilo agent (DeepSeek models)">
-            <ic:SymbolIcon Symbol="Rocket" FontSize="18" />
-          </Button>
           <Button x:Name="NewClaudeDeepSeekButton"
                   Command="{Binding AddClaudeDeepSeekCommand}" Padding="6,4"
                   ToolTip.Tip="Open a new Claude agent with DeepSeek models">

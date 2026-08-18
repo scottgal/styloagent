@@ -194,15 +194,15 @@ public class MainWindowViewModelTests : IDisposable
     }
 
     /// <summary>
-    /// Toolbar "+ Kilo" (and the other runtime buttons) must spawn the blank agent in the PROJECT ROOT —
+    /// Runtime-specific toolbar buttons must spawn the blank agent in the PROJECT ROOT —
     /// the old path resolved the empty worktree against the user's home, leaving the agent with no repo
     /// context (looked hung at a bare TUI).
     /// </summary>
     [Fact]
-    public async Task AddKiloCommand_spawns_in_the_project_root_not_home()
+    public async Task AddCodexCommand_spawns_in_the_project_root_not_home()
     {
         var channel = MakeTwoAgentChannel();
-        var repo = Path.Combine(Path.GetTempPath(), "addkilo-root-" + Guid.NewGuid().ToString("N"));
+        var repo = Path.Combine(Path.GetTempPath(), "addcodex-root-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(repo);
         try
         {
@@ -210,15 +210,15 @@ public class MainWindowViewModelTests : IDisposable
             var vm = await MainWindowViewModel.InitializeAsync(
                 channel, launcher, new FakeWatcher(), repoRoot: repo);
 
-            vm.AddKiloCommand.Execute(null);
+            vm.AddCodexCommand.Execute(null);
             await WaitUntil(() => launcher.Options.Count >= 2);
 
             var generic = launcher.Options[^1];
-            Assert.Equal("kilo", generic.Command);
+            Assert.Equal("codex", generic.Command);
             Assert.NotNull(generic.WorkingDirectory);
             Assert.True(Path.GetFullPath(generic.WorkingDirectory).StartsWith(
                 Path.GetFullPath(repo), StringComparison.Ordinal),
-                $"generic kilo agent should spawn under the project root, got {generic.WorkingDirectory}");
+                $"generic Codex agent should spawn under the project root, got {generic.WorkingDirectory}");
             Assert.NotEqual(Path.GetFullPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
                 Path.GetFullPath(generic.WorkingDirectory));
         }
@@ -257,37 +257,6 @@ public class MainWindowViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task AddKiloCommand_AddsPaneAndLaunchesKiloHeadless()
-    {
-        var root = MakeTwoAgentChannel();
-        try
-        {
-            var launcher = new FakeLauncher();
-            var vm = await MainWindowViewModel.InitializeAsync(
-                root, launcher, new FakeWatcher());
-
-            vm.AddKiloCommand.Execute(null);
-            await WaitUntil(() => launcher.Options.Count >= 2);
-
-            Assert.Equal(2, vm.Panes.Count);
-            Assert.Equal(AgentRuntimeKind.Kilo, vm.Panes[1].Runtime);
-            Assert.StartsWith("agent-", vm.Panes[1].Prefix);
-            Assert.Equal("New Kilo", vm.Panes[1].DisplayName);
-            Assert.Equal("kilo", launcher.Options[1].Command);
-            // Kilo runs as its interactive TUI: only --model is passed (the prompt is typed via the PTY,
-            // and approvals come from the KILO_CONFIG_CONTENT permission block). No headless flags.
-            Assert.Contains("--model", launcher.Options[1].Args);
-            Assert.Contains(launcher.Options[1].Args, a => a == Styloagent.Core.Sessions.AgentRuntimeProfile.KiloDefaultModelId);
-            Assert.DoesNotContain("run", launcher.Options[1].Args);
-            Assert.DoesNotContain("--auto", launcher.Options[1].Args);
-            Assert.DoesNotContain(launcher.Options[1].Args, a => a == "--settings");
-            Assert.DoesNotContain(launcher.Options[1].Args, a => a == "--mcp-config");
-            Assert.DoesNotContain(launcher.Options[1].Args, a => a == "--config");
-        }
-        finally { Directory.Delete(root, recursive: true); }
-    }
-
-    [Fact]
     public async Task AddClaudeDeepSeekCommand_AddsPaneAndLaunchesClaudeWithDeepSeekFlags()
     {
         var root = MakeTwoAgentChannel();
@@ -304,12 +273,12 @@ public class MainWindowViewModelTests : IDisposable
             Assert.Equal(AgentRuntimeKind.ClaudeDeepSeek, vm.Panes[1].Runtime);
             Assert.StartsWith("agent-", vm.Panes[1].Prefix);
             Assert.Equal("New Claude+DeepSeek", vm.Panes[1].DisplayName);
-            // ClaudeDeepSeek uses the `claude` CLI (NOT `kilo run`), so it gets the same
+            // ClaudeDeepSeek uses the `claude` CLI, so it gets the same
             // --settings, --mcp-config, and --model flags as regular Claude.
             Assert.Equal("claude", launcher.Options[1].Command);
             Assert.Contains(launcher.Options[1].Args, a => a == "--model");
             Assert.Contains(launcher.Options[1].Args, a => a == "deepseek-v4-pro");
-            // The Kilo/headless prompt flag must NOT apply — ClaudeDeepSeek IS the claude CLI.
+            // A positional Codex prompt must not apply — ClaudeDeepSeek is the Claude CLI.
             Assert.DoesNotContain(launcher.Options[1].Args, a => a == "-p");
         }
         finally { Directory.Delete(root, recursive: true); }
@@ -549,16 +518,12 @@ public class MainWindowViewModelTests : IDisposable
             // so the spawn args + env are observable here.
             Assert.Single(launcher.Options);
             var args = launcher.Options[0].Args.ToList();
-            // Default runtime is Kilo: the system prompt is delivered as an instruction file referenced by
-            // the per-agent KILO_CONFIG_CONTENT env, not as a --append-system-prompt CLI arg.
+            // Default runtime is Codex: the system prompt is translated to a Codex developer-instructions
+            // config entry, not passed as a Claude-only --append-system-prompt argument.
             Assert.DoesNotContain("--append-system-prompt", args);
-            Assert.NotNull(launcher.Options[0].Env);
-            Assert.True(launcher.Options[0].Env.ContainsKey("KILO_CONFIG_CONTENT"));
-            var content = launcher.Options[0].Env["KILO_CONFIG_CONTENT"];
-            Assert.Contains(".kilo/instructions/", content);
-            var instructionFiles = Directory.GetFiles(Path.Combine(repoRoot, ".kilo", "instructions"), "*.md");
-            var instructionFile = Assert.Single(instructionFiles);
-            Assert.Contains(promptContent, File.ReadAllText(instructionFile));
+            Assert.Contains(args, arg => arg.StartsWith("developer_instructions=", StringComparison.Ordinal)
+                                         && arg.Contains(promptContent, StringComparison.Ordinal));
+            Assert.DoesNotContain(args, arg => arg is "gpt-5" or "gpt-5-codex");
         }
         finally
         {

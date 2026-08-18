@@ -8,10 +8,8 @@ namespace Styloagent.UITests;
 /// The PTY winsize must match the pane the child is actually painting into.
 ///
 /// A session is spawned at the seeded 80x24 grid BEFORE its view lays out, so by the time the pane attaches
-/// the engine already holds the real (much taller) grid. A TUI that reads its size from the winsize — kilo
-/// and anything else built on opencode — then paints only the top ~24 rows of a tall pane forever. This is
-/// the unit-level guard for that "top-half bug"; <see cref="KiloRealTuiTests"/> covers it end to end against
-/// the real binary, but takes two minutes and needs kilo installed.
+/// the engine already holds the real (much taller) grid. A TUI that reads its size from the winsize can then
+/// paint only the top ~24 rows of a tall pane forever. This is the unit-level guard for that "top-half bug".
 /// </summary>
 [Collection("Avalonia")]
 public class TerminalAttachResizeTests

@@ -27,7 +27,6 @@ public sealed partial class WelcomeViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsClaudeFirst))]
     [NotifyPropertyChangedFor(nameof(IsCodexFirst))]
-    [NotifyPropertyChangedFor(nameof(IsKiloFirst))]
     [NotifyPropertyChangedFor(nameof(IsClaudeDeepSeekFirst))]
     private AgentRuntimeKind _selectedRuntime;
 
@@ -36,12 +35,11 @@ public sealed partial class WelcomeViewModel : ObservableObject
     // already-selected card off is a no-op, and SetRuntimeMode re-pushes to re-check it.
     public bool IsClaudeFirst { get => SelectedRuntime == AgentRuntimeKind.Claude; set { if (value) SelectedRuntime = AgentRuntimeKind.Claude; } }
     public bool IsCodexFirst { get => SelectedRuntime == AgentRuntimeKind.Codex; set { if (value) SelectedRuntime = AgentRuntimeKind.Codex; } }
-    public bool IsKiloFirst { get => SelectedRuntime == AgentRuntimeKind.Kilo; set { if (value) SelectedRuntime = AgentRuntimeKind.Kilo; } }
     public bool IsClaudeDeepSeekFirst { get => SelectedRuntime == AgentRuntimeKind.ClaudeDeepSeek; set { if (value) SelectedRuntime = AgentRuntimeKind.ClaudeDeepSeek; } }
 
     public WelcomeViewModel(RecentProjectsStore recents, string recentsPath, IFolderPicker picker,
         Action<string> onProjectChosen,
-        AgentRuntimeKind initialRuntime = AgentRuntimeKind.Kilo,
+        AgentRuntimeKind initialRuntime = AgentRuntimeKind.Codex,
         Action<AgentRuntimeKind>? onRuntimeChanged = null)
     {
         _recents = recents;
@@ -70,7 +68,6 @@ public sealed partial class WelcomeViewModel : ObservableObject
         // state in lockstep with the selection (and re-checks the clicked card).
         OnPropertyChanged(nameof(IsClaudeFirst));
         OnPropertyChanged(nameof(IsCodexFirst));
-        OnPropertyChanged(nameof(IsKiloFirst));
         OnPropertyChanged(nameof(IsClaudeDeepSeekFirst));
         _onRuntimeChanged?.Invoke(kind);
     }

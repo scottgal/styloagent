@@ -17,8 +17,8 @@ public sealed class ClaudeLoginEnvironmentTests
     [Fact]
     public void PtyEnvironment_OverridesTheMacOsDumbTerm_SoTuisRenderInColour()
     {
-        // The bug: a .app launched from Finder/launchd has TERM=dumb in the PROCESS env, which claude/kilo
-        // read as "no colour support" and render monochrome. BuildEnvironment must replace it.
+        // A .app launched from Finder/launchd has TERM=dumb in the process environment, which TUIs read as
+        // "no colour support" and render monochrome. BuildEnvironment must replace it.
         var oldTerm = Environment.GetEnvironmentVariable("TERM");
         var oldColor = Environment.GetEnvironmentVariable("COLORTERM");
         Environment.SetEnvironmentVariable("TERM", "dumb");

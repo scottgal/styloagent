@@ -40,12 +40,16 @@ public sealed class ContextTelemetrySnapshotTests
     {
         var key = ContextSnapshotKey.Create("/repo-a", "worker-", "session-1");
         var store = new ContextTelemetryStore();
-        var first = store.Observe(key, AgentRuntimeKind.Codex, new TranscriptUsage(40, 100, "gpt-actual"));
-        var afterApprovalOrResume = store.Observe(key, AgentRuntimeKind.Codex, null);
+        var observedAt = DateTimeOffset.Parse("2026-08-18T12:00:00Z");
+        var checkedAt = observedAt.AddMinutes(5);
+        var first = store.Observe(key, AgentRuntimeKind.Codex, new TranscriptUsage(40, 100, "gpt-actual"), observedAt: observedAt);
+        var afterApprovalOrResume = store.Observe(key, AgentRuntimeKind.Codex, null, observedAt: checkedAt);
 
         Assert.Equal(first.RemainingTokens, afterApprovalOrResume.RemainingTokens);
         Assert.Equal("gpt-actual", afterApprovalOrResume.Model);
         Assert.Equal(ContextTelemetryConfidence.Retained, afterApprovalOrResume.Confidence);
+        Assert.Equal(observedAt, afterApprovalOrResume.ObservedAt);
+        Assert.Equal(checkedAt, afterApprovalOrResume.CheckedAt);
     }
 
     [Fact]
@@ -70,5 +74,20 @@ public sealed class ContextTelemetrySnapshotTests
         Assert.Equal(128_000, snapshot.RemainingTokens);
         Assert.Equal(1, snapshot.RemainingFraction);
         Assert.Equal(ContextPressure.Normal, snapshot.Pressure);
+    }
+
+    [Fact]
+    public void Mismatched_runtime_never_returns_a_prior_snapshot_for_the_same_identity()
+    {
+        var key = ContextSnapshotKey.Create("/repo-a", "worker-", "session-1");
+        var store = new ContextTelemetryStore();
+        store.Observe(key, AgentRuntimeKind.Codex, new TranscriptUsage(40, 100, "gpt"));
+
+        var snapshot = store.Get(key, AgentRuntimeKind.Claude);
+        var retained = store.Observe(key, AgentRuntimeKind.Claude, null);
+
+        Assert.False(snapshot.IsAvailable);
+        Assert.False(retained.IsAvailable);
+        Assert.Null(retained.RemainingTokens);
     }
 }

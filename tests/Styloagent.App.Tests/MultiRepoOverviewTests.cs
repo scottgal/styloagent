@@ -140,9 +140,10 @@ public class MultiRepoOverviewTests
             var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
             var pane = vm.Panes[0];
             var key = ContextSnapshotKey.Create("/repo-a", pane.Prefix, "session-a");
+            var observedAt = DateTimeOffset.UtcNow;
             pane.ContextSnapshot = new ContextTelemetrySnapshot(key, AgentRuntimeKind.Codex,
                 "gpt-5.6-luna", "medium", 1000, 0, 1000, 1, ContextPressure.Normal,
-                DateTimeOffset.UtcNow, ContextTelemetrySource.CodexTranscript, ContextTelemetryConfidence.Observed);
+                observedAt, observedAt, ContextTelemetrySource.CodexTranscript, ContextTelemetryConfidence.Observed);
 
             var status = Assert.Single(vm.BuildFleetStatus().Agents);
             Assert.True(status.IsAvailable);

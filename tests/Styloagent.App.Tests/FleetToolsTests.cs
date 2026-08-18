@@ -70,10 +70,11 @@ public class FleetToolsTests
             new[] { new Styloagent.Core.Architecture.AuthorityViolation("owner-has-worktree", "foss-", "holds a worktree yet has children") };
     }
 
-    private static IHttpContextAccessor AccessorWith(string? agent, string? auth)
+    private static IHttpContextAccessor AccessorWith(string? agent, string? auth, string? repo = null)
     {
         var ctx = new DefaultHttpContext();
         if (agent is not null) ctx.Request.Headers[McpAuth.AgentHeader] = agent;
+        if (repo is not null) ctx.Request.Headers[McpAuth.RepoHeader] = repo;
         if (auth is not null) ctx.Request.Headers["Authorization"] = auth;
         return new HttpContextAccessor { HttpContext = ctx };
     }
@@ -154,6 +155,25 @@ public class FleetToolsTests
         Assert.DoesNotContain("styloissues-", status);
         Assert.Contains("rejected", fleet);
         Assert.Contains("ambiguous", fleet);
+    }
+
+    [Fact]
+    public void Authenticated_repo_header_disambiguates_duplicate_caller_prefixes()
+    {
+        var ctrl = new FakeController
+        {
+            StatusOverride = new FleetStatusReport(new[]
+            {
+                new AgentStatus("overview-", "local", "working", "", 1, "", false, Repo: "styloagent"),
+                new AgentStatus("overview-", "remote", "working", "", 1, "", false, Repo: "styloissues"),
+            }, 2, 0, false),
+        };
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer secret", "styloissues"), ctrl, new McpAuth("secret"));
+
+        var status = tools.fleet_status();
+
+        Assert.Contains("styloissues", status);
+        Assert.DoesNotContain("styloagent\",", status);
     }
 
     [Fact]

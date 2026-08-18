@@ -14,6 +14,7 @@ namespace Styloagent.App.Mcp;
 public sealed class McpAuth
 {
     public const string AgentHeader = "X-Styloagent-Agent";
+    public const string RepoHeader = "X-Styloagent-Repo";
     private readonly string _token;
     public McpAuth(string token) => _token = token;
 
@@ -24,6 +25,12 @@ public sealed class McpAuth
     {
         var v = ctx.Request.Headers[AgentHeader].ToString();
         return string.IsNullOrWhiteSpace(v) ? null : v;
+    }
+
+    public static string? CallerRepo(HttpContext ctx)
+    {
+        var v = ctx.Request.Headers[RepoHeader].ToString();
+        return string.IsNullOrWhiteSpace(v) ? null : v.Trim();
     }
 }
 
@@ -112,7 +119,7 @@ public sealed class FleetTools
         if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
         var caller = McpAuth.CallerPrefix(ctx);
         if (caller is null) return "unauthorized: missing caller identity";
-        var scope = CallerScope(caller);
+        var scope = CallerScope(caller, McpAuth.CallerRepo(ctx));
         if (!scope.Ok) return $"rejected: {scope.Error}";
 
         // FleetSnapshot predates repo-qualified identities. Its members have only a prefix, so a duplicate
@@ -267,7 +274,7 @@ public sealed class FleetTools
     /// A prefix is only locally unique. Resolve the caller's repo from the live roster before exposing
     /// fleet-wide projections; no unique match means the request is unsafe and must fail closed.
     /// </summary>
-    private CallerFleetScope CallerScope(string caller)
+    private CallerFleetScope CallerScope(string caller, string? claimedRepo)
     {
         var status = _controller.FleetStatus();
         var repos = status.Agents
@@ -276,6 +283,13 @@ public sealed class FleetTools
             .Where(r => !string.IsNullOrWhiteSpace(r))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+        if (!string.IsNullOrWhiteSpace(claimedRepo))
+        {
+            var match = repos.SingleOrDefault(r => r.Equals(claimedRepo, StringComparison.OrdinalIgnoreCase));
+            return match is null
+                ? new CallerFleetScope(null, status, $"caller '{caller}' is not a member of repo '{claimedRepo}'")
+                : new CallerFleetScope(match, status, null);
+        }
         return repos.Count switch
         {
             1 => new CallerFleetScope(repos[0], status, null),
@@ -292,7 +306,7 @@ public sealed class FleetTools
         if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
         var caller = McpAuth.CallerPrefix(ctx);
         if (caller is null) return "unauthorized: missing caller identity";
-        var scope = CallerScope(caller);
+        var scope = CallerScope(caller, McpAuth.CallerRepo(ctx));
         if (!scope.Ok) return $"rejected: {scope.Error}";
         var agents = scope.Status.Agents
             .Where(a => a.Repo.Equals(scope.Repo, StringComparison.OrdinalIgnoreCase))

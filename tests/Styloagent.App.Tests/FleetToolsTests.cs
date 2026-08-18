@@ -344,6 +344,40 @@ public class FleetToolsTests
     }
 
     [Fact]
+    public void fleet_status_serializes_unavailable_telemetry_as_null_not_zero()
+    {
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), new FakeController(), new McpAuth("secret"));
+
+        var json = tools.fleet_status();
+
+        Assert.Contains("\"remainingTokens\":null", json);
+        Assert.Contains("\"remainingFraction\":null", json);
+        Assert.Contains("\"isAvailable\":false", json);
+    }
+
+    [Fact]
+    public void fleet_status_preserves_explicit_zero_usage_as_available()
+    {
+        var ctrl = new FakeController
+        {
+            StatusOverride = new FleetStatusReport(new[]
+            {
+                new AgentStatus("overview-", "top", "working", "", 0, "", false, Repo: "styloagent",
+                    RemainingTokens: 100_000, RemainingFraction: 1, Pressure: "normal", LimitTokens: 100_000,
+                    UsedTokens: 0, IsAvailable: true, Confidence: "observed", Source: "codexTranscript",
+                    ObservedAt: DateTimeOffset.Parse("2026-08-18T14:30:00Z")),
+            }, 1, 0, false),
+        };
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), ctrl, new McpAuth("secret"));
+
+        var json = tools.fleet_status();
+
+        Assert.Contains("\"usedTokens\":0", json);
+        Assert.Contains("\"isAvailable\":true", json);
+        Assert.Contains("2026-08-18T14:30:00", json);
+    }
+
+    [Fact]
     public void read_timeline_serializes_recent_ops()
     {
         var tools = new FleetTools(AccessorWith("overview-", "Bearer secret"), new FakeController(), new McpAuth("secret"));

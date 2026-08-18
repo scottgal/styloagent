@@ -65,8 +65,11 @@ public sealed record MessageOutcome(bool Sent, string? Path, string Message)
 public sealed record AgentStatus(
     string Prefix, string Responsibility, string State, string Activity,
     int IdleSeconds, string Usage, bool Worktree, string Repo = "",
-    long RemainingTokens = 0, double RemainingFraction = 0, string Pressure = "unknown",
-    string Runtime = "", string Model = "", string Effort = "", string Name = "");
+    long? RemainingTokens = null, double? RemainingFraction = null, string Pressure = "unknown",
+    string Runtime = "", string Model = "", string Effort = "", string Name = "",
+    string SessionId = "", long? LimitTokens = null, long? UsedTokens = null,
+    bool IsAvailable = false, string Confidence = "unavailable", string Source = "unavailable",
+    DateTimeOffset? ObservedAt = null, string ConfiguredModel = "", string ConfiguredEffort = "");
 
 /// <summary>A whole-fleet situational snapshot for the fleet_status tool.</summary>
 public sealed record FleetStatusReport(

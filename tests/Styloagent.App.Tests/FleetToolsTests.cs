@@ -42,8 +42,13 @@ public class FleetToolsTests
         public string? LastShotTarget = "unset";
         public Task<string> CaptureScreenshotAsync(string? target) { LastShotTarget = target; return Task.FromResult("/shots/x.png"); }
         public string? LastDehydrate;
-        public FleetStatusReport FleetStatus() => new(
-            new[] { new AgentStatus("foss-", "packages", "working", "editing", 3, "41k · 22%", true) }, 1, 0, false);
+        public FleetStatusReport? StatusOverride;
+        public FleetStatusReport FleetStatus() => StatusOverride ?? new(
+            new[]
+            {
+                new AgentStatus("overview-", "the top", "working", "planning", 3, "41k · 22%", false, Repo: "styloagent"),
+                new AgentStatus("foss-", "packages", "working", "editing", 3, "41k · 22%", true, Repo: "styloagent"),
+            }, 2, 0, false);
         public IReadOnlyList<TimelineOp> ReadTimeline(int limit) =>
             new[] { new TimelineOp("14:00:00", "foss-", "editing · Foo.cs") };
         public Task<string> DehydrateAgentAsync(string prefix) { LastDehydrate = prefix; return Task.FromResult($"dehydrated {prefix}"); }
@@ -125,6 +130,30 @@ public class FleetToolsTests
         var json = tools.list_fleet();
         Assert.Contains("overview-", json);
         Assert.Contains("\"maxFleet\"", json);
+    }
+
+    [Fact]
+    public void Fleet_reads_are_scoped_to_the_callers_repo_and_fail_closed_for_duplicate_prefixes()
+    {
+        var ctrl = new FakeController
+        {
+            StatusOverride = new FleetStatusReport(new[]
+            {
+                new AgentStatus("styloagent-agent-", "local", "working", "editing", 1, "", false, Repo: "styloagent"),
+                new AgentStatus("worker-", "local worker", "idle", "", 1, "", false, Repo: "styloagent"),
+                new AgentStatus("worker-", "remote worker", "working", "", 1, "", false, Repo: "styloissues"),
+                new AgentStatus("styloissues-", "remote root", "working", "", 1, "", false, Repo: "styloissues"),
+            }, 3, 0, false),
+        };
+        var tools = new FleetTools(AccessorWith("styloagent-agent-", "Bearer secret"), ctrl, new McpAuth("secret"));
+
+        var status = tools.fleet_status();
+        var fleet = tools.list_fleet();
+
+        Assert.Contains("styloagent-agent-", status);
+        Assert.DoesNotContain("styloissues-", status);
+        Assert.Contains("rejected", fleet);
+        Assert.Contains("ambiguous", fleet);
     }
 
     [Fact]
@@ -291,7 +320,7 @@ public class FleetToolsTests
         Assert.Contains("foss-", json);
         Assert.Contains("editing", json);
         Assert.Contains("\"working\"", json);
-        Assert.Contains("\"working\":1", json.Replace(" ", ""));
+        Assert.Contains("\"working\":2", json.Replace(" ", ""));
     }
 
     [Fact]

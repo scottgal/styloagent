@@ -112,7 +112,23 @@ public sealed class FleetTools
         if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
         var caller = McpAuth.CallerPrefix(ctx);
         if (caller is null) return "unauthorized: missing caller identity";
-        return JsonSerializer.Serialize(_controller.Snapshot(), Json);
+        var scope = CallerScope(caller);
+        if (!scope.Ok) return $"rejected: {scope.Error}";
+
+        // FleetSnapshot predates repo-qualified identities. Its members have only a prefix, so a duplicate
+        // prefix cannot be attributed safely. Refuse rather than leak another repo's member or act on it.
+        if (scope.Status.Agents.GroupBy(a => a.Prefix, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
+            return "rejected: fleet snapshot is ambiguous across repos; use fleet_status or a repo-qualified tool";
+
+        var localPrefixes = scope.Status.Agents
+            .Where(a => a.Repo.Equals(scope.Repo, StringComparison.OrdinalIgnoreCase))
+            .Select(a => a.Prefix)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var snapshot = _controller.Snapshot();
+        return JsonSerializer.Serialize(snapshot with
+        {
+            Members = snapshot.Members.Where(m => localPrefixes.Contains(m.Prefix)).ToList(),
+        }, Json);
     }
 
     [McpServerTool, Description("Show the architectural impact (+ added / - removed / Impact:) of a proposed C4 change. Pass the current and proposed architecture markdown, each containing a ```mermaid C4...``` block; pass an empty 'before' for a brand-new architecture.")]
@@ -242,14 +258,50 @@ public sealed class FleetTools
         return (repos.FirstOrDefault(r => r.Primary) ?? repos[0]).Path;
     }
 
+    private sealed record CallerFleetScope(string? Repo, FleetStatusReport Status, string? Error)
+    {
+        public bool Ok => Repo is not null && Error is null;
+    }
+
+    /// <summary>
+    /// A prefix is only locally unique. Resolve the caller's repo from the live roster before exposing
+    /// fleet-wide projections; no unique match means the request is unsafe and must fail closed.
+    /// </summary>
+    private CallerFleetScope CallerScope(string caller)
+    {
+        var status = _controller.FleetStatus();
+        var repos = status.Agents
+            .Where(a => a.Prefix.Equals(caller, StringComparison.OrdinalIgnoreCase))
+            .Select(a => a.Repo)
+            .Where(r => !string.IsNullOrWhiteSpace(r))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return repos.Count switch
+        {
+            1 => new CallerFleetScope(repos[0], status, null),
+            0 => new CallerFleetScope(null, status, $"caller '{caller}' is not assigned to a repo-local fleet"),
+            _ => new CallerFleetScope(null, status, $"caller '{caller}' is ambiguous across repos"),
+        };
+    }
+
     [McpServerTool, Description("Rich live status of the whole fleet: each agent's stable prefix, display name, runtime (claude/codex/claude-deepseek), model, reasoning effort, responsibility, state (working | idle | needs-you | exited), current activity, seconds since its last output, remaining context tokens and pressure (normal | elevated | high | critical), and whether it has a git worktree — plus working/waiting counts and the paused flag. Use this to see which agents are at what effort level before spawning more.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public string fleet_status()
     {
         var ctx = _http.HttpContext;
         if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
-        if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
-        return JsonSerializer.Serialize(_controller.FleetStatus(), Json);
+        var caller = McpAuth.CallerPrefix(ctx);
+        if (caller is null) return "unauthorized: missing caller identity";
+        var scope = CallerScope(caller);
+        if (!scope.Ok) return $"rejected: {scope.Error}";
+        var agents = scope.Status.Agents
+            .Where(a => a.Repo.Equals(scope.Repo, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        return JsonSerializer.Serialize(new FleetStatusReport(
+            agents,
+            agents.Count(a => a.State == "working"),
+            agents.Count(a => a.State is "idle" or "needs-you"),
+            scope.Status.Paused), Json);
     }
 
     [McpServerTool, Description("The most recent operations across the fleet, newest first: time, agent, and what it did (tool use with the file touched, messages, lifecycle). Pass limit (default 30, max 200). Use it to catch up on what happened without watching live.")]

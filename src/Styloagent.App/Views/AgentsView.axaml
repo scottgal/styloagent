@@ -93,7 +93,8 @@
                 <TextBlock Text="Context" FontSize="8" Foreground="{DynamicResource MutedTextBrush}"
                            VerticalAlignment="Center" />
                 <ProgressBar Name="ContextUsageBar" Grid.Column="1" Minimum="0" Maximum="1"
-                             Value="{Binding ContextFraction}" Height="4" VerticalAlignment="Center" />
+                             Value="{Binding ContextFraction}" Height="4" VerticalAlignment="Center"
+                             IsVisible="{Binding HasUsage}" />
                 <TextBlock Grid.Column="2" Text="{Binding ContextPercentText}" FontSize="8"
                            Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
               </Grid>

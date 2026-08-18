@@ -401,7 +401,7 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     private string _contextPressure = "unknown";
 
     /// <summary>True once a usage readout is available — gates the roster line.</summary>
-    public bool HasUsage => !string.IsNullOrEmpty(UsageText);
+    public bool HasUsage => ContextSnapshot?.IsAvailable == true;
 
     /// <summary>Latest context-window fill (0–1), for the roster bar and scope-dilution nudge.</summary>
     [ObservableProperty]

@@ -33,7 +33,8 @@
           <Grid Grid.Column="2" ColumnDefinitions="*,Auto" ColumnSpacing="6"
                 ToolTip.Tip="{Binding UsageText}" VerticalAlignment="Center">
             <ProgressBar Name="PaneContextUsageBar" Minimum="0" Maximum="1" Height="5"
-                         Value="{Binding ContextFraction}" VerticalAlignment="Center" />
+                         Value="{Binding ContextFraction}" VerticalAlignment="Center"
+                         IsVisible="{Binding HasUsage}" />
             <TextBlock Grid.Column="1" Text="{Binding ContextPercentText}" FontSize="9"
                        Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
           </Grid>

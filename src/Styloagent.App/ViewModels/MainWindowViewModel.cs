@@ -2462,11 +2462,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             if (pane.State != SessionState.Live) { pane.DilutionNudged = false; continue; }
             var snapshot = pane.ContextSnapshot;
             if (snapshot is null || !snapshot.IsAvailable)
-            {
-                pane.DilutionNudged = false;
-                pane.AdaptiveBudgetNudged = false;
                 continue;
-            }
 
             if (pane.ContextFraction >= DilutionThreshold && !pane.DilutionNudged)
             {

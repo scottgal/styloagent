@@ -199,4 +199,45 @@ public class TranscriptReaderTests
         }
         finally { File.Delete(path); }
     }
+
+    /// <summary>
+    /// The claude-deepseek runtime writes deepseek model ids into the same Claude transcript, and DeepSeek
+    /// models carry no "1m" marker — yet their native window is ~1M. A deepseek agent measured against the
+    /// 200k default would show ~5x inflated fill and false pressure advisories.
+    /// </summary>
+    [Theory]
+    [InlineData("deepseek-v4-pro")]
+    [InlineData("deepseek-v4-flash")]
+    [InlineData("deepseek/deepseek-v4-flash")]
+    [InlineData("DeepSeek-V4-Pro")]
+    public void Deepseek_model_uses_1m_window(string model)
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path,
+                "{\"type\":\"assistant\",\"message\":{\"model\":\"" + model + "\",\"usage\":{\"input_tokens\":50000}}}");
+            var usage = TranscriptReader.ReadLatest(path);
+            Assert.NotNull(usage);
+            Assert.Equal(1_000_000, usage!.WindowTokens);
+            Assert.Equal(0.05, usage.ContextFraction, 3);
+            Assert.Equal(950_000, usage.RemainingTokens);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void Configured_deepseek_model_establishes_1m_window()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path,
+                "{\"type\":\"assistant\",\"message\":{\"model\":\"claude-opus-4-8\",\"usage\":{\"input_tokens\":50000}}}");
+            var usage = TranscriptReader.ReadLatest(path, configuredModel: "deepseek-v4-pro");
+            Assert.NotNull(usage);
+            Assert.Equal(1_000_000, usage!.WindowTokens);
+        }
+        finally { File.Delete(path); }
+    }
 }

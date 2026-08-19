@@ -149,11 +149,14 @@ public static class TranscriptReader
     /// Context window in tokens. The transcript's <c>claude-opus-4-8</c> id is ambiguous: it can be a
     /// 1M session without carrying a suffix. An explicit configured 1M selection or a context already
     /// past 200k establishes the 1M limit; an early ambiguous session stays unavailable rather than being
-    /// falsely treated as a 200k session.
+    /// falsely treated as a 200k session. DeepSeek models (the claude-deepseek runtime) run a 1M window
+    /// natively and carry no "1m" marker, so any deepseek model id is treated as 1M — a deepseek agent
+    /// measured against a 200k window would report ~5x inflated fill and false pressure advisories.
     /// </summary>
     private static long? WindowFor(string? model, string? configuredModel, long contextTokens)
     {
         if (Has1MSignal(model) || Has1MSignal(configuredModel)) return 1_000_000;
+        if (IsDeepSeekModel(model) || IsDeepSeekModel(configuredModel)) return 1_000_000;
         if (contextTokens > 200_000) return 1_000_000;
         if (IsAmbiguous1MCapableModel(model)) return null;
         return !string.IsNullOrWhiteSpace(model) ? 200_000 : null;
@@ -161,6 +164,9 @@ public static class TranscriptReader
 
     private static bool Has1MSignal(string? model)
         => model?.Contains("1m", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static bool IsDeepSeekModel(string? model)
+        => model?.Contains("deepseek", StringComparison.OrdinalIgnoreCase) == true;
 
     private static bool IsAmbiguous1MCapableModel(string? model)
         => string.Equals(model, "claude-opus-4-8", StringComparison.OrdinalIgnoreCase);

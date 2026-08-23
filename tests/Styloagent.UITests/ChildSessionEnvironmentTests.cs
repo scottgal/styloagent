@@ -57,6 +57,23 @@ public class ChildSessionEnvironmentTests
         finally { Environment.SetEnvironmentVariable("CLAUDE_CODE_CHILD_SESSION", original); }
     }
 
+    [Fact]
+    public void An_agent_cannot_inherit_or_override_a_pinned_effort_level()
+    {
+        const string setting = "CLAUDE_CODE_EFFORT_LEVEL";
+        var original = Environment.GetEnvironmentVariable(setting);
+        try
+        {
+            Environment.SetEnvironmentVariable(setting, "max");
+
+            var env = PortaPtyLauncher.BuildEnvironment(
+                new Dictionary<string, string> { [setting] = "high" });
+
+            Assert.False(env.ContainsKey(setting));
+        }
+        finally { Environment.SetEnvironmentVariable(setting, original); }
+    }
+
     /// <summary>Unrelated inherited environment (PATH, auth, user config) must be left completely alone.</summary>
     [Fact]
     public void Everything_else_is_still_inherited()

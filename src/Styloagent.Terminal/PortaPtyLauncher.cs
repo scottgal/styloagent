@@ -41,6 +41,15 @@ public sealed class PortaPtyLauncher : IPtyLauncher
     };
 
     /// <summary>
+    /// Process-wide Claude Code settings that must not reach a cockpit agent. In particular, the effort
+    /// level must remain selectable from Claude Code's <c>/effort</c> command in each pane.
+    /// </summary>
+    private static readonly string[] ForbiddenClaudeCodeSettings =
+    {
+        "CLAUDE_CODE_EFFORT_LEVEL",
+    };
+
+    /// <summary>
     /// Builds the child environment from the current process env, drops the launching Claude Code session's
     /// per-session markers, prepends the usual user-tool directories to PATH (so a bundle-launched app can
     /// still find <c>claude</c>), then overlays any explicit overrides from <paramref name="overrides"/>.
@@ -96,6 +105,12 @@ public sealed class PortaPtyLauncher : IPtyLauncher
         if (overrides is { Count: > 0 })
             foreach (var kv in overrides)
                 env[kv.Key] = kv.Value;
+
+        // Do this after overrides as defense in depth: DeepSeek routing files must not be able to pin a
+        // session's effort level either. Unlike the per-session markers above, this setting has no valid
+        // per-agent use because it disables Claude Code's interactive /effort selection.
+        foreach (var setting in ForbiddenClaudeCodeSettings)
+            env.Remove(setting);
 
         return env;
     }

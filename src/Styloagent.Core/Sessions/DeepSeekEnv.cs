@@ -25,6 +25,16 @@ public static class DeepSeekEnv
     };
 
     /// <summary>
+    /// Claude Code reads these as process-wide settings before its interactive commands run. Forwarding an
+    /// effort setting from a routing file makes every DeepSeek-backed session appear permanently pinned,
+    /// so <c>/effort</c> cannot take effect.
+    /// </summary>
+    private static readonly string[] DisallowedKeys =
+    {
+        "CLAUDE_CODE_EFFORT_LEVEL",
+    };
+
+    /// <summary>
     /// Returns the env vars needed to route Claude Code through DeepSeek.
     /// Reads the global file and overlays a per-project override if it exists.
     /// Returns an empty dictionary when no env file is found (the runtime will use
@@ -67,6 +77,11 @@ public static class DeepSeekEnv
                 // Reject keys outside the allowlist — prevents injection of LD_PRELOAD,
                 // PATH, HOME, PYTHONPATH, and other dangerous env vars.
                 if (!AllowedPrefixes.Any(p => key.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                // Routing credentials/configuration are safe to forward, but a process-level effort
+                // setting overrides Claude Code's interactive /effort command for the entire session.
+                if (DisallowedKeys.Contains(key, StringComparer.OrdinalIgnoreCase))
                     continue;
 
                 // Strip surrounding quotes if present

@@ -24,6 +24,15 @@ public class AgentRuntimeProfileTests
     }
 
     [Fact]
+    public void Claude_DeepSeek_explicit_effort_is_still_passed_at_launch()
+    {
+        var args = AgentRuntimeProfile.For(AgentRuntimeKind.ClaudeDeepSeek)
+            .ModelEffortArgs("deepseek-v4-pro", "medium", ModelTier.Opus);
+
+        Assert.Equal(["--model", "deepseek-v4-pro", "--effort", "medium"], args);
+    }
+
+    [Fact]
     public void Removed_runtime_cannot_be_launched_as_claude_by_accident()
         => Assert.Throws<ArgumentOutOfRangeException>(() => AgentRuntimeProfile.For(AgentRuntimeKind.Kilo));
 }

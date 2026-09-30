@@ -20,6 +20,9 @@ public sealed partial class ChangesViewModel : ObservableObject
     private readonly IGitStash _stash;
     private readonly IGitTag? _tags;
     private string _worktreePath = string.Empty;
+    private readonly SemaphoreSlim _loadGate = new(1, 1);
+    private readonly object _loadCancellationGate = new();
+    private CancellationTokenSource? _loadCancellation;
 
     [ObservableProperty]
     private GitChange? _selectedFile;
@@ -114,21 +117,59 @@ public sealed partial class ChangesViewModel : ObservableObject
     /// </summary>
     public async Task LoadAsync(string worktreePath)
     {
-        _worktreePath = worktreePath;
-        Files.Clear();
-        StagedFiles.Clear();
-        UnstagedFiles.Clear();
+        CancellationTokenSource cancellation;
+        lock (_loadCancellationGate)
+        {
+            _loadCancellation?.Cancel();
+            _loadCancellation?.Dispose();
+            _loadCancellation = cancellation = new CancellationTokenSource();
+        }
 
-        var result = await _git.GetStatusAsync(worktreePath);
+        var entered = false;
+        try
+        {
+            await _loadGate.WaitAsync(cancellation.Token);
+            entered = true;
+            cancellation.Token.ThrowIfCancellationRequested();
+            await LoadCoreAsync(worktreePath, cancellation.Token);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            // A newer refresh superseded this one. In particular, repeated .git watcher events must not
+            // queue an ever-growing procession of status/branch/stash/tag subprocesses behind the UI.
+        }
+        finally
+        {
+            if (entered) _loadGate.Release();
+            lock (_loadCancellationGate)
+            {
+                if (ReferenceEquals(_loadCancellation, cancellation))
+                    _loadCancellation = null;
+            }
+            cancellation.Dispose();
+        }
+    }
+
+    private async Task LoadCoreAsync(string worktreePath, CancellationToken ct)
+    {
+        _worktreePath = worktreePath;
+
+        var result = await _git.GetStatusAsync(worktreePath, ct);
+        ct.ThrowIfCancellationRequested();
         if (!result.Ok || result.Value is null)
         {
             OnPropertyChanged(nameof(CanCommit));
-            await LoadBranchesAsync();
-            await LoadStashesAsync();
-            await LoadTagsAsync();
+            await LoadBranchesAsync(ct);
+            await LoadStashesAsync(ct);
+            await LoadTagsAsync(ct);
             return;
         }
 
+        // Do not blank the panel at the start of every watcher refresh. Apply one completed snapshot on
+        // the captured UI context; cancelled/stale loads never partially clear or repopulate collections.
+        Files.Clear();
+        StagedFiles.Clear();
+        UnstagedFiles.Clear();
         foreach (var change in result.Value.Changes)
         {
             Files.Add(change);
@@ -137,15 +178,16 @@ public sealed partial class ChangesViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(CanCommit));
-        await LoadBranchesAsync();
-        await LoadStashesAsync();
-        await LoadTagsAsync();
+        await LoadBranchesAsync(ct);
+        await LoadStashesAsync(ct);
+        await LoadTagsAsync(ct);
     }
 
-    private async Task LoadTagsAsync()
+    private async Task LoadTagsAsync(CancellationToken ct = default)
     {
         if (_tags is null || string.IsNullOrEmpty(_worktreePath)) return;
-        var result = await _tags.ListTagsAsync(_worktreePath);
+        var result = await _tags.ListTagsAsync(_worktreePath, ct);
+        ct.ThrowIfCancellationRequested();
         if (!result.Ok || result.Value is null) return;
         Tags.Clear();
         foreach (var tag in result.Value.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)) Tags.Add(tag);
@@ -186,9 +228,10 @@ public sealed partial class ChangesViewModel : ObservableObject
     }
 
     /// <summary>Fetches the stash list and repopulates <see cref="Stashes"/>.</summary>
-    private async Task LoadStashesAsync()
+    private async Task LoadStashesAsync(CancellationToken ct = default)
     {
-        var r = await _stash.ListStashesAsync(_worktreePath);
+        var r = await _stash.ListStashesAsync(_worktreePath, ct);
+        ct.ThrowIfCancellationRequested();
         if (!r.Ok || r.Value is null) return;
 
         Stashes.Clear();
@@ -197,9 +240,10 @@ public sealed partial class ChangesViewModel : ObservableObject
     }
 
     /// <summary>Fetches the branch list and updates <see cref="Branches"/>, <see cref="CurrentBranch"/>, and <see cref="SelectedBranch"/>.</summary>
-    private async Task LoadBranchesAsync()
+    private async Task LoadBranchesAsync(CancellationToken ct = default)
     {
-        var r = await _branch.ListBranchesAsync(_worktreePath);
+        var r = await _branch.ListBranchesAsync(_worktreePath, ct);
+        ct.ThrowIfCancellationRequested();
         if (!r.Ok || r.Value is null) return;
 
         _loadingBranches = true;

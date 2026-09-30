@@ -27,9 +27,9 @@ public class AgentRuntimeProfileTests
     public void Claude_DeepSeek_explicit_effort_is_still_passed_at_launch()
     {
         var args = AgentRuntimeProfile.For(AgentRuntimeKind.ClaudeDeepSeek)
-            .ModelEffortArgs("deepseek-v4-pro", "medium", ModelTier.Opus);
+            .ModelEffortArgs("deepseek-flash", "medium", ModelTier.Opus);
 
-        Assert.Equal(["--model", "deepseek-v4-pro", "--effort", "medium"], args);
+        Assert.Equal(["--model", "deepseek-flash", "--effort", "medium"], args);
     }
 
     [Fact]

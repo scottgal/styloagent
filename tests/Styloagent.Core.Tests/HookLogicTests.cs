@@ -188,4 +188,37 @@ public class HookLogicTests
         using var doc = JsonDocument.Parse(args[1]); // second arg is the JSON blob
         Assert.True(doc.RootElement.TryGetProperty("hooks", out _));
     }
+
+    // ── DeepSeek modelPicker (claude-deepseek runtime) ──────────────────────
+
+    [Fact]
+    public void BuildSettingsJson_omits_modelPicker_by_default()
+    {
+        string json = HookSettings.BuildSettingsJson("web", "/tmp/hooks");
+        using var doc = JsonDocument.Parse(json);
+        Assert.False(doc.RootElement.TryGetProperty("modelPicker", out _));
+    }
+
+    /// <summary>
+    /// Claude Code's own catalog has never heard of "deepseek-flash" (it's routed through a custom
+    /// ANTHROPIC_BASE_URL, not a first-party id) and logs "[claude-code:unrecognized_model]" plus assumes
+    /// a 200k context window unless a modelPicker row maps it to a known model via behavesAs. The row
+    /// shape below ({ options: [{ model, label?, description?, behavesAs? }], replaceBuiltInOptions }) is
+    /// exactly what the installed claude CLI (2.1.274) validates — see the Invalid modelPicker row / "must
+    /// be an object with an options array" messages baked into its binary.
+    /// </summary>
+    [Fact]
+    public void BuildSettingsJson_maps_deepseek_flash_via_modelPicker_behavesAs()
+    {
+        string json = HookSettings.BuildSettingsJson("web", "/tmp/hooks",
+            includeDeepSeekModelPicker: true);
+
+        using var doc = JsonDocument.Parse(json);
+        var picker = doc.RootElement.GetProperty("modelPicker");
+        Assert.False(picker.GetProperty("replaceBuiltInOptions").GetBoolean());
+
+        var row = Assert.Single(picker.GetProperty("options").EnumerateArray());
+        Assert.Equal("deepseek-flash", row.GetProperty("model").GetString());
+        Assert.Equal("sonnet", row.GetProperty("behavesAs").GetString());
+    }
 }

@@ -111,4 +111,33 @@ public class ChannelProjectionTests
         }
         finally { Directory.Delete(root, recursive: true); }
     }
+
+    [Fact]
+    public async Task Repeated_reads_invalidate_changed_and_deleted_cached_messages()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "bus-cache-" + Guid.NewGuid().ToString("N"));
+        var inbox = Path.Combine(root, "inbox");
+        Directory.CreateDirectory(inbox);
+        var path = Path.Combine(inbox, "foss-cache-check.md");
+        var projection = new ChannelProjection();
+
+        try
+        {
+            File.WriteAllText(path, "**From:** overview-\n\nold");
+            var first = await projection.ReadAsync(root, KnownPrefixes);
+            Assert.Contains("old", Assert.Single(first).Messages.Single().Body);
+
+            File.WriteAllText(path, "**From:** overview-\n\nnew content");
+            var changed = await projection.ReadAsync(root, KnownPrefixes);
+            Assert.Contains("new content", Assert.Single(changed).Messages.Single().Body);
+
+            File.Delete(path);
+            Assert.Empty(await projection.ReadAsync(root, KnownPrefixes));
+
+            File.WriteAllText(path, "**From:** overview-\n\nrecreated");
+            var recreated = await projection.ReadAsync(root, KnownPrefixes);
+            Assert.Contains("recreated", Assert.Single(recreated).Messages.Single().Body);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
 }

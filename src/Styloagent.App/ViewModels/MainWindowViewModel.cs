@@ -34,6 +34,8 @@ namespace Styloagent.App.ViewModels;
 /// </summary>
 public sealed partial class MainWindowViewModel : ObservableObject, IDisposable, IBrowserControllerHost
 {
+    private const string ClaudeDisableAlternateScreenEnvironmentVariable =
+        "CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN";
     [ObservableProperty]
     private AgentPaneViewModel? _pane;
 
@@ -66,6 +68,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public int IdleCount => Panes.Count(p => p.HookState == Styloagent.Core.Hooks.AgentHookState.Idle);
     /// <summary>Operations recorded on the activity timeline.</summary>
     public int TimelineCount => Timeline.Entries.Count;
+
+    private readonly System.Diagnostics.Process _cockpitProcess = System.Diagnostics.Process.GetCurrentProcess();
+    private TimeSpan _lastProcessCpu;
+    private DateTimeOffset _lastProcessSample;
+
+    /// <summary>Low-overhead cockpit CPU and resident-memory telemetry for the bottom status strip.</summary>
+    [ObservableProperty]
+    private string _processStatusText = "CPU — · RAM —";
 
     /// <summary>Refreshes the instrument readouts (called whenever fleet/hook state changes).</summary>
     private void RefreshInstruments()
@@ -959,6 +969,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     // private ctor — callers must use InitializeAsync.
     private MainWindowViewModel()
     {
+        _lastProcessCpu = _cockpitProcess.TotalProcessorTime;
+        _lastProcessSample = DateTimeOffset.UtcNow;
         Panes.CollectionChanged += (_, e) =>
         {
             OnPropertyChanged(nameof(FleetCount));
@@ -1544,7 +1556,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string firstHookId = vm.ReserveHookId(first.Prefix);
         var session = new AgentSession(first, launcher, watcher,
             vm.LaunchArgsFor(firstHookId, first, vm._overviewSystemPromptArgs),
-            BuildEnv(first, repoRoot));
+            vm.BuildEnv(first, repoRoot));
 
         vm.Pane = new AgentPaneViewModel(
             session,
@@ -3139,7 +3151,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         // Codex: --config hooks.*=, --config mcp_servers.*=, --sandbox, positional prompt
         if (runtime.UsesConfigLayerHooks)
         {
-            var args = new List<string>();
+            // Inline mode is essential inside the cockpit: alternate-screen TUIs deliberately have no
+            // terminal scrollback, so the scrollbar can never extend beyond one screen. Codex supports a
+            // native inline mode that preserves normal terminal history and avoids constant full-screen paints.
+            var args = new List<string> { "--no-alt-screen" };
             // Explicit selections are passed unchanged. Implicit defaults are selected only from the
             // live catalog; without one, Codex uses its configured CLI default rather than a retired id.
             args.AddRange(runtime.ModelEffortArgs(entry.Model ?? LiveCodexDefaultModel(), entry.Effort, tier: null));
@@ -3167,6 +3182,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         if (!runtime.SupportsClaudeSettingsHooks)
             return runtime.PermissionArgs(PermissionMode);
 
+        // Claude's normal-screen renderer is selected in BuildEnv. Unlike --ax-screen-reader it retains
+        // Claude's rich ANSI colours and layout while keeping output in the terminal's scrollback buffer.
         return HookArgs(hookId, entry, hooks, channelRoot, repoRoot, protocolPath)
             .Concat(runtimeInstructions)
             .Concat(McpArgsFor(entry.Prefix))
@@ -3198,18 +3215,27 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     }
 
     /// <summary>
-    /// Per-agent environment variables. ClaudeDeepSeek gets its DeepSeek routing vars from
-    /// <c>deepseek.env</c>; other cockpit runtimes need no per-agent environment.
+    /// Per-agent environment variables. Every MCP-enabled child receives the loopback server token
+    /// out-of-band so neither Claude nor Codex exposes it in argv. Claude runtimes use the rich normal-screen
+    /// renderer so history remains scrollable without the monochrome accessibility renderer. ClaudeDeepSeek
+    /// additionally gets its provider routing variables from <c>deepseek.env</c>.
     /// </summary>
-    private static IReadOnlyDictionary<string, string>? BuildEnv(AgentManifestEntry entry, string? repoRoot)
+    private IReadOnlyDictionary<string, string>? BuildEnv(AgentManifestEntry entry, string? repoRoot)
     {
+        var vars = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (entry.Runtime is AgentRuntimeKind.Claude or AgentRuntimeKind.ClaudeDeepSeek)
+            vars[ClaudeDisableAlternateScreenEnvironmentVariable] = "1";
+
         if (entry.Runtime == AgentRuntimeKind.ClaudeDeepSeek)
         {
-            var vars = Core.Sessions.DeepSeekEnv.Load(repoRoot);
-            return vars.Count > 0 ? vars : null;
+            foreach (var pair in Core.Sessions.DeepSeekEnv.Load(repoRoot))
+                vars[pair.Key] = pair.Value;
         }
 
-        return null;
+        if (_mcpServer is { IsRunning: true } server)
+            vars[Mcp.McpConfig.TokenEnvironmentVariable] = server.Token;
+
+        return vars.Count > 0 ? vars : null;
     }
 
     /// <summary>
@@ -3234,7 +3260,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         // unowned ⇒ allow (safe no-op in v1). Wired here by overview- (coordination-root bypass) per the
         // ownership-enforcement design; the gate logic itself is session-'s Core/Hooks work.
         return hooks.SettingsArgsFor(hookId, file, PermissionMode,
-                Styloagent.Core.Hooks.HookSettings.DefaultGateInvocation(), repoRoot, entry.Prefix)
+                Styloagent.Core.Hooks.HookSettings.DefaultGateInvocation(), repoRoot, entry.Prefix,
+                includeDeepSeekModelPicker: entry.Runtime == AgentRuntimeKind.ClaudeDeepSeek)
             .Concat(Styloagent.Core.Hooks.HookSettings.PermissionArgs(PermissionMode))
             .ToList();
     }
@@ -3682,6 +3709,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         // every second for a visual that is not being rendered. Turning it back on binds the current value
         // immediately, then ticks resume.
         var now = DateTimeOffset.UtcNow;
+        RefreshProcessTelemetry(now);
         foreach (var pane in Panes)
             if (ShowRosterLastOutput || pane.IsRosterExpanded)
                 pane.TickRelativeTimes();
@@ -3702,6 +3730,27 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         }
 
         if (!_interaction.IsBusy(IdleWindow)) AutoRevealHead();
+    }
+
+    private void RefreshProcessTelemetry(DateTimeOffset now)
+    {
+        try
+        {
+            _cockpitProcess.Refresh();
+            var cpu = _cockpitProcess.TotalProcessorTime;
+            var elapsedMs = (now - _lastProcessSample).TotalMilliseconds;
+            var cpuPercent = elapsedMs > 0
+                ? Math.Max(0, (cpu - _lastProcessCpu).TotalMilliseconds / elapsedMs * 100.0)
+                : 0;
+            var memoryMb = _cockpitProcess.WorkingSet64 / (1024.0 * 1024.0);
+            ProcessStatusText = $"CPU {cpuPercent:0.#}% · RAM {memoryMb:0} MB";
+            _lastProcessCpu = cpu;
+            _lastProcessSample = now;
+        }
+        catch
+        {
+            ProcessStatusText = "CPU — · RAM —";
+        }
     }
 
     /// <summary>Auto-reveals the oldest waiting pane iff the human is idle and it is not already active.</summary>
@@ -4079,5 +4128,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             });
             _hookChannel = null;
         }
+
+        _cockpitProcess.Dispose();
     }
 }

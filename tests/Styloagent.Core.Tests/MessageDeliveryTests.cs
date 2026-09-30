@@ -141,6 +141,28 @@ public class MessageDeliveryTests
     }
 
     [Fact]
+    public async Task Parked_push_for_busy_connected_agent_is_injected_when_it_goes_idle()
+    {
+        // Kilo has no hooks.json, so a pushing message parked for a busy connected agent has no
+        // turn-boundary hook to surface it once the turn finishes — the idle transition must claim
+        // the PendingInbox and type the nudge (mirrors Claude's Stop force-continue).
+        var inj = new FakeInjector();
+        var pending = TempPending();
+        var svc = new MessageDeliveryService(PriorityPolicy.Default, inj, pending);
+
+        await svc.DeliverAsync(Msg(MessagePriority.Urgent), "beta-", AgentHookState.Working);
+        Assert.True(pending.HasPending("beta-"));
+        Assert.Empty(inj.Calls);
+
+        await svc.OnRecipientStateChangedAsync("beta-", AgentHookState.Idle);
+
+        var call = Assert.Single(inj.Calls);
+        Assert.False(call.BreakFirst);        // idle → plain inject, no ESC-break
+        Assert.Contains("topic", call.Text);
+        Assert.False(pending.HasPending("beta-"));   // claimed by the drain
+    }
+
+    [Fact]
     public async Task Pushing_to_already_idle_connected_agent_wakes_via_injection_fallback()
     {
         var inj = new FakeInjector();

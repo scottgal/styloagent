@@ -6,6 +6,7 @@ namespace Styloagent.App.Mcp;
 /// <summary>Builds runtime-native MCP config args launched agents use to reach our server.</summary>
 public static class McpConfig
 {
+    public const string TokenEnvironmentVariable = "STYLOAGENT_MCP_TOKEN";
     private static readonly JsonSerializerOptions IndentedJson = new() { WriteIndented = true };
     public static readonly string[] ChromeDevToolsArgs =
     ["-y", "chrome-devtools-mcp@latest", "--isolated", "--headless=true", "--no-usage-statistics",
@@ -18,7 +19,9 @@ public static class McpConfig
             ["styloagent"] = new Dictionary<string, object>
             {
                 ["type"] = "http", ["url"] = url.ToString(),
-                ["headers"] = new Dictionary<string, string> { ["X-Styloagent-Agent"] = prefix, ["X-Styloagent-Repo"] = repo ?? string.Empty, ["Authorization"] = $"Bearer {token}" },
+                // Claude expands ${VAR} in HTTP MCP headers. Keep the credential out of argv:
+                // command lines are visible to every same-user process and routinely land in diagnostics.
+                ["headers"] = new Dictionary<string, string> { ["X-Styloagent-Agent"] = prefix, ["X-Styloagent-Repo"] = repo ?? string.Empty, ["Authorization"] = $"Bearer ${{{TokenEnvironmentVariable}}}" },
             },
         };
         if (includeChromeDevTools)
@@ -42,7 +45,8 @@ public static class McpConfig
         "--config", "mcp_servers.styloagent.enabled=true",
         "--config", $"mcp_servers.styloagent.url={AgentRuntimeProfile.TomlString(url.ToString())}",
         "--config", "mcp_servers.styloagent.default_tools_approval_mode=\"approve\"",
-        "--config", $"mcp_servers.styloagent.http_headers={{\"X-Styloagent-Agent\"={AgentRuntimeProfile.TomlString(prefix)},\"Authorization\"={AgentRuntimeProfile.TomlString($"Bearer {token}")}}}",
+        "--config", $"mcp_servers.styloagent.http_headers={{\"X-Styloagent-Agent\"={AgentRuntimeProfile.TomlString(prefix)}}}",
+        "--config", $"mcp_servers.styloagent.bearer_token_env_var={AgentRuntimeProfile.TomlString(TokenEnvironmentVariable)}",
         };
         if (includeChromeDevTools)
             args.AddRange(["--config", "mcp_servers.chrome-devtools.enabled=true", "--config", "mcp_servers.chrome-devtools.command=\"npx\"", "--config", $"mcp_servers.chrome-devtools.args=[{string.Join(',', ChromeDevToolsArgs.Select(AgentRuntimeProfile.TomlString))}]"]);

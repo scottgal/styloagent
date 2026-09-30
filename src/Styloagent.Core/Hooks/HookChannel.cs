@@ -36,8 +36,9 @@ public sealed class HookChannel : IAsyncDisposable
     /// </summary>
     public IReadOnlyList<string> SettingsArgsFor(string agentId, string? hydrationFile = null,
         FleetPermissionMode permissionMode = FleetPermissionMode.Prompt,
-        string? gateInvocation = null, string? repoRoot = null, string? caller = null)
-        => HookSettings.BuildSettingsArgs(agentId, _hooksDir, hydrationFile, permissionMode, gateInvocation, repoRoot, caller);
+        string? gateInvocation = null, string? repoRoot = null, string? caller = null,
+        bool includeDeepSeekModelPicker = false)
+        => HookSettings.BuildSettingsArgs(agentId, _hooksDir, hydrationFile, permissionMode, gateInvocation, repoRoot, caller, includeDeepSeekModelPicker);
 
     /// <summary>
     /// Writes <paramref name="hydrationText"/> as a JSON string to a stable per-agent file under the

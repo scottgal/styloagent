@@ -269,6 +269,8 @@
           <TextBlock Text="ops" Foreground="{DynamicResource MutedTextBrush}" />
         </StackPanel>
         <TextBlock Text="{Binding FleetHudText}" Foreground="{DynamicResource MutedTextBrush}" />
+        <TextBlock Text="{Binding ProcessStatusText}" Foreground="{DynamicResource MutedTextBrush}"
+                   ToolTip.Tip="Styloagent cockpit process CPU and resident memory" />
       </StackPanel>
     </Border>
 

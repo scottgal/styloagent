@@ -21,7 +21,10 @@ public sealed class GitService : IGitService, IGitLog, IGitDiff, IGitWrite, IGit
 
     public async Task<GitResult<GitStatus>> GetStatusAsync(string worktreePath, CancellationToken ct = default)
     {
-        var r = await RunAsync(worktreePath, ct, "status", "--porcelain=v2", "--branch").ConfigureAwait(false);
+        // This query is normally triggered by a watcher on .git/index. Without --no-optional-locks, status
+        // may refresh and rewrite that index while merely reading it, which fires the watcher again and
+        // creates a permanent status -> index event -> status feedback loop.
+        var r = await RunAsync(worktreePath, ct, "--no-optional-locks", "status", "--porcelain=v2", "--branch").ConfigureAwait(false);
         return r.Ok ? GitResult<GitStatus>.Success(GitStatusParser.Parse(r.Stdout)) : GitResult<GitStatus>.Fail(r.Stderr);
     }
 

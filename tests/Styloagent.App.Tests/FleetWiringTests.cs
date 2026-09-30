@@ -41,9 +41,14 @@ public class FleetWiringTests
             Assert.Single(launcher.Options);
             var spawnArgs = launcher.Options[0].Args.ToList();
             Assert.Contains("--mcp-config", spawnArgs);
+            Assert.DoesNotContain("--ax-screen-reader", spawnArgs);
+            Assert.Equal("1", launcher.Options[0].Env!["CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN"]);
             Assert.DoesNotContain(spawnArgs, a => a.StartsWith("mcp_servers.", StringComparison.Ordinal));
             var mcpIndex = spawnArgs.IndexOf("--mcp-config");
             using var mcpConfig = JsonDocument.Parse(spawnArgs[mcpIndex + 1]);
+            var token = launcher.Options[0].Env![Mcp.McpConfig.TokenEnvironmentVariable];
+            Assert.False(string.IsNullOrWhiteSpace(token));
+            Assert.DoesNotContain(token, spawnArgs);
             Assert.Equal(JsonValueKind.Array, mcpConfig.RootElement
                 .GetProperty("mcpServers").GetProperty("chrome-devtools").GetProperty("args").ValueKind);
         }
@@ -74,11 +79,15 @@ public class FleetWiringTests
             var spawnArgs = launcher.Options[0].Args.ToList();
             Assert.Equal("codex", launcher.Options[0].Command);
             Assert.DoesNotContain("--mcp-config", spawnArgs);
+            Assert.Contains("--no-alt-screen", spawnArgs);
             Assert.Contains("--dangerously-bypass-hook-trust", spawnArgs);
             Assert.Contains(spawnArgs, a => a.Contains("mcp_servers.styloagent.url", StringComparison.Ordinal));
             Assert.Contains(spawnArgs, a => a.StartsWith("mcp_servers.chrome-devtools.args=[", StringComparison.Ordinal)
                                             && a.EndsWith(']'));
             Assert.Contains(spawnArgs, a => a.Contains("\"X-Styloagent-Agent\"=\"overview-\"", StringComparison.Ordinal));
+            var token = launcher.Options[0].Env![Mcp.McpConfig.TokenEnvironmentVariable];
+            Assert.False(string.IsNullOrWhiteSpace(token));
+            Assert.DoesNotContain(token, spawnArgs);
             Assert.Contains(spawnArgs, a => a.StartsWith("developer_instructions=", StringComparison.Ordinal)
                                             && a.Contains("overview / architect", StringComparison.OrdinalIgnoreCase));
         }
@@ -92,7 +101,7 @@ public class FleetWiringTests
     /// <summary>
     /// THE acceptance test: the stylobot-commercial-style overview must launch as Claude Code routed
     /// through DeepSeek (not real-Anthropic Opus). The Opus TIER on the claude-deepseek runtime must
-    /// resolve to --model deepseek-v4-pro (no [1m] suffix — the DeepSeek API rejects it), with the
+    /// resolve to --model deepseek-flash (the stable V4.1 Flash alias), with the
     /// DeepSeek base URL + key env applied, and never pass the literal 'opus' model or the Anthropic
     /// base URL.
     /// </summary>
@@ -115,13 +124,15 @@ public class FleetWiringTests
             var spawn = Assert.Single(launcher.Options);
             Assert.Equal("claude", spawn.Command);
             Assert.Contains("--mcp-config", spawn.Args);
+            Assert.DoesNotContain("--ax-screen-reader", spawn.Args);
+            Assert.Equal("1", spawn.Env!["CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN"]);
             Assert.DoesNotContain("--dangerously-bypass-hook-trust", spawn.Args);
             Assert.DoesNotContain(spawn.Args, a => a.StartsWith("mcp_servers.", StringComparison.Ordinal));
 
-            // Opus tier on claude-deepseek -> deepseek-v4-pro, NEVER the literal claude 'opus' model.
+            // Opus tier on claude-deepseek -> DeepSeek V4.1 Flash, NEVER the literal claude 'opus' model.
             var modelIdx = spawn.Args.ToList().IndexOf("--model");
             Assert.True(modelIdx >= 0, "claude must receive an explicit --model");
-            Assert.Equal("deepseek-v4-pro", spawn.Args[modelIdx + 1]);
+            Assert.Equal("deepseek-flash", spawn.Args[modelIdx + 1]);
             Assert.DoesNotContain("--model", spawn.Args.Skip(modelIdx + 1));
             Assert.DoesNotContain("opus", spawn.Args, StringComparer.Ordinal);
 
@@ -131,6 +142,18 @@ public class FleetWiringTests
             Assert.NotEmpty(spawn.Env["ANTHROPIC_AUTH_TOKEN"]);
             Assert.False(spawn.Env.ContainsKey("ANTHROPIC_BASE_URL") && spawn.Env["ANTHROPIC_BASE_URL"]!.Contains("anthropic.com"),
                 "must not route claude to the real Anthropic API");
+
+            // The spawned claude CLI's own catalog has never heard of "deepseek-flash" (it's a custom id
+            // behind a custom ANTHROPIC_BASE_URL). Without a modelPicker/behavesAs row in --settings it
+            // logs "[claude-code:unrecognized_model]" and assumes a 200k context window instead of the
+            // model's real 1M one.
+            var settingsIdx = spawn.Args.ToList().IndexOf("--settings");
+            Assert.True(settingsIdx >= 0, "claude-deepseek must receive an explicit --settings blob");
+            using var settingsDoc = System.Text.Json.JsonDocument.Parse(spawn.Args[settingsIdx + 1]);
+            var picker = settingsDoc.RootElement.GetProperty("modelPicker");
+            var row = Assert.Single(picker.GetProperty("options").EnumerateArray());
+            Assert.Equal("deepseek-flash", row.GetProperty("model").GetString());
+            Assert.Equal("sonnet", row.GetProperty("behavesAs").GetString());
         }
         finally
         {

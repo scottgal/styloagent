@@ -73,7 +73,7 @@ public class ClaudeDeepSeekRealTests
                 var pane = Assert.Single(vm.Panes);
                 Assert.Equal(AgentRuntimeKind.ClaudeDeepSeek, pane.Runtime);
                 // The Opus tier resolves to DeepSeek, not the claude 'opus' model.
-                Assert.Contains("deepseek-v4-pro", AgentRuntimeProfile.For(AgentRuntimeKind.ClaudeDeepSeek)
+                Assert.Contains("deepseek-flash", AgentRuntimeProfile.For(AgentRuntimeKind.ClaudeDeepSeek)
                     .ModelEffortArgs(null, null, ModelTier.Opus));
 
                 window = new MainWindow { DataContext = vm, Width = 1200, Height = 900 };

@@ -15,20 +15,34 @@ public static class ChannelArchiver
     /// Returns the count of files moved.
     /// </summary>
     public static int ArchiveThread(string channelRoot, string threadSlug)
+        => ArchiveThreads(channelRoot, [threadSlug]);
+
+    /// <summary>
+    /// Archives several threads in one pass over each live directory. A bus refresh can contain thousands
+    /// of already-archived threads; scanning inbox/outbox once per thread turns a small refresh into an
+    /// O(threads × files) CPU spike. This method keeps it O(files × filename length).
+    /// </summary>
+    public static int ArchiveThreads(string channelRoot, IEnumerable<string> threadSlugs)
     {
-        if (string.IsNullOrWhiteSpace(channelRoot) || string.IsNullOrWhiteSpace(threadSlug))
+        if (string.IsNullOrWhiteSpace(channelRoot))
             return 0;
 
-        var slug = threadSlug.Trim().ToLowerInvariant();
+        var slugs = threadSlugs
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (slugs.Count == 0)
+            return 0;
+
         int moved = 0;
 
-        moved += MoveMatching(channelRoot, "inbox", slug);
-        moved += MoveMatching(channelRoot, "outbox", slug);
+        moved += MoveMatching(channelRoot, "inbox", slugs);
+        moved += MoveMatching(channelRoot, "outbox", slugs);
 
         return moved;
     }
 
-    private static int MoveMatching(string channelRoot, string subdir, string slug)
+    private static int MoveMatching(string channelRoot, string subdir, IReadOnlySet<string> slugs)
     {
         var sourceDir = Path.Combine(channelRoot, subdir);
         if (!Directory.Exists(sourceDir))
@@ -45,17 +59,7 @@ public static class ChannelArchiver
                 ? name[..^".reply.md".Length]
                 : name[..^".md".Length];
 
-            // Remove routing prefix (anything up to and including the first '-')
-            var dashIdx = baseName.IndexOf('-');
-            var fileSlug = dashIdx >= 0 ? baseName[(dashIdx + 1)..] : baseName;
-
-            // Also strip follow-up- / redirect- markers
-            if (fileSlug.StartsWith("follow-up-", StringComparison.OrdinalIgnoreCase))
-                fileSlug = fileSlug["follow-up-".Length..];
-            else if (fileSlug.StartsWith("redirect-", StringComparison.OrdinalIgnoreCase))
-                fileSlug = fileSlug["redirect-".Length..];
-
-            if (!fileSlug.Equals(slug, StringComparison.OrdinalIgnoreCase))
+            if (!MatchesAnySlug(baseName, slugs))
                 continue;
 
             try
@@ -81,5 +85,22 @@ public static class ChannelArchiver
         }
 
         return moved;
+    }
+
+    private static bool MatchesAnySlug(string baseName, IReadOnlySet<string> slugs)
+    {
+        if (slugs.Contains(baseName))
+            return true;
+
+        // Prefixes themselves may contain dashes (for example agent-12-). Test each dash-delimited suffix
+        // against the exact slug set instead of incorrectly assuming the first dash ends the prefix.
+        for (int dash = baseName.IndexOf('-'); dash >= 0 && dash + 1 < baseName.Length;
+             dash = baseName.IndexOf('-', dash + 1))
+        {
+            if (slugs.Contains(baseName[(dash + 1)..]))
+                return true;
+        }
+
+        return false;
     }
 }

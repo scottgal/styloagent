@@ -85,6 +85,37 @@ public class ChangesViewModelTests
             => Task.FromResult(GitResult.Success());
     }
 
+    private sealed class SupersededLoadGit : IGitService
+    {
+        public readonly TaskCompletionSource FirstStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _active;
+        public int MaxActive;
+
+        public async Task<GitResult<GitStatus>> GetStatusAsync(string w, CancellationToken ct = default)
+        {
+            var active = Interlocked.Increment(ref _active);
+            MaxActive = Math.Max(MaxActive, active);
+            try
+            {
+                if (w == "/first")
+                {
+                    FirstStarted.TrySetResult();
+                    await Task.Delay(Timeout.Infinite, ct);
+                }
+
+                return GitResult<GitStatus>.Success(new GitStatus(true, 0, 0, false,
+                    new[] { new GitChange(w.TrimStart('/') + ".txt", GitChangeKind.Modified, false, true) }));
+            }
+            finally { Interlocked.Decrement(ref _active); }
+        }
+
+        public Task<GitResult> AddWorktreeAsync(string r, string w, string b, CancellationToken ct = default) => Task.FromResult(GitResult.Success());
+        public Task<GitResult> RemoveWorktreeAsync(string r, string w, CancellationToken ct = default) => Task.FromResult(GitResult.Success());
+        public Task<GitResult> MergeNoFfAsync(string r, string s, string i, CancellationToken ct = default) => Task.FromResult(GitResult.Success());
+        public Task<GitResult> AbortMergeAsync(string r, CancellationToken ct = default) => Task.FromResult(GitResult.Success());
+        public Task<GitResult> DeleteBranchAsync(string r, string b, bool f, CancellationToken ct = default) => Task.FromResult(GitResult.Success());
+    }
+
     private sealed class FakeDiff : IGitDiff
     {
         public Task<GitResult<FileDiff>> GetDiffAsync(string w, string path, bool staged, CancellationToken ct = default)
@@ -158,6 +189,22 @@ public class ChangesViewModelTests
         await vm.SelectFileAsync(vm.Files[0]);
         Assert.NotNull(vm.Diff.File);
         Assert.Contains(vm.Diff.File!.Lines, l => l.Content == "hello");
+    }
+
+    [Fact]
+    public async Task New_load_cancels_superseded_git_refresh_and_only_latest_snapshot_reaches_UI()
+    {
+        var git = new SupersededLoadGit();
+        var vm = new ChangesViewModel(git, new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash());
+
+        var first = vm.LoadAsync("/first");
+        await git.FirstStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var second = vm.LoadAsync("/second");
+        await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(1, git.MaxActive);
+        Assert.Single(vm.Files);
+        Assert.Equal("second.txt", vm.Files[0].Path);
     }
 
     // ── staged / unstaged sections ───────────────────────────────────────────

@@ -28,8 +28,8 @@ public sealed class PreferencesStore
         try
         {
             byte[] bytes = File.ReadAllBytes(path);
-            return YamlSerializer.Deserialize<AppPreferences>(new ReadOnlyMemory<byte>(bytes))
-                   ?? new AppPreferences();
+            return Normalize(YamlSerializer.Deserialize<AppPreferences>(new ReadOnlyMemory<byte>(bytes))
+                             ?? new AppPreferences());
         }
         catch { return new AppPreferences(); }
     }
@@ -40,8 +40,8 @@ public sealed class PreferencesStore
         try
         {
             byte[] bytes = await File.ReadAllBytesAsync(path).ConfigureAwait(false);
-            return YamlSerializer.Deserialize<AppPreferences>(new ReadOnlyMemory<byte>(bytes))
-                   ?? new AppPreferences();
+            return Normalize(YamlSerializer.Deserialize<AppPreferences>(new ReadOnlyMemory<byte>(bytes))
+                             ?? new AppPreferences());
         }
         catch { return new AppPreferences(); }
     }
@@ -55,5 +55,15 @@ public sealed class PreferencesStore
             await File.WriteAllBytesAsync(path, bytes.ToArray());
         }
         catch { /* preferences are best-effort; a failed save must never crash the app */ }
+    }
+
+    private static AppPreferences Normalize(AppPreferences prefs)
+    {
+        // VYaml leaves absent numeric members at zero when loading preferences written before a field was
+        // introduced. Zero used to be clamped to the 200-line safety floor, leaving barely one viewport of
+        // usable history. Treat non-positive legacy values as unset; positive operator choices remain intact.
+        if (prefs.TerminalScrollbackLines <= 0)
+            prefs.TerminalScrollbackLines = Styloagent.Terminal.TerminalControl.DefaultScrollbackLines;
+        return prefs;
     }
 }

@@ -18,7 +18,7 @@
                 Padding="12,4,6,4"
                 HorizontalScrollBarVisibility="Disabled"
                 VerticalScrollBarVisibility="Auto">
-    <Canvas Name="Surface" Background="#0C0C0C">
+    <Canvas Name="Surface" Background="#0C0C0C" ClipToBounds="True">
       <SelectableTextBlock Name="ScreenText"
                            Canvas.Left="0" Canvas.Top="0"
                            FontFamily="Menlo, Monaco, Cascadia Mono, Consolas, monospace"
@@ -26,7 +26,8 @@
                            LineHeight="16"
                            Foreground="#EDEDED"
                            Background="#0C0C0C"
-                           TextWrapping="NoWrap" />
+                           TextWrapping="NoWrap"
+                           ClipToBounds="True" />
     </Canvas>
   </ScrollViewer>
 

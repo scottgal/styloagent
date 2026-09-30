@@ -379,7 +379,9 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                             IsPickedUp          = pickedUp,
                             IsOperatorArchived  = archived,
                         };
-                        return (threadItem, msgItems);
+                        bool needsPhysicalArchive = section == BusThreadSection.Archive
+                            && t.Messages.Any(m => m.State != BusMessageState.Archived);
+                        return (threadItem, msgItems, needsPhysicalArchive);
                     }).ToList();
 
                     var threadItems = built.Select(b => b.threadItem).ToList();
@@ -393,19 +395,20 @@ public sealed partial class BusViewModel : ObservableObject, IDisposable
                     // Any thread the classifier moved to Archive (replied, abandoned, or fully
                     // archived) gets its physical files moved out of inbox/outbox so the channel
                     // directory stays clean. Best-effort, idempotent — a move failure leaves the
-                    // thread live rather than vanishing. This runs on EVERY projection read, so
-                    // threads are cleaned regardless of how the reply was created (MCP tool,
-                    // hand-written .reply.md, or operator dismiss).
-                    foreach (var ti in threadItems)
-                    {
-                        if (ti.Section == BusThreadSection.Archive && ti.Key.Length > 0)
+                    // thread live rather than vanishing. Only threads that still contain a live file
+                    // participate, and all of them are archived in one directory pass; already archived
+                    // history must never cause an O(threads × files) rescan. This still catches every
+                    // completion source (MCP tool, hand-written .reply.md, or operator dismiss).
+                    var slugsToArchive = built
+                        .Where(b => b.needsPhysicalArchive && b.threadItem.Key.Length > 0)
+                        .Select(b =>
                         {
-                            // Derive the slug from the key: key is "prefixslug"
-                            var sep = ti.Key.IndexOf('');
-                            var slug = sep >= 0 ? ti.Key[(sep + 1)..] : ti.Key;
-                            Styloagent.Core.Channel.ChannelArchiver.ArchiveThread(_channelRoot, slug);
-                        }
-                    }
+                            // Key is "prefixslug".
+                            var key = b.threadItem.Key;
+                            var sep = key.IndexOf('');
+                            return sep >= 0 ? key[(sep + 1)..] : key;
+                        });
+                    Styloagent.Core.Channel.ChannelArchiver.ArchiveThreads(_channelRoot, slugsToArchive);
 
                     // Update Messages — handle both UI-thread and headless/test contexts.
                     void UpdateMessages()

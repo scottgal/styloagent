@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.RegularExpressions;
 
@@ -9,6 +10,15 @@ namespace Styloagent.Core.Channel;
 
 public sealed class ChannelProjection
 {
+    private sealed record CachedMessage(
+        long Length, long LastWriteTicks, bool IsArchive, string PrefixFingerprint, BusMessage Message);
+
+    // A large, long-lived fleet can have thousands of immutable archived Markdown messages. Most refreshes
+    // change one file; rereading and regex-parsing the entire archive on each FSW event caused multi-second
+    // CPU/allocation bursts. Cache immutable parses by filesystem signature and evict paths that disappeared.
+    private readonly ConcurrentDictionary<string, CachedMessage> _messageCache =
+        new(StringComparer.Ordinal);
+
     private static readonly Regex FromPattern =
         new(@"^\*\*From:\*\*\s*(.+)$", RegexOptions.Multiline | RegexOptions.Compiled);
 
@@ -33,6 +43,8 @@ public sealed class ChannelProjection
             return Array.Empty<BusThread>();
 
         var allMessages = new List<BusMessage>();
+        var seenFiles = new HashSet<string>(StringComparer.Ordinal);
+        string prefixFingerprint = string.Join('\u001e', knownPrefixes.OrderBy(p => p, StringComparer.OrdinalIgnoreCase));
 
         // Enumerate all four locations
         var locations = new[]
@@ -51,11 +63,19 @@ public sealed class ChannelProjection
             foreach (var filePath in Directory.EnumerateFiles(dir, "*.md"))
             {
                 ct.ThrowIfCancellationRequested();
-                var msg = await ParseMessageAsync(filePath, isArchive, knownPrefixes, ct).ConfigureAwait(false);
+                seenFiles.Add(filePath);
+                var msg = await ParseMessageCachedAsync(
+                    filePath, isArchive, knownPrefixes, prefixFingerprint, ct).ConfigureAwait(false);
                 if (msg is not null)
                     allMessages.Add(msg);
             }
         }
+
+        // Moves/deletes change the path. Keeping those cache entries forever would turn the optimization
+        // into a slow memory leak in a busy fleet.
+        foreach (var cachedPath in _messageCache.Keys)
+            if (!seenFiles.Contains(cachedPath))
+                _messageCache.TryRemove(cachedPath, out _);
 
         // Thread identity is recipient-prefix + slug. Slugs are human-friendly subjects and routinely
         // collide ("status", "review", ...); grouping on a slug alone lets one recipient's completion
@@ -118,6 +138,31 @@ public sealed class ChannelProjection
             .ToList();
 
         return threads;
+    }
+
+    private async Task<BusMessage?> ParseMessageCachedAsync(
+        string filePath,
+        bool isArchive,
+        IReadOnlyCollection<string> knownPrefixes,
+        string prefixFingerprint,
+        CancellationToken ct)
+    {
+        var info = new FileInfo(filePath);
+        long length = info.Length;
+        long lastWriteTicks = info.LastWriteTimeUtc.Ticks;
+
+        if (_messageCache.TryGetValue(filePath, out var cached)
+            && cached.Length == length
+            && cached.LastWriteTicks == lastWriteTicks
+            && cached.IsArchive == isArchive
+            && cached.PrefixFingerprint == prefixFingerprint)
+            return cached.Message;
+
+        var message = await ParseMessageAsync(filePath, isArchive, knownPrefixes, ct).ConfigureAwait(false);
+        if (message is not null)
+            _messageCache[filePath] = new CachedMessage(
+                length, lastWriteTicks, isArchive, prefixFingerprint, message);
+        return message;
     }
 
     private async Task<BusMessage?> ParseMessageAsync(

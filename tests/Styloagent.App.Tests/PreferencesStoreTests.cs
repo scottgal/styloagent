@@ -50,6 +50,20 @@ public class PreferencesStoreTests
         Assert.True(prefs.ShowRosterContext);
         Assert.True(prefs.AutoDehydrateIdleAgents);
         Assert.Equal(30, prefs.IdleDehydrateMinutes);
+        Assert.Equal(2_000, prefs.TerminalScrollbackLines);
+    }
+
+    [Fact]
+    public void Legacy_zero_scrollback_migrates_to_the_real_terminal_default()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "styloagent-legacy-prefs-" + Guid.NewGuid().ToString("N") + ".yaml");
+        try
+        {
+            File.WriteAllText(path, "accent: Blue\nterminalScrollbackLines: 0\n");
+            var prefs = new PreferencesStore().Load(path);
+            Assert.Equal(2_000, prefs.TerminalScrollbackLines);
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
     }
 
     [Fact]

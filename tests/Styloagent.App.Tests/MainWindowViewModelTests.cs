@@ -281,8 +281,10 @@ public class MainWindowViewModelTests : IDisposable
             // --settings, --mcp-config, and --model flags as regular Claude.
             Assert.Equal("claude", launcher.Options[1].Command);
             Assert.DoesNotContain("--dangerously-bypass-hook-trust", launcher.Options[1].Args);
+            Assert.DoesNotContain("--ax-screen-reader", launcher.Options[1].Args);
+            Assert.Equal("1", launcher.Options[1].Env!["CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN"]);
             Assert.Contains(launcher.Options[1].Args, a => a == "--model");
-            Assert.Contains(launcher.Options[1].Args, a => a == "deepseek-v4-pro");
+            Assert.Contains(launcher.Options[1].Args, a => a == "deepseek-flash");
             // A positional Codex prompt must not apply — ClaudeDeepSeek is the Claude CLI.
             Assert.DoesNotContain(launcher.Options[1].Args, a => a == "-p");
         }

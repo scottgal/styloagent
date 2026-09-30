@@ -61,9 +61,8 @@ public sealed record AgentCapabilities(IReadOnlyList<AgentRuntimeCapabilities> A
         }),
         new AgentRuntimeCapabilities("claude-deepseek", new[]
         {
-            new AgentCapability("default", "deepseek-v4-pro", new[] { "default", "low", "medium", "high", "max" }),
-            new AgentCapability("deepseek-v4-pro", "DeepSeek V4 Pro", new[] { "default", "low", "medium", "high", "max" }),
-            new AgentCapability("deepseek-v4-flash", "DeepSeek V4 Flash", new[] { "default", "low", "medium", "high", "max" }),
+            new AgentCapability("default", "deepseek-flash", new[] { "default", "low", "medium", "high", "max" }),
+            new AgentCapability("deepseek-flash", "DeepSeek V4.1 Flash", new[] { "default", "low", "medium", "high", "max" }),
         }),
     };
 

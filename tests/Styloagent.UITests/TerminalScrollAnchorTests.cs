@@ -32,7 +32,11 @@ public class TerminalScrollAnchorTests
     {
         var sb = new StringBuilder();
         if (tb.Inlines is null) return "";
-        foreach (var inline in tb.Inlines) if (inline is Run r) sb.Append(r.Text);
+        foreach (var inline in tb.Inlines)
+        {
+            if (inline is Run r) sb.Append(r.Text);
+            else if (inline is LineBreak) sb.Append('\n');
+        }
         return sb.ToString();
     }
 
@@ -240,6 +244,10 @@ public class TerminalScrollAnchorTests
 
             // The visible text must not be empty (the slice actually rendered).
             Assert.NotEmpty(InlineText(screenText));
+            Assert.True(screenText.Inlines!.OfType<LineBreak>().Any(),
+                "VT rows must use structural line breaks, not shaped newline glyphs");
+            Assert.True(Math.Abs(screenText.Height / cellH - Math.Round(screenText.Height / cellH)) < 0.01,
+                $"virtualized text height {screenText.Height} must be an exact number of terminal rows ({cellH}px)");
             window.Close();
         });
 }

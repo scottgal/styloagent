@@ -12,6 +12,17 @@ public sealed class PortaPtySession : IPtySession
     private readonly IPtyConnection _connection;
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _readLoop;
+    private readonly Task _publishLoop;
+
+    // PTYs commonly wake ReadAsync for tiny cursor/spinner fragments. Publishing every fragment makes every
+    // terminal parse, schedule and shape it independently; across a fleet this produced ~1 GB/s of managed
+    // allocations. Accumulate decoded characters and publish at most once per display frame. The reader never
+    // waits for the publisher, byte order is preserved, and a completed reader flushes the final partial batch.
+    private readonly object _batchGate = new();
+    private readonly StringBuilder _pendingOutput = new();
+    private readonly SemaphoreSlim _outputReady = new(0, 1);
+    private bool _readCompleted;
+    private const int OutputBatchWindowMs = 16;
 
     // Serializes ALL writes to the PTY (keystrokes, terminal-query answers, injected bus messages,
     // prompt injection). Porta.Pty's PtyStream is a raw-fd wrapper with no internal locking, and the
@@ -87,6 +98,7 @@ public sealed class PortaPtySession : IPtySession
     {
         _connection = connection;
         _connection.ProcessExited += OnProcessExited;
+        _publishLoop = Task.Run(PublishLoopAsync);
         _readLoop = Task.Run(ReadLoopAsync);
         Styloagent.Core.Sessions.SpawnDiag.Log("PortaPtySession CTOR (read loop started)");
     }
@@ -144,6 +156,11 @@ public sealed class PortaPtySession : IPtySession
         catch (OperationCanceledException) { }
         catch { /* swallow read-loop errors on dispose */ }
 
+        try { await _publishLoop.ConfigureAwait(false); }
+        catch (OperationCanceledException) { }
+        catch { /* a failed output subscriber must not block teardown */ }
+
+        _outputReady.Dispose();
         _cts.Dispose();
     }
 
@@ -214,46 +231,91 @@ public sealed class PortaPtySession : IPtySession
             // Decode incrementally: flush:false holds partial multi-byte characters until the
             // next read completes them, preventing shredded UTF-8 from becoming U+FFFD garbage.
             int charsDecoded = decoder.GetChars(buffer, 0, bytesRead, charBuffer, 0, flush: false);
-            var text = new string(charBuffer, 0, charsDecoded);
 
             // DIAGNOSTIC: capture claude's first bytes (banner/immediate error) and keep a rolling tail.
             if (!diagLoggedFirst)
             {
                 diagLoggedFirst = true;
+                var text = new string(charBuffer, 0, charsDecoded);
                 Styloagent.Core.Sessions.SpawnDiag.Log($"ReadLoop FIRST output ({bytesRead} bytes): «{DiagClip(text)}»");
             }
-            diagTail.Append(text);
+            diagTail.Append(charBuffer, 0, charsDecoded);
             if (diagTail.Length > 2000) diagTail.Remove(0, diagTail.Length - 2000);
 
-            // Append to the replay backlog AND capture the subscriber list under one lock: a subscriber
-            // that attaches between these would otherwise either miss this chunk or get it twice. The
-            // INVOKE happens outside the lock — a slow subscriber (the VT-engine write, a future sink)
-            // must never stall the read loop: PTY backpressure from a blocked loop would fill the kernel
-            // buffer and make the child block on write, which reads as echo/typing lag. Invocation is
-            // still in-order and on this thread, so the single-threaded read loop preserves ordering.
-            Action<string>? output;
-            lock (_outputGate)
-            {
-                _backlog.Append(text);
-                if (_backlog.Length > BacklogCap)
-                    _backlog.Remove(0, _backlog.Length - BacklogCap);
-                output = _output;
-            }
-            output?.Invoke(text);
+            QueueOutput(charBuffer, charsDecoded);
         }
 
         // Flush any partial UTF-8 bytes buffered in the decoder on exit.
         int flushChars = decoder.GetChars(buffer, 0, 0, charBuffer, 0, flush: true);
         if (flushChars > 0)
+            QueueOutput(charBuffer, flushChars);
+
+        lock (_batchGate) _readCompleted = true;
+        SignalOutputReady();
+    }
+
+    private void QueueOutput(char[] chars, int count)
+    {
+        if (count <= 0) return;
+        var signal = false;
+        lock (_batchGate)
         {
-            var tail = new string(charBuffer, 0, flushChars);
-            Action<string>? output;
-            lock (_outputGate)
-            {
-                _backlog.Append(tail);
-                output = _output;
-            }
-            output?.Invoke(tail);
+            signal = _pendingOutput.Length == 0;
+            _pendingOutput.Append(chars, 0, count);
         }
+        if (signal) SignalOutputReady();
+    }
+
+    private void SignalOutputReady()
+    {
+        try
+        {
+            if (_outputReady.CurrentCount == 0) _outputReady.Release();
+        }
+        catch (ObjectDisposedException) { }
+        catch (SemaphoreFullException) { }
+    }
+
+    private async Task PublishLoopAsync()
+    {
+        while (true)
+        {
+            await _outputReady.WaitAsync().ConfigureAwait(false);
+
+            bool completed;
+            lock (_batchGate) completed = _readCompleted;
+            if (!completed)
+                await Task.Delay(OutputBatchWindowMs).ConfigureAwait(false);
+
+            string? text = null;
+            lock (_batchGate)
+            {
+                if (_pendingOutput.Length > 0)
+                {
+                    text = _pendingOutput.ToString();
+                    _pendingOutput.Clear();
+                }
+                completed = _readCompleted;
+            }
+
+            if (text is not null) PublishOutput(text);
+            if (completed) return;
+        }
+    }
+
+    private void PublishOutput(string text)
+    {
+        // Append to the replay backlog AND capture the subscriber list under one lock: a subscriber that
+        // attaches between these would otherwise either miss this batch or get it twice. Invocation stays
+        // outside the lock so an expensive VT parser never applies backpressure to the PTY read loop.
+        Action<string>? output;
+        lock (_outputGate)
+        {
+            _backlog.Append(text);
+            if (_backlog.Length > BacklogCap)
+                _backlog.Remove(0, _backlog.Length - BacklogCap);
+            output = _output;
+        }
+        output?.Invoke(text);
     }
 }

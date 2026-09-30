@@ -88,7 +88,8 @@ public static class HookSettings
 
     public static string BuildSettingsJson(string agentId, string hooksDir, string? hydrationFile = null,
         FleetPermissionMode permissionMode = FleetPermissionMode.Prompt,
-        string? gateInvocation = null, string? repoRoot = null, string? caller = null)
+        string? gateInvocation = null, string? repoRoot = null, string? caller = null,
+        bool includeDeepSeekModelPicker = false)
     {
         string safeId = SanitizeAgentId(agentId);
         // Observe: write raw stdin JSON to a unique per-event file tagged with the agent id.
@@ -145,8 +146,36 @@ public static class HookSettings
                 ["defaultMode"] = "acceptEdits",
             };
         }
+
+        // The claude-deepseek runtime routes an Anthropic-compatible endpoint to a model id
+        // ("deepseek-flash") this CLI build's own catalog has never heard of. Unmapped, every request
+        // logs "[claude-code:unrecognized_model]" and auto-compact assumes a 200k window instead of the
+        // model's real 1M one. A modelPicker row with behavesAs tells Claude Code to treat the id as
+        // behaving like "sonnet" (also native 1M) for context/effort purposes — the CLI's own documented
+        // fix for a custom id on a custom ANTHROPIC_BASE_URL. Only --settings/SDK, managed, and user
+        // settings are honored for modelPicker (never project settings), so it must ride this per-launch
+        // --settings blob rather than a file dropped into the target repo.
+        if (includeDeepSeekModelPicker)
+            settings["modelPicker"] = DeepSeekModelPicker;
+
         return JsonSerializer.Serialize(settings);
     }
+
+    private static readonly Dictionary<string, object> DeepSeekModelPicker = new()
+    {
+        ["options"] = new object[]
+        {
+            new Dictionary<string, object>
+            {
+                ["model"] = "deepseek-flash",
+                ["label"] = "DeepSeek V4.1 Flash",
+                ["description"] = "DeepSeek V4.1 Flash via an Anthropic-compatible endpoint (.styloagent/deepseek.env)",
+                ["behavesAs"] = "sonnet",
+            },
+        },
+        // Append to (never replace) the built-in lineup — the native Claude models must stay selectable.
+        ["replaceBuiltInOptions"] = false,
+    };
 
     /// <summary>
     /// The <c>SessionStart</c> command that still drops the raw event for observation AND, when the
@@ -208,6 +237,7 @@ public static class HookSettings
     /// <summary>The CLI args (<c>--settings &lt;json&gt;</c>) to append to a <c>claude</c> launch.</summary>
     public static IReadOnlyList<string> BuildSettingsArgs(string agentId, string hooksDir, string? hydrationFile = null,
         FleetPermissionMode permissionMode = FleetPermissionMode.Prompt,
-        string? gateInvocation = null, string? repoRoot = null, string? caller = null)
-        => new[] { "--settings", BuildSettingsJson(agentId, hooksDir, hydrationFile, permissionMode, gateInvocation, repoRoot, caller) };
+        string? gateInvocation = null, string? repoRoot = null, string? caller = null,
+        bool includeDeepSeekModelPicker = false)
+        => new[] { "--settings", BuildSettingsJson(agentId, hooksDir, hydrationFile, permissionMode, gateInvocation, repoRoot, caller, includeDeepSeekModelPicker) };
 }

@@ -124,12 +124,26 @@ public sealed class MessageDeliveryService
     public async Task OnRecipientStateChangedAsync(string agentId, AgentHookState newState, CancellationToken ct = default)
     {
         if (newState != AgentHookState.Idle) return;
-        if (!_deferred.TryRemove(agentId, out var queue)) return;
 
-        while (queue.TryDequeue(out var message))
+        // 1. Unknown-recipient fallback queue (pre-MCP / hooks-not-wired).
+        if (_deferred.TryRemove(agentId, out var queue))
         {
-            await _injector.InjectAsync(agentId, MessageDelivery.FormatNudge(message), breakFirst: false, ct)
-                .ConfigureAwait(false);
+            while (queue.TryDequeue(out var message))
+            {
+                await _injector.InjectAsync(agentId, MessageDelivery.FormatNudge(message), breakFirst: false, ct)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        // 2. MCP-native path: a message parked in the PendingInbox for a busy hook-connected recipient has
+        //    no turn-boundary hook to surface it once the recipient finishes — kilo has no hooks.json, so
+        //    nothing tells it to check_inbox. Now that the recipient is idle, claim and type the nudges,
+        //    mirroring Claude's Stop force-continue so no message is left undelivered.
+        if (_pending is not null && _pending.HasPending(agentId))
+        {
+            var nudge = _pending.DrainFormatted(agentId);
+            if (!string.IsNullOrWhiteSpace(nudge))
+                await _injector.InjectAsync(agentId, nudge, breakFirst: false, ct).ConfigureAwait(false);
         }
     }
 

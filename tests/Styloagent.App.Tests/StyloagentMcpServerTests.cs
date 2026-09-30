@@ -58,13 +58,14 @@ public class StyloagentMcpServerTests
     }
 
     [Fact]
-    public void McpConfig_json_names_the_server_url_prefix_and_token()
+    public void McpConfig_json_names_the_server_url_and_prefix_but_not_the_token()
     {
         var json = McpConfig.BuildJson("foss-", new Uri("http://127.0.0.1:5000/mcp"), "tok");
         Assert.Contains("\"type\": \"http\"", json);
         Assert.Contains("127.0.0.1:5000/mcp", json);
         Assert.Contains("foss-", json);
-        Assert.Contains("Bearer tok", json);
+        Assert.Contains($"Bearer ${{{McpConfig.TokenEnvironmentVariable}}}", json);
+        Assert.DoesNotContain("tok", json);
         var args = McpConfig.Args("foss-", new Uri("http://127.0.0.1:5000/mcp"), "tok");
         Assert.Equal("--mcp-config", args[0]);
     }
@@ -79,14 +80,16 @@ public class StyloagentMcpServerTests
     [Fact]
     public void McpConfig_codex_args_use_config_tables_and_headers()
     {
-        var args = McpConfig.CodexArgs("codex-", new Uri("http://127.0.0.1:5000/mcp"), "tok");
+        const string secret = "super-secret-value";
+        var args = McpConfig.CodexArgs("codex-", new Uri("http://127.0.0.1:5000/mcp"), secret);
 
         Assert.Contains("--config", args);
         Assert.Contains("mcp_servers.styloagent.enabled=true", args);
         Assert.Contains("mcp_servers.styloagent.default_tools_approval_mode=\"approve\"", args);
         Assert.Contains(args, a => a == "mcp_servers.styloagent.url=\"http://127.0.0.1:5000/mcp\"");
         Assert.Contains(args, a => a.Contains("\"X-Styloagent-Agent\"=\"codex-\"", StringComparison.Ordinal));
-        Assert.Contains(args, a => a.Contains("\"Authorization\"=\"Bearer tok\"", StringComparison.Ordinal));
+        Assert.Contains(args, a => a == $"mcp_servers.styloagent.bearer_token_env_var=\"{McpConfig.TokenEnvironmentVariable}\"");
+        Assert.DoesNotContain(args, a => a.Contains(secret, StringComparison.Ordinal));
         Assert.DoesNotContain("--mcp-config", args);
     }
 
@@ -145,5 +148,47 @@ public class StyloagentMcpServerTests
         Assert.Contains("spawn_agent", body);
         Assert.Contains("list_fleet", body);
         Assert.Contains("reply_to_thread", body);
+    }
+
+    // Protocol revision 2026-07-28 makes resultType mandatory on every result. A client that
+    // negotiates that revision rejects a tools/list result without it and attaches NO tools, which
+    // reads in the cockpit as a stalled agent (the pane is alive, it just has no fleet tools).
+    // Regression guard: the SDK must emit resultType on the modern revision.
+    [Fact]
+    public async Task Server_emits_resultType_on_the_modern_protocol_revision()
+    {
+        await using var server = await StyloagentMcpServer.StartAsync(new FakeController(), new FakeRouter());
+
+        using var http = new HttpClient();
+        var req = new HttpRequestMessage(HttpMethod.Post, server.BaseUrl)
+        {
+            Content = JsonContent.Create(new
+            {
+                jsonrpc = "2.0",
+                id = 1,
+                method = "tools/list",
+                // The 2026-07-28 revision is stateless: the version rides on every request.
+                @params = new
+                {
+                    _meta = new Dictionary<string, object>
+                    {
+                        ["io.modelcontextprotocol/protocolVersion"] = "2026-07-28",
+                        ["io.modelcontextprotocol/clientCapabilities"] = new Dictionary<string, object>()
+                    }
+                }
+            })
+        };
+        req.Headers.TryAddWithoutValidation("Accept", "application/json, text/event-stream");
+        req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {server.Token}");
+        req.Headers.TryAddWithoutValidation(McpAuth.AgentHeader, "overview-");
+        req.Headers.TryAddWithoutValidation("MCP-Protocol-Version", "2026-07-28");
+        req.Headers.TryAddWithoutValidation("Mcp-Method", "tools/list");
+        var resp = await http.SendAsync(req);
+        var body = await resp.Content.ReadAsStringAsync();
+
+        Assert.True(resp.IsSuccessStatusCode, body);
+        Assert.Contains("spawn_agent", body);
+        // The modern revision requires the discriminator on the result itself.
+        Assert.Contains("\"resultType\"", body);
     }
 }

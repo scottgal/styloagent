@@ -1291,6 +1291,11 @@ public sealed partial class TerminalControl : UserControl
         // Row `first` lands at _topPad + first·cellH so the transcript is bottom-anchored (short buffers pad
         // at the top and the last row rests on the bottom edge).
         Canvas.SetTop(ScreenText, _topPad + first * _cellH);
+        // Give the virtualized block an exact terminal-grid box. Leaving it auto-sized lets Avalonia's
+        // flowing-text measure change when a different off-screen slice is materialized; the Canvas keeps
+        // the old pixels while the new TextLayout settles, producing overlapped/"garbled" historical rows.
+        ScreenText.Width = _terminal.Cols * _cellW;
+        ScreenText.Height = Math.Max(_cellH, (last - first) * _cellH);
         BuildColoredInlines(first, last, _cursorAbsRow);
     }
 
@@ -1372,9 +1377,11 @@ public sealed partial class TerminalControl : UserControl
 
             if (runOpen) FlushRun(inlines, runText, runFg, runBg, runBold);
 
-            // Newline separator between rendered rows (not after the last row of the slice).
+            // A terminal row boundary is structural, not text content. A newline embedded in a Run is fed
+            // through Avalonia's flowing-text shaping and can acquire a different baseline/height when a
+            // virtualized off-screen slice is rebuilt. LineBreak keeps every VT row on the fixed LineHeight.
             if (row < last - 1)
-                inlines.Add(new Run("\n"));
+                inlines.Add(new LineBreak());
         }
     }
 

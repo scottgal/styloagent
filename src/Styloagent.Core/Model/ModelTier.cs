@@ -55,19 +55,19 @@ public static class ModelTierResolver
         {
             AgentRuntimeKind.Claude => "opus",
             AgentRuntimeKind.Codex or AgentRuntimeKind.Kilo => null,
-            _ => "deepseek-v4-pro",   // ClaudeDeepSeek — direct DeepSeek id (no [1m] suffix; the API rejects it)
+            _ => "deepseek-flash", // ClaudeDeepSeek — stable API alias for the latest Flash release
         },
         ModelTier.Sonnet => runtime switch
         {
             AgentRuntimeKind.Claude => "sonnet",
             AgentRuntimeKind.Codex or AgentRuntimeKind.Kilo => null,
-            _ => "deepseek-v4-flash",
+            _ => "deepseek-flash",
         },
         ModelTier.Haiku => runtime switch
         {
             AgentRuntimeKind.Claude => "haiku",
             AgentRuntimeKind.Codex or AgentRuntimeKind.Kilo => null,
-            _ => "deepseek-v4-flash",
+            _ => "deepseek-flash",
         },
         _ => null,
     };

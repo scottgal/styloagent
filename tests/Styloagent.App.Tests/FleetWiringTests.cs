@@ -126,6 +126,7 @@ public class FleetWiringTests
             Assert.Contains("--mcp-config", spawn.Args);
             Assert.DoesNotContain("--ax-screen-reader", spawn.Args);
             Assert.Equal("1", spawn.Env!["CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN"]);
+            Assert.Equal("1000000", spawn.Env!["CLAUDE_CODE_MAX_CONTEXT_TOKENS"]);
             Assert.DoesNotContain("--dangerously-bypass-hook-trust", spawn.Args);
             Assert.DoesNotContain(spawn.Args, a => a.StartsWith("mcp_servers.", StringComparison.Ordinal));
 

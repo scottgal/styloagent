@@ -36,6 +36,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 {
     private const string ClaudeDisableAlternateScreenEnvironmentVariable =
         "CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN";
+
+    /// <summary>
+    /// Belt-and-suspenders alongside the claude-deepseek modelPicker/behavesAs row (see
+    /// <see cref="Core.Hooks.HookSettings"/>): even once the CLI recognizes "deepseek-flash" via
+    /// behavesAs, this is the CLI's own documented fallback for pinning its auto-compact/context-window
+    /// assumption directly, independent of catalog/picker matching. Defaulted here (not required in the
+    /// user's deepseek.env) so every claude-deepseek launch gets DeepSeek's real ~1M window without manual
+    /// setup; a value the user sets in deepseek.env still overrides it (loaded after this default).
+    /// </summary>
+    private const string DeepSeekMaxContextTokensEnvironmentVariable = "CLAUDE_CODE_MAX_CONTEXT_TOKENS";
+    private const string DeepSeekMaxContextTokensDefault = "1000000";
     [ObservableProperty]
     private AgentPaneViewModel? _pane;
 
@@ -3228,6 +3239,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
         if (entry.Runtime == AgentRuntimeKind.ClaudeDeepSeek)
         {
+            vars[DeepSeekMaxContextTokensEnvironmentVariable] = DeepSeekMaxContextTokensDefault;
             foreach (var pair in Core.Sessions.DeepSeekEnv.Load(repoRoot))
                 vars[pair.Key] = pair.Value;
         }

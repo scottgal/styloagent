@@ -283,6 +283,9 @@ public class MainWindowViewModelTests : IDisposable
             Assert.DoesNotContain("--dangerously-bypass-hook-trust", launcher.Options[1].Args);
             Assert.DoesNotContain("--ax-screen-reader", launcher.Options[1].Args);
             Assert.Equal("1", launcher.Options[1].Env!["CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN"]);
+            // Belt-and-suspenders alongside the modelPicker/behavesAs --settings row: pins the CLI's own
+            // auto-compact/context-window assumption to DeepSeek's real ~1M window directly.
+            Assert.Equal("1000000", launcher.Options[1].Env!["CLAUDE_CODE_MAX_CONTEXT_TOKENS"]);
             Assert.Contains(launcher.Options[1].Args, a => a == "--model");
             Assert.Contains(launcher.Options[1].Args, a => a == "deepseek-flash");
             // A positional Codex prompt must not apply — ClaudeDeepSeek is the Claude CLI.

@@ -46,11 +46,14 @@ public static class ChannelArchiver
     /// <summary>
     /// Every form of <paramref name="key"/> that a file on disk may have been named for. The caller passes
     /// the raw thread text, but <see cref="ChannelMessageWriter.Reply"/> names the completion record for
-    /// <see cref="ChannelMessageWriter.Slug"/> of it, and Slug caps at 48 characters and trims a trailing
-    /// dash. For any argument over 48 characters those are two different strings, the record's own name is
-    /// in no key set, and the close strands a file nothing can reach again. Yielding both forms puts the
-    /// writer's name back in the key set. For a short, already-slug-shaped argument the two coincide and
-    /// nothing is added.
+    /// <see cref="ChannelMessageWriter.Slug"/> of it, so whenever the argument is not already its own slug
+    /// the record's name is in no key set and the close strands a file nothing can reach again.
+    /// The ARM IS NOT THE 48 CAP. The cap is the usual cause and the easiest to see, but Slug also
+    /// lowercases and drops every character that is not a letter or digit, so a subject carrying capitals
+    /// or punctuation differs from its slug at ANY length. The condition is "the argument is not its own
+    /// slug", and both a long heading and a short one such as "Gate r62: total moved." sit in it.
+    /// Yielding both forms puts the writer's name back in the key set. For an argument that is already
+    /// slug-shaped the two coincide and nothing is added.
     /// </summary>
     private static IEnumerable<string> KeyForms(string key)
     {

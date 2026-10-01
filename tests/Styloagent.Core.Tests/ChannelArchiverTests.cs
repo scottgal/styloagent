@@ -94,6 +94,41 @@ public sealed class ChannelArchiverTests
     }
 
     /// <summary>
+    /// The arm is "the argument differs from its slug", NOT "the argument is over the 48 cap". Slug
+    /// lowercases and drops every character that is not a letter or digit, so a subject carrying capitals
+    /// or punctuation is not its own slug AT ANY LENGTH. This fixture is deliberately under the cap so a
+    /// pass cannot come from the length, and the assertion that the record's name differs from the subject
+    /// is what proves the fixture sits in that arm.
+    /// </summary>
+    [Fact]
+    public void ArchiveThread_sweeps_a_subject_under_48_that_is_not_its_own_slug()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"styloagent-archive-{Guid.NewGuid():N}");
+        var subject = "Gate r62: total moved.";
+
+        Assert.True(subject.Length < 48, "fixture must be under the cap so the length cannot explain a pass");
+
+        try
+        {
+            ChannelMessageWriter.Reply(root, "overview-", subject, "done", DateTimeOffset.UnixEpoch);
+            ChannelMessageWriter.Write(root, "queue-", "overview-", subject, "note", "normal", DateTimeOffset.UnixEpoch);
+
+            var record = Directory.GetFiles(Path.Combine(root, "outbox"), "*.md").Single();
+            Assert.NotEqual(subject + ".reply.md", Path.GetFileName(record));
+
+            var moved = ChannelArchiver.ArchiveThread(root, subject);
+
+            Assert.Equal(2, moved);
+            Assert.Empty(Directory.GetFiles(Path.Combine(root, "outbox"), "*.md"));
+            Assert.Empty(Directory.GetFiles(Path.Combine(root, "inbox"), "*.md"));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// A broadcast copy is never archived. Every lane holds one, so sweeping it removes the message from
     /// every live queue at once. The key expansion is what makes this reachable rather than theoretical:
     /// `all-&lt;slug&gt;` is named from the same slug the archiver now also keys on, so without the guard a

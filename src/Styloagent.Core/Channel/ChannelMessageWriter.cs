@@ -93,7 +93,15 @@ public static class ChannelMessageWriter
             _                         => "normal",
         };
 
-    private static string Slug(string subject)
+    /// <summary>
+    /// The on-disk name stem for a subject: letters and digits kept, runs of space/'-'/'_' collapsed to a
+    /// single '-', trimmed of leading/trailing dashes, and capped at 48 characters. Shared with
+    /// <see cref="ChannelArchiver"/> deliberately. A caller closing a thread passes the RAW thread text
+    /// while the completion record is named for this capped slug, so for any argument over 48 characters
+    /// the name and the key are different strings and the record can never be swept. The archiver keys on
+    /// this form as well as the raw argument so the two halves of a close agree again.
+    /// </summary>
+    internal static string Slug(string subject)
     {
         var sb = new StringBuilder();
         foreach (var c in (subject ?? "").Trim().ToLowerInvariant())

@@ -30,6 +30,7 @@ public static class ChannelArchiver
         var slugs = threadSlugs
             .Where(s => !string.IsNullOrWhiteSpace(s))
             .Select(s => s.Trim())
+            .SelectMany(KeyForms)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (slugs.Count == 0)
             return 0;
@@ -40,6 +41,24 @@ public static class ChannelArchiver
         moved += MoveMatching(channelRoot, "outbox", slugs);
 
         return moved;
+    }
+
+    /// <summary>
+    /// Every form of <paramref name="key"/> that a file on disk may have been named for. The caller passes
+    /// the raw thread text, but <see cref="ChannelMessageWriter.Reply"/> names the completion record for
+    /// <see cref="ChannelMessageWriter.Slug"/> of it, and Slug caps at 48 characters and trims a trailing
+    /// dash. For any argument over 48 characters those are two different strings, the record's own name is
+    /// in no key set, and the close strands a file nothing can reach again. Yielding both forms puts the
+    /// writer's name back in the key set. For a short, already-slug-shaped argument the two coincide and
+    /// nothing is added.
+    /// </summary>
+    private static IEnumerable<string> KeyForms(string key)
+    {
+        yield return key;
+
+        var slug = ChannelMessageWriter.Slug(key);
+        if (!string.Equals(slug, key, StringComparison.OrdinalIgnoreCase))
+            yield return slug;
     }
 
     private static int MoveMatching(string channelRoot, string subdir, IReadOnlySet<string> slugs)
@@ -58,6 +77,14 @@ public static class ChannelArchiver
             var baseName = name.EndsWith(".reply.md", StringComparison.OrdinalIgnoreCase)
                 ? name[..^".reply.md".Length]
                 : name[..^".md".Length];
+
+            // A broadcast copy is never archived. Every lane holds one and the fleet's rule is that an
+            // `all-` thread is never completed, because sweeping the copy takes the message out of every
+            // lane's live queue at once. Enforced here rather than left to convention, because the key set
+            // above now contains the slugged form of a long argument too, which is what `all-<slug>` is
+            // named from: the guard keeps that reachable-by-accident case from ever moving a broadcast.
+            if (baseName.StartsWith("all-", StringComparison.OrdinalIgnoreCase))
+                continue;
 
             if (!MatchesAnySlug(baseName, slugs))
                 continue;

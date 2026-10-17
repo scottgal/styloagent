@@ -32,6 +32,7 @@ public sealed partial class TerminalControl : UserControl
     // Not readonly: re-created on each Attach so a re-attach replays the backlog into a CLEAN engine
     // (see ResetEngine / Attach). Every reader touches this field, so the swap is picked up everywhere.
     private XTerm.Terminal _terminal;
+    private TerminalControlStringFilter _controlStrings = new();
     // XTerm's buffer is mutated by PTY output on a background thread and read by Avalonia rendering on the
     // UI thread. Terminal.Write may accept background calls, but its mutable Lines/cells are not an atomic
     // render snapshot. Serialize every mutation, resize and buffer read so a wheel-triggered visible-slice
@@ -403,6 +404,7 @@ public sealed partial class TerminalControl : UserControl
             System.Threading.Interlocked.Exchange(ref _pendingTrimmedLines, 0);   // fresh engine → no carried-over trims
             _lastRebuiltCount = 0;                              // fresh engine → rebuild from row 0
             _terminal = BuildEngine(_terminal.Cols, _terminal.Rows);
+            _controlStrings = new TerminalControlStringFilter();
         }
     }
 
@@ -492,7 +494,7 @@ public sealed partial class TerminalControl : UserControl
         // update and MUST stay eager and in-order; only the (expensive) rebuild is deferred/coalesced.
         lock (_terminalGate)
         {
-            _terminal.Write(text);
+            _terminal.Write(_controlStrings.Filter(text));
             _bufferGeneration++;
         }
 

@@ -1,0 +1,40 @@
+{
+  "verified_at_utc": "2026-10-17T12:50:08.205747+00:00",
+  "root_cause": "XTerm.NET 1.0.15 APC parser never exits on ST after the OpenTUI Kitty graphics capability query; all later screen output was swallowed.",
+  "before_fix": "The real OpenCode terminal UI test failed with a screen containing only a backslash.",
+  "fix": "Streaming removal of unsupported DCS/SOS/PM/APC control strings before VT parsing; bounded memory and split-sequence support; existing history query suppression preserved.",
+  "release_tests": {
+    "command": "dotnet test Styloagent.sln -c Release",
+    "passed": 1185,
+    "failed": 0,
+    "skipped": 5,
+    "suites": {
+      "Core": 612,
+      "Git": 26,
+      "App": 391,
+      "UI": 156
+    }
+  },
+  "native_ui_test": {
+    "command": "STYLOAGENT_LIVE_OPENCODE=1 dotnet test tests/Styloagent.UITests -c Release --filter FullyQualifiedName~OpenCodeStartupTests",
+    "passed": true,
+    "checks": [
+      "Late UI attachment paints the real OpenCode screen",
+      "TextInput reaches the real native TUI and appears in the rendered screen",
+      "Detach/reattach restores the screen and typed input"
+    ],
+    "provider_calls": false
+  },
+  "deterministic_regressions": 8,
+  "desktop_check": {
+    "project": "Existing stylomail project",
+    "command": "./run.sh Release /Users/scottgalloway/RiderProjects/stylomail",
+    "exit_code": 0,
+    "result": "Restarted the actual desktop app and visually confirmed OpenCode session content and input box render."
+  },
+  "limits": [
+    "The desktop and native UI checks ran on macOS arm64.",
+    "Windows and Linux native UI behavior not live-tested.",
+    "Earlier native adapter provider tests were not repeated for the terminal-only change."
+  ]
+}

@@ -57,3 +57,11 @@ Normal restore and tests now run with NuGet auditing enabled. The adjacent lucid
 The v1.13.0 draft's macOS arm64 Release publish exposed a requirement that Debug builds did not enforce: ImageSharp 4 and Drawing 3 require a Six Labors build license. The application now removes that project reference entirely. Cached SVG images and Mermaid PNG export use a shared Svg.Skia renderer on the existing Skia 3 ABI. Linux native assets are explicitly aligned with SkiaSharp 3.119.2. The standalone ImageSharp SVG library in lucidVIEW remains separate from Styloagent's dependency graph.
 
 The Six Labors secret prerequisite has been removed from the release workflow. The v1.13.1 release supersedes the unpublished v1.13.0 draft. Release-mode pixel tests cover transforms, clipping, gradients, fonts, cached local SVG scaling, Mermaid PNG export and invalid scale rejection. Svg.Skia is [MIT licensed](https://github.com/wieslawsoltes/Svg.Skia/blob/master/LICENSE.TXT).
+
+## OpenCode existing-project startup follow-up
+
+The user reported a blank, apparently frozen instance on an existing project. The backend and TUI were alive; a process sample showed the main UI thread still servicing its event loop. A new live test reproduced the blank screen through the real TerminalControl. The shell harness had answered probes but did not exercise this renderer, so its earlier success did not cover this path.
+
+XTerm.NET 1.0.15 enters an unsupported APC parser state on OpenTUI's Kitty graphics query and never exits that state on the string terminator. Every later frame is discarded. A streaming filter now removes unsupported DCS/SOS/PM/APC strings before they reach that parser, including strings and terminators split across PTY chunks. It does not retain unbounded payloads. Supported CSI/OSC commands and text pass through unchanged. Existing read-only history replay behavior is preserved.
+
+The new live UI test failed before this fix with a screen containing only a backslash. After the fix it renders the OpenCode screen, accepts typed input and retains that input after detach/reattach. Eight deterministic regressions cover parser poisoning, all split boundaries and cancelled strings. The running stylomail project was restarted with the fix and its actual desktop screen inspected; OpenCode now displays its session and input box.

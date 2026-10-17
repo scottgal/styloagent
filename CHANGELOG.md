@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.13.2](https://github.com/scottgal/styloagent/releases/tag/v1.13.2) — 2026-10-17
+
+- Fix the blank OpenCode terminal on existing-project startup: unsupported Kitty graphics/control-string probes could permanently trap the terminal parser and swallow every later frame.
+- Filter unsupported DCS/SOS/PM/APC strings across arbitrary PTY chunk boundaries while preserving ordinary text, colors and supported terminal commands.
+- Add a real OpenCode UI test for late attachment, visible startup, keyboard input and reattachment, plus deterministic control-string regressions.
+- Include v1.13.1's removal of Six Labors from application dependencies. Supersede the unpublished v1.13.0 and v1.13.1 drafts.
+
+[Full release notes and verification](docs/releases/v1.13.2.md).
+
 ## [1.13.1](https://github.com/scottgal/styloagent/releases/tag/v1.13.1) — 2026-10-17
 
 - Remove Six Labors/ImageSharp from the application dependency graph so Release builds require no license key.

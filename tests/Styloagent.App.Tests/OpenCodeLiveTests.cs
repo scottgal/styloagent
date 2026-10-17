@@ -63,7 +63,8 @@ public partial class StyloagentMcpServerTests
             using var client = launcher.Client(session);
             using var anonymous = new HttpClient { BaseAddress = session.ServerUrl };
             Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/info")).StatusCode);
-            Assert.Contains("--server", launcher.Last!.Args);
+            Assert.Contains("--auto", launcher.Last!.Args);
+            Assert.Contains("--server", launcher.Last.Args);
             Assert.Contains(sid, launcher.Last.Args);
             await UntilAsync(async () => await CompletedAsync(session, client, "WIRE_OK"));
             var first = await NativeMessagesAsync(client, sid);
@@ -86,11 +87,18 @@ public partial class StyloagentMcpServerTests
             Assert.Single(admitted.EnumerateArray(), m => m.GetProperty("type").GetString() == "user" && m.GetRawText().Contains(Path.GetFileName(path), StringComparison.Ordinal));
 
             await session.SendAsync("Run the shell command printf PERMISSION_EXECUTED. Then reply APPROVAL_DONE.", "msg_" + Guid.NewGuid().ToString("N"));
-            await UntilAsync(async () => { await session.ReconcileAsync(); return session.PendingPermissionId is not null; });
-            await session.ReplyToPermissionAsync("once");
-            await UntilAsync(async () => await CompletedAsync(session, client, "APPROVAL_DONE"));
+            // The attached real TUI is launched with --auto: this shell call must finish without
+            // a manual permission reply from the test.
+            await UntilAsync(async () =>
+            {
+                await session.ReconcileAsync();
+                // The request may be observable briefly before the --auto client answers it.
+                return session.PendingPermissionId is null && await CompletedAsync(session, client, "APPROVAL_DONE");
+            });
             Assert.Contains("PERMISSION_EXECUTED", (await NativeMessagesAsync(client, sid)).GetRawText());
 
+            // Detach the auto-approving TUI, then verify explicit HTTP permission replies still work.
+            await launcher.Terminal!.DisposeAsync();
             await session.SendAsync("Use shell to run sleep 30, then reply SLEEP_FINISHED. Do not use any other tool.", "msg_" + Guid.NewGuid().ToString("N"));
             await UntilAsync(async () => { await session.ReconcileAsync(); return session.PendingPermissionId is not null; });
             await session.ReplyToPermissionAsync("once");

@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.13.3](https://github.com/scottgal/styloagent/releases/tag/v1.13.3) — 2026-10-17
+
+- Default new and restored OpenCode sessions to DeepSeek Flash, respecting explicit models and OpenRouter routing.
+- Await agent shutdown, cancel pending starts and interrupt native shell commands before closing. Closing the main cockpit also closes floating windows.
+- Pass launch-script project paths per process, preventing later launches from inheriting a stale project.
+- Always launch the attached OpenCode terminal with `opencode --auto`, including resumed sessions.
+- Verify automatic shell approval, explicit permission replies after terminal detachment, and ownership enforcement with real OpenCode/DeepSeek calls.
+- Retain the OpenCode startup rendering fix, Six Labors removal and all v1.13.2 changes.
+
+[Full release notes](docs/releases/v1.13.3.md).
+
 ## [1.13.2](https://github.com/scottgal/styloagent/releases/tag/v1.13.2) — 2026-10-17
 
 - Fix the blank OpenCode terminal on existing-project startup: unsupported Kitty graphics/control-string probes could permanently trap the terminal parser and swallow every later frame.

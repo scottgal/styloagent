@@ -81,6 +81,7 @@ public sealed class AgentSession
 
     public async Task SpawnAsync(string launchPrompt, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         // Already running — re-spawning would overwrite _pty and orphan the live process (and leak its
         // Output handler). Spawn is only valid from a non-Live state.
         if (State == SessionState.Live) return;

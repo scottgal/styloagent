@@ -676,8 +676,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// <summary>Wired by the shell to a modal confirm (message → true to proceed). Null → proceed without asking.</summary>
     public Func<string, Task<bool>>? ConfirmShutdownAsync { get; set; }
 
-    /// <summary>Wired by the shell to the app's graceful shutdown (<c>desktop.Shutdown()</c> → the
-    /// ShutdownRequested handler that disposes the VM/watchers). Never <c>Environment.Exit</c>.</summary>
+    /// <summary>Wired to MainWindow.Close, which awaits owned agent teardown before exiting.</summary>
     public Action? RequestShutdown { get; set; }
 
     /// <summary>Per-agent bound on the shutdown checkpoint so one stuck agent can't hang the whole close.</summary>
@@ -1348,7 +1347,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         AgentRuntimeKind defaultAgentRuntime = AgentRuntimeKind.Codex,
         CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var vm = new MainWindowViewModel();
+        vm._startupCloseRegistration = ct.Register(() => vm._lifetimeCts.Cancel());
         vm._defaultAgentRuntime = defaultAgentRuntime;
         vm._repoRoot = repoRoot;
         vm._launcher = launcher;
@@ -1615,7 +1616,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
         // A pane owns an agent terminal: launch the selected runtime immediately.
         // The view attaches to CurrentPty when it renders.
-        _ = vm.Pane.SpawnAsync();
+        vm.StartPane(vm.Pane);
 
         // Multi-repo: each additional repo brings its own overview onto the SHARED bus (the primary repo
         // above anchors on `overview-`). Added here — same thread, same dock, before the window is realised —
@@ -1743,7 +1744,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         if (LayoutMode != CockpitLayoutMode.Tabs) RebuildCenterLayout();
 
         // Launch the selected agent runtime in the new pane immediately.
-        _ = paneVm.SpawnAsync();
+        StartPane(paneVm);
         PersistRevivalMetadata(entry);
     }
 
@@ -1808,7 +1809,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _dockFactory.AddDockable(documentDock, paneVm);
 
         // Launch the selected runtime in the repo's root immediately (the primary pane stays selected).
-        _ = paneVm.SpawnAsync();
+        StartPane(paneVm);
     }
 
     // ── Live open-repo / second-instance gesture (Bug A) ─────────────────────────────────────────
@@ -2913,7 +2914,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         // In a tiled mode, re-tile so the new pane gets its own tile rather than a hidden tab.
         if (LayoutMode != CockpitLayoutMode.Tabs) RebuildCenterLayout();
 
-        _ = paneVm.SpawnAsync();
+        StartPane(paneVm);
         PersistRevivalMetadata(entry);
         return paneVm;
     }
@@ -4161,6 +4162,37 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         catch { /* ignoring is best-effort */ }
     }
 
+    private CancellationTokenRegistration _startupCloseRegistration;
+    private readonly List<Task> _agentStarts = new();
+    private Task? _stopTask;
+    public bool IsStopped => _stopTask?.IsCompletedSuccessfully == true;
+
+    private void StartPane(AgentPaneViewModel pane)
+    {
+        if (Volatile.Read(ref _disposed) != 0 || _lifetimeCts.IsCancellationRequested) return;
+        var start = pane.SpawnAsync(_lifetimeCts.Token);
+        lock (_agentStarts) _agentStarts.Add(start);
+    }
+
+    /// <summary>Cancel starts and await all owned agents before allowing the cockpit to close.</summary>
+    public Task StopAsync() => _stopTask ??= StopCoreAsync();
+
+    private async Task StopCoreAsync()
+    {
+        if (Volatile.Read(ref _disposed) != 0) return;
+        _idleTimer?.Stop();
+        _lifetimeCts.Cancel();
+        Task[] starts;
+        lock (_agentStarts) starts = _agentStarts.ToArray();
+        await Task.WhenAll(starts);
+        await Task.WhenAll(Panes.Select(pane => pane.KillAsync(force: false)));
+        if (_mcpServer is { } server)
+        {
+            await server.DisposeAsync();
+            _mcpServer = null;
+        }
+    }
+
     /// <summary>
     /// Disposes managed resources, including the <see cref="BusViewModel"/> (which
     /// stops the FileSystemWatcher and cleans up the debounce timer), and the MCP server.
@@ -4179,6 +4211,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             catch (OperationCanceledException) { }
             catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"[MainWindowViewModel] document name scan shutdown failed: {ex}"); }
         }
+        _startupCloseRegistration.Dispose();
         _lifetimeCts.Dispose();
 
         _routerHost?.Dispose();

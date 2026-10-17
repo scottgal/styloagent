@@ -21,15 +21,11 @@ if [ ! -d "${APP}" ]; then
   exit 1
 fi
 
-# GUI apps launched via `open` inherit the launchd session environment, not this shell's env, so
-# the target repo is passed through STYLOAGENT_REPO on the launchd session: set it for a direct
-# open, or clear it so the new window lands on the Welcome screen.
+# Keep the target project local to this launch, including an explicit empty value for Welcome.
 if [ -n "${1:-}" ]; then
-  launchctl setenv STYLOAGENT_REPO "$1"
   echo "▸ new window → ${1}"
 else
-  launchctl unsetenv STYLOAGENT_REPO 2>/dev/null || true
   echo "▸ new window → Welcome screen"
 fi
 
-open -n "${APP}"
+open -n --env "STYLOAGENT_REPO=${1:-}" "${APP}"

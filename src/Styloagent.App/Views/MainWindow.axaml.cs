@@ -1,7 +1,6 @@
 using System.IO;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Platform.Storage;
 using Styloagent.App.Services;
@@ -31,20 +30,50 @@ public partial class MainWindow : Window
             if (DataContext is not MainWindowViewModel vm) return;
             vm.RepoFolderPicker = new StorageFolderPicker(this);
 
-            // Graceful shut down: confirm over this window, then trigger the app's graceful close (the
-            // ShutdownRequested handler disposes the VM/watchers) — never Environment.Exit.
+            // Confirm over this window, then close through the awaited agent teardown below.
             vm.ConfirmShutdownAsync = message => new ConfirmDialog(message).ShowDialog<bool>(this);
             // Roster reparent (drag-drop): confirm the consequential authority-tree edit over this window.
             vm.ConfirmReparentAsync = message => new ConfirmDialog(message, "Move").ShowDialog<bool>(this);
             vm.RequestAgentNameAsync = currentName => new RenameDialog(currentName).ShowDialog<string?>(this);
-            vm.RequestShutdown = () =>
-            {
-                if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-                    desktop.Shutdown();
-                else
-                    Close();
-            };
+            // Close routes through the awaited teardown below; desktop.Shutdown() forces closing
+            // and bypasses cancellation, so it can exit before owned agents have stopped.
+            vm.RequestShutdown = Close;
         };
+    }
+
+    private bool _closingAgents;
+    private bool _agentsStopped;
+
+    protected override void OnClosing(WindowClosingEventArgs e)
+    {
+        if (!_agentsStopped && DataContext is MainWindowViewModel vm)
+        {
+            e.Cancel = true;
+            if (!_closingAgents)
+            {
+                _closingAgents = true;
+                _ = StopAgentsAndCloseAsync(vm);
+            }
+        }
+        base.OnClosing(e);
+    }
+
+    private async Task StopAgentsAndCloseAsync(MainWindowViewModel vm)
+    {
+        // Even a synchronous fake session must not recursively Close inside OnClosing.
+        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => { }, Avalonia.Threading.DispatcherPriority.Background);
+        try
+        {
+            await vm.StopAsync();
+            vm.Dispose();
+            _agentsStopped = true;
+            Close();
+        }
+        catch (Exception ex)
+        {
+            _closingAgents = false;
+            System.Diagnostics.Trace.WriteLine($"[Styloagent] Could not stop cockpit: {ex}");
+        }
     }
 
     private static bool HasOpenableData(IDataObject data)

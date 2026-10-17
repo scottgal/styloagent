@@ -32,6 +32,9 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            // Closing the cockpit must also close floating document windows and end this instance.
+            desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
+            var appClosing = new CancellationTokenSource();
             // Give a real claude TUI time to come up before we press Enter on its injected prompt, then
             // press once more as a safety net — otherwise the prompt is typed but never submitted and the
             // agent sits idle. (Zero in tests, where no real claude runs.)
@@ -100,7 +103,14 @@ public partial class App : Application
                         gitLog: gitSvc,
                         overviewColorHex: primaryColorHex,
                         extraOverviews: extraOverviews,
-                        defaultAgentRuntime: defaultRuntime);
+                        defaultAgentRuntime: defaultRuntime,
+                        ct: appClosing.Token);
+                    if (appClosing.IsCancellationRequested)
+                    {
+                        await vm.StopAsync();
+                        vm.Dispose();
+                        return;
+                    }
                     vm.AttachProject(cfg);
                     vm.SetReposFromOverviews(overviews);   // enumerate repos for list_repos + repo-grouped UI
                     vm.AttachPreferences(prefs, prefsStore, prefsPath);
@@ -131,9 +141,21 @@ public partial class App : Application
                 }
             }
 
-            // Dispose the VM (and its BusViewModel/FileSystemWatcher) on clean shutdown.
-            desktop.ShutdownRequested += (_, _) =>
+            // OS Quit/Cmd-Q must use the same awaited stop as the window close button.
+            desktop.ShutdownRequested += (_, e) =>
+            {
+                if (desktop.MainWindow is MainWindow window &&
+                    window.DataContext is MainWindowViewModel vm && !vm.IsStopped)
+                {
+                    e.Cancel = true;
+                    window.Close();
+                }
+            };
+            desktop.Exit += (_, _) =>
+            {
+                appClosing.Cancel();
                 (desktop.MainWindow?.DataContext as IDisposable)?.Dispose();
+            };
 
             // STYLOAGENT_CHANNEL opens an existing bare channel (agent-channel format: saved-context/,
             // launch-prompts/, inbox/, ...) — but that channel may be LIVE and in use by another fleet, so

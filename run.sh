@@ -51,12 +51,9 @@ PLIST
 
 xattr -dr com.apple.quarantine "${APP}" 2>/dev/null || true
 
-# Optional: open a specific project directly (convenience — sets the launchd env the app reads).
+# Pass the project only to this instance; never leave a sticky project in launchd.
 if [ -n "${2:-}" ]; then
-  launchctl setenv STYLOAGENT_REPO "${2}"
   echo "▸ opening project: ${2}"
-else
-  launchctl unsetenv STYLOAGENT_REPO 2>/dev/null || true
 fi
 
 echo "▸ launching…"
@@ -65,4 +62,4 @@ echo "▸ launching…"
 # a second window never appears. That was the "can't start multiple instances" gotcha. The app
 # has no single-instance lock: every process gets its own hooks dir, ephemeral MCP port and fleet,
 # so cockpits run side by side.
-open -n "${APP}"
+open -n --env "STYLOAGENT_REPO=${2:-}" "${APP}"

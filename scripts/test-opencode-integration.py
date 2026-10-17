@@ -165,7 +165,7 @@ class Server:
     def tui(self, sid, marker):
         master, slave = pty.openpty()
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 110, 0, 0))
-        process = subprocess.Popen(['opencode', '--server', self.url, '--session', sid, str(self.repo)],
+        process = subprocess.Popen(['opencode', '--auto', '--server', self.url, '--session', sid, str(self.repo)],
                                    env=self.env, stdin=slave, stdout=slave, stderr=slave, start_new_session=True)
         os.close(slave)
         captured = bytearray()

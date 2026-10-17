@@ -1,0 +1,74 @@
+{
+  "desktop_close_reopen": [
+    {
+      "cycle": 1,
+      "app_pid": 54918,
+      "owned_pids": [
+        54918,
+        54939,
+        54957,
+        54961,
+        54964,
+        54965
+      ],
+      "all_exited": true
+    },
+    {
+      "cycle": 2,
+      "app_pid": 54990,
+      "owned_pids": [
+        54990,
+        55007,
+        55015,
+        55037,
+        55038
+      ],
+      "all_exited": true
+    }
+  ],
+  "passed": true,
+  "verified_at_utc": "2026-10-17T13:13:46.574233+00:00",
+  "version": "1.13.3",
+  "regression": {
+    "command": "dotnet test Styloagent.sln -c Release",
+    "passed": 1192,
+    "failed": 0,
+    "skipped": 6,
+    "suites": {
+      "Core": 616,
+      "Git": 26,
+      "App": 393,
+      "UI": 157
+    }
+  },
+  "model_default": {
+    "new_sessions": "deepseek/deepseek-flash",
+    "restored_sessions": "deepseek/deepseek-flash",
+    "openrouter": "latest stable advertised Flash model; explicit routing respected",
+    "unrelated_native_default_ignored": true
+  },
+  "opencode_launch": "opencode --auto --server <private-url> --session <native-id> <checkout>",
+  "native_ui_checks": [
+    "real startup and visible input",
+    "typing and reattachment",
+    "Flash default on startup and restore",
+    "close waits for backend, terminal, running shell and background child PIDs to exit"
+  ],
+  "startup_cancellation": "Two regressions verify pending launches are cancelled and awaited for window close and application exit.",
+  "desktop_command": "python3 scripts/test-cockpit-lifecycle.py",
+  "launch_helpers": "Project selection is passed with open --env per instance, without mutating launchd.",
+  "audit": "No known vulnerable packages reported for all nine solution projects.",
+  "limits": [
+    "macOS arm64 runtime verification; Windows and Linux runtime execution not tested locally."
+  ],
+  "native_adapter": {
+    "passed": 4,
+    "failed": 0,
+    "command": "STYLOAGENT_LIVE_OPENCODE=1 dotnet test tests/Styloagent.App.Tests -c Release --filter FullyQualifiedName~Native_adapter|Native_ownership|Agent_session_parks|Native_backends_write"
+  },
+  "native_ui": {
+    "passed": 2,
+    "failed": 0,
+    "command": "STYLOAGENT_LIVE_OPENCODE=1 dotnet test tests/Styloagent.UITests -c Release --filter FullyQualifiedName~OpenCodeStartupTests"
+  }
+}

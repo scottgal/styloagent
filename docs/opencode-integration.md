@@ -32,14 +32,18 @@ opencode serve --hostname 127.0.0.1 --port 0 --stdio
 8. Attach the terminal client to that exact server and session:
 
 ```sh
-opencode --server http://127.0.0.1:<allocated-port> --session <session-id> <checkout>
+opencode --auto --server http://127.0.0.1:<allocated-port> --session <session-id> <checkout>
 ```
+
+Every terminal launch includes `--auto`, as requested. OpenCode describes this as auto-approving permissions that are not explicitly denied; the ownership plugin still runs before file mutations.
 
 The real PTY test replayed `STYLOAGENT_READY` from the selected session. Closing that client left the same backend process alive. Consequently, a TUI exit must update view attachment state independently of agent execution state.
 
 The suite measured about 0.1–0.25 seconds from backend launch to authenticated server info on this machine. These are local startup observations, not a performance guarantee. Bound readiness waits and surface process exits and initialization errors in the pane.
 
 ## Session and model selection
+
+The cockpit defaults new and restored sessions to DeepSeek Flash. Direct routing uses `deepseek/deepseek-flash`; configured OpenRouter routing chooses the newest stable advertised Flash version. Explicit model choices take precedence. Missing Flash availability is surfaced as a startup error rather than silently selecting an unrelated native global default.
 
 The tested creation request was:
 
@@ -194,3 +198,9 @@ Check abrupt parent-process death without provider calls:
 ```sh
 python3 scripts/test-opencode-parent-death.py
 ```
+
+## Application shutdown verification
+
+Closing the main cockpit, OS Quit and the shutdown button now converge on awaited agent teardown. Pending starts receive cancellation; native sessions are interrupted before their TUI and backend stop. Floating document windows no longer keep the instance alive after its main cockpit closes. The launch scripts pass project selection with macOS `open --env`, avoiding a persistent project path in the launchd environment.
+
+The live UI lifecycle test starts a real native session shell command with a background `sleep` child, closes MainWindow, and checks backend, terminal, shell and child PIDs have all exited. It uses `/api/session/{sessionID}/shell` directly and makes no provider request. The startup UI test verifies the DeepSeek Flash default on both a new session and a restored session.

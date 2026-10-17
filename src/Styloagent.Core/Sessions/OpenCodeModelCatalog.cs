@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Styloagent.Core.Mcp;
 
 namespace Styloagent.Core.Sessions;
@@ -16,6 +17,26 @@ public static class OpenCodeModelCatalog
     private static readonly ConcurrentDictionary<string, IReadOnlyList<OpenCodeModel>> Catalogs = new(StringComparer.Ordinal);
     public static IReadOnlyList<OpenCodeModel> For(string? repo) => repo is not null && Catalogs.TryGetValue(Path.GetFullPath(repo), out var models) ? models : [];
     public static void Update(string repo, IReadOnlyList<OpenCodeModel> models) => Catalogs[Path.GetFullPath(repo)] = models;
+
+    /// <summary>Choose Flash from the native catalog, never an unrelated provider's global default.</summary>
+    public static OpenCodeModel DefaultFlash(IReadOnlyList<OpenCodeModel> models, bool openRouter)
+    {
+        var direct = models.FirstOrDefault(m => m.ProviderId == "deepseek" && m.Id == DeepSeekModels.Flash);
+        if (!openRouter && direct is not null) return direct;
+        var routed = models.Where(m => m.ProviderId == "openrouter")
+            .Select(m => (Model: m, Match: Regex.Match(m.Id,
+                @"^deepseek/deepseek-v(?<version>\d+(?:\.\d+)*)-flash(?:-(?<date>\d{4}))?$", RegexOptions.CultureInvariant)))
+            .Where(m => m.Match.Success)
+            .Select(m =>
+            {
+                var value = m.Match.Groups["version"].Value;
+                Version.TryParse(value.Contains('.') ? value : value + ".0", out var version);
+                return (m.Model, Version: version, Date: int.TryParse(m.Match.Groups["date"].Value, out var date) ? date : 0);
+            })
+            .Where(m => m.Version is not null)
+            .OrderByDescending(m => m.Version).ThenByDescending(m => m.Date).FirstOrDefault().Model;
+        return routed ?? throw new ArgumentException("OpenCode does not advertise an enabled DeepSeek Flash model. Configure DeepSeek or OpenRouter credentials, or explicitly select another model.");
+    }
 
     public static IReadOnlyList<OpenCodeModel> Parse(JsonElement root)
     {

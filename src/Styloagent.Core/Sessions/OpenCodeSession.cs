@@ -44,7 +44,6 @@ public sealed class OpenCodeSession : IPtySession, INativeAgentSession
     private string? _lastToolId;
     private DateTimeOffset _catalogAt;
     private IReadOnlyList<OpenCodeModel> _models = [];
-    private OpenCodeModel? _defaultModel;
     private Dictionary<string, string> _environment = new(StringComparer.Ordinal);
 
     public string SessionId { get; private set; } = "";
@@ -183,12 +182,10 @@ public sealed class OpenCodeSession : IPtySession, INativeAgentSession
             }
             else
             {
-                if ((!string.IsNullOrWhiteSpace(model) && model != "default") || (!string.IsNullOrWhiteSpace(effort) && effort != "default"))
-                {
-                    var previous = (await GetAsync($"/api/session/{SessionId}", ready.Token).ConfigureAwait(false)).GetProperty("data").GetProperty("model");
-                    var selected = SelectModel(string.IsNullOrWhiteSpace(model) || model == "default" ? Str(previous, "providerID") + "/" + Str(previous, "id") : model, effort);
-                    await PostAsync($"/api/session/{SessionId}/model", new { model = selected }, ready.Token).ConfigureAwait(false);
-                }
+                // Apply the cockpit's default on restore too: older sessions may have inherited an
+                // unrelated global OpenCode default. Explicit model selections still take precedence.
+                var selected = SelectModel(model, effort);
+                await PostAsync($"/api/session/{SessionId}/model", new { model = selected }, ready.Token).ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(prompt))
                 {
                     _initialId = "msg_" + Guid.NewGuid().ToString("N");
@@ -222,10 +219,11 @@ public sealed class OpenCodeSession : IPtySession, INativeAgentSession
             selected = _models.FirstOrDefault(m => m.QualifiedId == requested)
                 ?? _models.SingleOrDefault(m => m.Id == requested);
         else
-            selected = _defaultModel ?? _models.FirstOrDefault(m => m.QualifiedId == "deepseek/deepseek-flash")
-                ?? _models.Where(m => m.ProviderId == "openrouter" && m.Id.StartsWith("deepseek/deepseek-", StringComparison.Ordinal) && m.Id.Contains("flash", StringComparison.OrdinalIgnoreCase))
-                    .OrderByDescending(m => m.Id, StringComparer.Ordinal).FirstOrDefault()
-                ?? (_models.Count > 0 ? _models[0] : null);
+        {
+            var routing = DeepSeekEnv.Load(_options.RepoRoot);
+            routing.TryGetValue("ANTHROPIC_BASE_URL", out var baseUrl);
+            selected = OpenCodeModelCatalog.DefaultFlash(_models, DeepSeekModels.IsOpenRouter(baseUrl));
+        }
         if (selected is null) throw new ArgumentException($"OpenCode does not advertise model '{requested}'. Select a model from agent_capabilities.");
         var variant = string.IsNullOrWhiteSpace(effort) || effort == "default" ? null : effort;
         if (variant is not null && !selected.Variants.Contains(variant, StringComparer.Ordinal))
@@ -355,7 +353,7 @@ public sealed class OpenCodeSession : IPtySession, INativeAgentSession
     private async Task AttachTerminalAsync(CancellationToken ct)
     {
         _terminal = await _launcher.SpawnAsync(_spawn with { Command = _executable,
-            Args = new[] { "--server", _http.BaseAddress!.ToString().TrimEnd('/'), "--session", SessionId, _spawn.WorkingDirectory },
+            Args = new[] { "--auto", "--server", _http.BaseAddress!.ToString().TrimEnd('/'), "--session", SessionId, _spawn.WorkingDirectory },
             Env = _environment, Cols = _cols, Rows = _rows }, ct).ConfigureAwait(false);
         _terminal.Output += ForwardOutput;
         _terminal.Exited += TerminalExited;
@@ -527,8 +525,6 @@ public sealed class OpenCodeSession : IPtySession, INativeAgentSession
     private async Task RefreshModelsAsync(CancellationToken ct)
     {
         _models = OpenCodeModelCatalog.Parse(await GetAsync("/api/model", ct).ConfigureAwait(false));
-        var nativeDefault = (await GetAsync("/api/model/default", ct).ConfigureAwait(false)).GetProperty("data");
-        _defaultModel = _models.FirstOrDefault(m => m.Id == Str(nativeDefault, "id") && m.ProviderId == Str(nativeDefault, "providerID"));
         OpenCodeModelCatalog.Update(_options.RepoRoot, _models);
         _catalogAt = DateTimeOffset.UtcNow;
     }
@@ -589,6 +585,14 @@ public sealed class OpenCodeSession : IPtySession, INativeAgentSession
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _lifetime.Cancel();
+        if (_server is { HasExited: false } && SessionId.Length > 0)
+        {
+            // Cancel provider work and native tool children before ending the owned server. Merely
+            // closing its terminal or stdin can leave an already-started command executing.
+            using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            try { await InterruptAsync(resume: false, stop.Token).ConfigureAwait(false); }
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException) { }
+        }
         if (_terminal is not null)
         {
             _terminal.Output -= ForwardOutput;

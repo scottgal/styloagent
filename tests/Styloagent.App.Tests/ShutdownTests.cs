@@ -99,4 +99,34 @@ public class ShutdownTests
         Assert.Contains(vm.Timeline.Entries,
             e => e.Description.Contains("noctx-") && e.Description.Contains("no saved-context path"));
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Closing_cancels_and_awaits_an_agent_that_is_still_starting(bool applicationExit)
+    {
+        using var appClosing = new CancellationTokenSource();
+        var launcher = new WaitingLauncher();
+        using var vm = await MainWindowViewModel.InitializeAsync(MainWindowViewModelTests.MakeTwoAgentChannel(),
+            launcher, new FakeWatcher(), ct: appClosing.Token);
+        await launcher.Started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        if (applicationExit) appClosing.Cancel();
+        await vm.StopAsync().WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.True(launcher.Cancelled);
+        Assert.True(vm.IsStopped);
+        Assert.Null(vm.Pane!.CurrentPty);
+        await vm.StopAsync(); // repeated close joins the same completed teardown
+    }
+
+    private sealed class WaitingLauncher : IPtyLauncher
+    {
+        public TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool Cancelled;
+        public async Task<IPtySession> SpawnAsync(PtySpawnOptions options, CancellationToken ct = default)
+        {
+            Started.TrySetResult();
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, ct); }
+            catch (OperationCanceledException) { Cancelled = true; throw; }
+            throw new InvalidOperationException("A cancelled start must not create a process.");
+        }
+    }
 }

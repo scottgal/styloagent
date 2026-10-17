@@ -65,3 +65,15 @@ The user reported a blank, apparently frozen instance on an existing project. Th
 XTerm.NET 1.0.15 enters an unsupported APC parser state on OpenTUI's Kitty graphics query and never exits that state on the string terminator. Every later frame is discarded. A streaming filter now removes unsupported DCS/SOS/PM/APC strings before they reach that parser, including strings and terminators split across PTY chunks. It does not retain unbounded payloads. Supported CSI/OSC commands and text pass through unchanged. Existing read-only history replay behavior is preserved.
 
 The new live UI test failed before this fix with a screen containing only a backslash. After the fix it renders the OpenCode screen, accepts typed input and retains that input after detach/reattach. Eight deterministic regressions cover parser poisoning, all split boundaries and cancelled strings. The running stylomail project was restarted with the fix and its actual desktop screen inspected; OpenCode now displays its session and input box.
+
+## OpenCode auto approval
+
+Every attached OpenCode terminal now launches with `--auto`, including restored sessions. The four provider-backed C# integration tests passed again with that flag. The live adapter test verifies that a requested shell command completes without a manual permission reply while the TUI is attached; it then detaches the TUI and verifies the native HTTP permission reply path and urgent interruption. The ownership test still denies the file mutation before it happens.
+
+## Close/reopen and default-model follow-up
+
+Window close previously relied on a limited lifetime event and fire-and-forget cleanup. Forced desktop shutdown could bypass cancellable closing, floating documents could keep the process alive, and pending agent starts were untracked. The cockpit now waits for starts and owned agents to stop; native disposal interrupts session execution before terminating the TUI and server. Main-window close controls application lifetime, OS Quit follows the same path and early application exit cancels initialization.
+
+The launch helpers also wrote the target repo into the global launchd environment, which could make a later app launch reopen an old project automatically. They now use per-launch `open --env` values.
+
+OpenCode's own global default took precedence over DeepSeek Flash. New and restored sessions now resolve the cockpit's Flash default from the native catalog, respecting explicit choices and provider routing. Four catalog tests cover direct priority, numeric stable OpenRouter version ordering, missing Flash and provider isolation; the live startup test checks new and restored model IDs.

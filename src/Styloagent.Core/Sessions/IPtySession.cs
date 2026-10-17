@@ -7,6 +7,9 @@ public interface IPtySession : IAsyncDisposable
     event Action? Exited;
     bool IsIdle { get; }
 
+    /// <summary>The underlying PTY whose VT state survives replacement of its UI or runtime wrapper.</summary>
+    IPtySession TerminalSession => this;
+
     /// <summary>
     /// The OS process id of the child spawned by this PTY (e.g. for a Force-kill feature). Returns 0 when no
     /// process id is available (e.g. a fake/test session, or the process is gone). Must never throw.

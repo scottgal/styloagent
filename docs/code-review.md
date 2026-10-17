@@ -77,3 +77,13 @@ Window close previously relied on a limited lifetime event and fire-and-forget c
 The launch helpers also wrote the target repo into the global launchd environment, which could make a later app launch reopen an old project automatically. They now use per-launch `open --env` values.
 
 OpenCode's own global default took precedence over DeepSeek Flash. New and restored sessions now resolve the cockpit's Flash default from the native catalog, respecting explicit choices and provider routing. Four catalog tests cover direct priority, numeric stable OpenRouter version ordering, missing Flash and provider isolation; the live startup test checks new and restored model IDs.
+
+## Terminal scroll follow-up (v1.13.4)
+
+The earlier scroll tests checked row strings and offsets but missed terminal modes lost during reattachment. Both the PTY and OpenCode wrapper retain only a 256 KiB raw replay tail. Rebuilding a fresh engine from that tail can omit the initial alternate-screen and mouse commands, or start inside a control string. OpenCode's later cursor-addressed frames then become ordinary scrollback. A failing regression reproduces the lost modes and missing hidden redraws.
+
+VT parsing now belongs to the PTY session and begins before its reader tasks. Dock views subscribe to changes in that shared bounded state and detach their UI callbacks when removed. OpenCode exposes its underlying PTY as the state identity. Pane replacement neither replays the raw tail nor resets the live parser. Resize and rendering share the parser's gate.
+
+A second failing regression exposed missing native wheel forwarding: returning an unhandled wheel event on the alternate screen only let Avalonia's outer scroll viewer move; it never delivered input to OpenCode. Wheel input now uses the negotiated VT mouse protocol and pointer cell, accumulates fractional trackpad deltas and consumes the event. The full-screen outer scrollbar is disabled. Colored transcript layout tests retain fixed shaped row heights while output continues.
+
+The Release suite passed 1,195 tests. Four live UI/process checks separately cover real OpenCode startup, shutdown, long-session scrolling and pane replacement, and a real shell overflowing its replay before the first view. See [v1.13.4 verification](releases/v1.13.4.md).

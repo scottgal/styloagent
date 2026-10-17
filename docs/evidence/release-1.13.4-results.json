@@ -1,0 +1,40 @@
+{
+  "version": "1.13.4",
+  "verified_at_utc": "2026-10-17T13:55:22.705654+00:00",
+  "platform": "macOS arm64",
+  "opencode_version": "2.0.25",
+  "regression": {
+    "command": "dotnet test Styloagent.sln -c Release",
+    "passed": 1195,
+    "failed": 0,
+    "skipped": 8,
+    "suites": {
+      "Core": 616,
+      "Git": 26,
+      "App": 393,
+      "UI": 160
+    }
+  },
+  "live_ui": {
+    "command": "STYLOAGENT_LIVE_OPENCODE=1 dotnet test tests/Styloagent.UITests -c Release --filter FullyQualifiedName~OpenCodeStartupTests",
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "provider_generation_calls": 0,
+    "checks": [
+      "Late OpenCode UI attachment, visible startup, input, reattachment and DeepSeek Flash defaults on restore",
+      "Closing a real cockpit waits for native backend, terminal, shell and background child to exit",
+      "Real OpenCode output exceeds the raw replay cap; replacement pane preserves alternate-screen mode; actual window wheel events reach older history; output continues; wheel-down returns to latest; outer viewport offset stays zero",
+      "Real shell emits 585000 characters of frame output before the first view; truncated replay omits original header and mode commands; shared live VT state preserves header and final redraw"
+    ]
+  },
+  "deterministic_scroll_checks": [
+    "Mode-loss regression failed on the previous implementation",
+    "Missing native wheel regression failed on the previous implementation",
+    "VT state and hidden redraw survive loss of raw startup replay",
+    "Exact SGR wheel coordinates, up/down direction and accumulated fractional trackpad input",
+    "Colored diff text retains fixed shaped row heights while output continues"
+  ],
+  "screenshot": "opencode-scroll-1.13.4.png",
+  "user_fleet_interrupted": false
+}

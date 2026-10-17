@@ -57,6 +57,7 @@ public sealed class OpenCodeSession : IPtySession, INativeAgentSession
         get { try { return _server is { HasExited: false } process ? process.Id : 0; } catch (InvalidOperationException) { return 0; } }
     }
     public Uri? ServerUrl => _http.BaseAddress;
+    public IPtySession TerminalSession => _terminal?.TerminalSession ?? this;
     private readonly object _outputGate = new();
     private readonly StringBuilder _outputBacklog = new();
     private Action<string>? _output;

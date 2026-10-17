@@ -13,6 +13,7 @@ public sealed class PortaPtySession : IPtySession
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _readLoop;
     private readonly Task _publishLoop;
+    private readonly TerminalSessionState _terminalState;
 
     // PTYs commonly wake ReadAsync for tiny cursor/spinner fragments. Publishing every fragment makes every
     // terminal parse, schedule and shape it independently; across a fleet this produced ~1 GB/s of managed
@@ -95,10 +96,13 @@ public sealed class PortaPtySession : IPtySession
         }
     }
 
-    internal PortaPtySession(IPtyConnection connection)
+    internal PortaPtySession(IPtyConnection connection, int cols, int rows)
     {
         _connection = connection;
         _connection.ProcessExited += OnProcessExited;
+        // Subscribe before either reader task starts: no amount of startup output can evict VT modes
+        // before they have been parsed. The state holds no Avalonia controls or window references.
+        _terminalState = TerminalSessionState.For(this, cols, rows, TerminalControl.GlobalScrollback);
         _publishLoop = Task.Run(PublishLoopAsync);
         _readLoop = Task.Run(ReadLoopAsync);
         Styloagent.Core.Sessions.SpawnDiag.Log("PortaPtySession CTOR (read loop started)");
@@ -138,7 +142,11 @@ public sealed class PortaPtySession : IPtySession
         }
     }
 
-    public void Resize(int cols, int rows) => _connection.Resize(cols, rows);
+    public void Resize(int cols, int rows)
+    {
+        _terminalState.Resize(cols, rows);
+        _connection.Resize(cols, rows);
+    }
 
     public async ValueTask DisposeAsync()
     {

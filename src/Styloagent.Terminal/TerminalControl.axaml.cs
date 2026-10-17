@@ -16,7 +16,6 @@ using Styloagent.Core.Sessions;
 using XTerm;
 using XTerm.Buffer;
 using XTerm.Events;
-using XTerm.Options;
 using AvaloniaKey = Avalonia.Input.Key;
 using XTermKey = XTerm.Input.Key;
 using XTermModifiers = XTerm.Input.KeyModifiers;
@@ -29,21 +28,16 @@ namespace Styloagent.Terminal;
 /// </summary>
 public sealed partial class TerminalControl : UserControl
 {
-    // Not readonly: re-created on each Attach so a re-attach replays the backlog into a CLEAN engine
-    // (see ResetEngine / Attach). Every reader touches this field, so the swap is picked up everywhere.
-    private XTerm.Terminal _terminal;
-    private TerminalControlStringFilter _controlStrings = new();
-    // XTerm's buffer is mutated by PTY output on a background thread and read by Avalonia rendering on the
-    // UI thread. Terminal.Write may accept background calls, but its mutable Lines/cells are not an atomic
-    // render snapshot. Serialize every mutation, resize and buffer read so a wheel-triggered visible-slice
-    // render can never combine rows/cells from different buffer generations (garbled scrollback).
-    private readonly object _terminalGate = new();
-    // PTY output may change XTerm between a wheel event and its queued UI rebuild. Never paint a slice
-    // using the old row/YBase mapping against that newer buffer generation.
-    private long _bufferGeneration;
+    private TerminalSessionState _terminalState;
+    private XTerm.Terminal _terminal => _terminalState.Engine;
+    // Parsing, resizing and rendering share the session's gate, including when no pane is attached.
+    private object _terminalGate => _terminalState.Gate;
+    private long _bufferGeneration => _terminalState.Generation;
     private long _renderGeneration;
     private readonly AvaloniaList<string> _rows = new();
     private IPtySession? _session;
+
+    private double _mouseWheelRemainder;
 
     /// <summary>
     /// Whether the viewport is pinned to the tail. True while the operator is at (or near) the bottom, so
@@ -274,7 +268,7 @@ public sealed partial class TerminalControl : UserControl
         // A terminal must be focusable to receive keyboard input at all.
         Focusable = true;
 
-        _terminal = BuildEngine(80, 24);
+        _terminalState = new TerminalSessionState(80, 24, _globalScrollbackLines);
 
         // Initialize rows to match the terminal's initial size.
         RebuildRows();
@@ -359,24 +353,6 @@ public sealed partial class TerminalControl : UserControl
     /// </summary>
     internal static void DeferredRendersTickForTest() => DeferredRenders.TickForTest();
 
-    /// <summary>Builds a fresh XTerm VT engine of the given grid size, wired to forward device replies to the PTY.</summary>
-    private XTerm.Terminal BuildEngine(int cols, int rows)
-    {
-        var engine = new XTerm.Terminal(new TerminalOptions
-        {
-            Cols = cols,
-            Rows = rows,
-            Scrollback = _globalScrollbackLines,
-        });
-        // When XTerm produces data (e.g. terminal query responses), forward it to the PTY.
-        engine.DataReceived += OnTerminalDataReceived;
-        // Track scrollback EVICTIONS so a scrolled-up view can compensate its offset (see RebuildRows).
-        // Subscribed at construction while the NORMAL buffer is active — the only buffer that has scrollback
-        // and thus the only one that trims. Fires on the background PTY thread during Write.
-        engine.Buffer.Trimmed += OnBufferTrimmed;
-        return engine;
-    }
-
     // Oldest scrollback lines evicted since the last rebuild (buffer at the scrollback cap). Touched on the
     // background PTY thread (Trimmed fires inside Write) and the UI thread (rebuild), so via Interlocked.
     private int _pendingTrimmedLines;
@@ -388,27 +364,6 @@ public sealed partial class TerminalControl : UserControl
     private void OnBufferTrimmed(int count) => System.Threading.Interlocked.Add(ref _pendingTrimmedLines, count);
 
     /// <summary>
-    /// Replaces the VT engine with a fresh one of the SAME grid size so the next <see cref="Attach"/> replay
-    /// reconstructs the CURRENT screen from an EMPTY buffer. A recycled control (dock tab switched away then
-    /// back) keeps its old engine buffer; without this, Attach's full-backlog replay would write ON TOP of
-    /// that surviving buffer and double every line. A fresh engine — not <c>Terminal.Reset()</c>, which
-    /// clears cells but LEAVES the scrollback accumulator (YBase), so replay would append below stale blank
-    /// rows — is what makes Attach idempotent w.r.t. whatever the engine held before.
-    /// </summary>
-    private void ResetEngine()
-    {
-        lock (_terminalGate)
-        {
-            _terminal.DataReceived -= OnTerminalDataReceived;   // stop the discarded engine forwarding to the PTY
-            _terminal.Buffer.Trimmed -= OnBufferTrimmed;       // stop the discarded engine's trim events
-            System.Threading.Interlocked.Exchange(ref _pendingTrimmedLines, 0);   // fresh engine → no carried-over trims
-            _lastRebuiltCount = 0;                              // fresh engine → rebuild from row 0
-            _terminal = BuildEngine(_terminal.Cols, _terminal.Rows);
-            _controlStrings = new TerminalControlStringFilter();
-        }
-    }
-
-    /// <summary>
     /// Attach an <see cref="IPtySession"/>. Call once per session.
     /// Output and Exited callbacks fire on a background thread; this method marshals them to the UI thread.
     /// </summary>
@@ -418,21 +373,21 @@ public sealed partial class TerminalControl : UserControl
             throw new InvalidOperationException("A session is already attached. Detach it first.");
 
         _session = session;
-        // Re-attach safety: start from a CLEAN engine so the backlog replay below reconstructs the current
-        // screen instead of doubling a recycled control's surviving buffer (see ResetEngine). Harmless on a
-        // first attach — the engine is already empty, this just swaps in an equivalent one of the same size.
-        ResetEngine();
-        // Subscribing REPLAYS the session backlog synchronously (see PortaPtySession.Output.add) so this fresh
-        // VT engine rebuilds the CURRENT screen from history. That replay re-parses every device-status query
-        // the child ever emitted (ESC[6n / ESC[?6n / ESC[c), and XTerm dutifully re-answers each — but those
-        // answers describe STALE history, and writing them back injects "[1;6R"-style reports into the child
-        // that is now sitting at an interactive prompt, where they surface as garbage in what the user types.
-        // So bracket the replay: answers generated while _replaying are dropped (see OnTerminalDataReceived);
-        // only LIVE queries — output that arrives after Attach returns — are answered. Rebuilding screen state
-        // is unaffected: _terminal.Write still runs; only the write-BACK to the child is suppressed.
-        _replaying = true;
-        try { session.Output += OnSessionOutput; }
-        finally { _replaying = false; }
+        // Reuse the session's live VT state. Replaying a capped raw tail loses initialization modes and
+        // turns native screen redraws into corrupt scrollback after a dock/tab change.
+        _terminalState = TerminalSessionState.For(session, _terminal.Cols, _terminal.Rows, _globalScrollbackLines);
+        lock (_terminalGate)
+        {
+            _terminal.DataReceived += OnTerminalDataReceived;
+            _terminalState.Trimmed += OnBufferTrimmed;
+            _terminalState.Changed += ScheduleRebuild;
+            _lastRebuiltCount = 0;
+            _renderGeneration = -1;
+            _pendingTrimmedLines = 0;
+            _mouseWheelRemainder = 0;
+            _rows.Clear();
+        }
+        ScheduleRebuild();
         session.Exited += OnSessionExited;
         _humanComposing = false;   // a fresh session starts with no line half-typed
         OperatorInputState.SetComposing(session, false);   // clear any stale compose flag for a re-attached session
@@ -456,7 +411,12 @@ public sealed partial class TerminalControl : UserControl
     public void Detach()
     {
         if (_session is null) return;
-        _session.Output -= OnSessionOutput;
+        lock (_terminalGate)
+        {
+            _terminalState.Changed -= ScheduleRebuild;
+            _terminal.DataReceived -= OnTerminalDataReceived;
+            _terminalState.Trimmed -= OnBufferTrimmed;
+        }
         _session.Exited -= OnSessionExited;
         OperatorInputState.Clear(_session);   // operator can't be composing in a detached pane
         _session = null;
@@ -486,29 +446,9 @@ public sealed partial class TerminalControl : UserControl
         base.OnDetachedFromVisualTree(e);
     }
 
-    // ── Session event handlers (called on background thread) ────────────────
-
-    private void OnSessionOutput(string text)
-    {
-        // Write to XTerm engine — Terminal.Write is safe to call from any thread. This is the VT-state
-        // update and MUST stay eager and in-order; only the (expensive) rebuild is deferred/coalesced.
-        lock (_terminalGate)
-        {
-            _terminal.Write(_controlStrings.Filter(text));
-            _bufferGeneration++;
-        }
-
-        // Coalesce the buffer rebuild. A streaming agent (its startup banner, a TUI redraw) fires Output
-        // in a rapid burst; rebuilding the full transcript once PER CHUNK let the render queue outpace its
-        // own drain — a CPU-bound UI-thread livelock that pinned a core at 100% and froze the whole cockpit
-        // (issue: terminal-pane livelocks the UI thread). Instead we schedule at most ONE rebuild in flight,
-        // so a burst collapses into a single rebuild bounded by the render clock, not the input rate.
-        ScheduleRebuild();
-    }
-
     // ── Coalesced rebuild scheduling ─────────────────────────────────────────
     // _renderDirty / _rebuildScheduled are touched from BOTH the background PTY thread (via
-    // OnSessionOutput) and the UI thread (the posted rebuild), so all access is under _rebuildGate.
+    // session-state notifications) and the UI thread (the posted rebuild), so all access is under _rebuildGate.
     private readonly object _rebuildGate = new();
     private bool _renderDirty;
     private bool _rebuildScheduled;
@@ -528,22 +468,12 @@ public sealed partial class TerminalControl : UserControl
     private bool _rebuilding;
 
     /// <summary>
-    /// True only while <see cref="Attach"/> is replaying the session backlog into the VT engine. During that
-    /// synchronous window the engine re-answers device-status queries embedded in the replayed history; those
-    /// answers are stale and must NOT be written back to the child (see <see cref="OnTerminalDataReceived"/>).
-    /// Volatile because live output — which reads it (as false) on the background PTY thread — races the
-    /// UI-thread replay that sets/clears it.
-    /// </summary>
-    private volatile bool _replaying;
-
-    /// <summary>
     /// True while the operator is composing a line in this pane — from the first keystroke of a line until
     /// they submit it (Enter/CR) or abort it (Ctrl+C ETX / Ctrl+D EOT). While composing, the VT engine's
     /// device-query auto-answers (cursor-position reports and friends) are NOT written back to the child:
     /// the child polls the cursor on a render timer, and a CSI…R report injected into stdin BETWEEN the
     /// operator's keystrokes lands in the child's line editor as literal text — the "so w[?17;80Re ju…"
-    /// corruption of the typed message. This is the LIVE analog of the replayed-answer leak <see cref="_replaying"/>
-    /// suppresses (fixed in 814a087); the child re-queries once the line is submitted. Volatile because it's
+    /// corruption of the typed message. The child re-queries once the line is submitted. Volatile because it's
     /// set/cleared on the UI thread (key/text input) and read on the background PTY thread (in
     /// <see cref="OnTerminalDataReceived"/>).
     /// </summary>
@@ -581,6 +511,7 @@ public sealed partial class TerminalControl : UserControl
     {
         lock (_rebuildGate)
         {
+            if (_session is null) return;
             _renderDirty = true;
             if (_rebuildScheduled) return;   // a rebuild is already queued — it will pick up this output too
             if (!_isActive)
@@ -589,7 +520,7 @@ public sealed partial class TerminalControl : UserControl
                 // slow tick instead, so the sum of all background rebuilds can't saturate the UI thread
                 // while the operator types in the active terminal. The agent keeps running; only the
                 // cockpit-side UI refresh defers. The VT engine state was already updated eagerly (and
-                // off-thread) by OnSessionOutput, so the deferred rebuild renders the LATEST buffer.
+                // off-thread) by the session state, so the deferred rebuild renders the LATEST buffer.
                 DeferredRenders.Register(this);
                 return;
             }
@@ -685,14 +616,14 @@ public sealed partial class TerminalControl : UserControl
     /// </summary>
     private void OnScrollChanged(object? sender, ScrollChangedEventArgs e)
     {
-        double max = ScrollArea.Extent.Height - ScrollArea.Viewport.Height;
-        _followTail = ScrollArea.Offset.Y >= max - _cellH;   // within one row of the bottom counts as "at bottom"
-
         // During a rebuild the Surface extent is being resized and the scroll offset is stale — rendering
         // the visible slice here would use a stale scroll position against the new extent, and recomputing
         // _followTail from the stale offset can clear it, which prevents ScrollToTail from posting. Skip
         // rendering; RebuildRowsCore itself renders the slice after setting the new extent.
         if (_rebuilding) return;
+
+        double max = ScrollArea.Extent.Height - ScrollArea.Viewport.Height;
+        _followTail = ScrollArea.Offset.Y >= max - _cellH;
 
         // Virtualize on scroll: render the rows that just came into view. Re-rendering the slice changes only
         // the inlines and the text block's Canvas.Top — not the surface extent or the scroll offset — so this
@@ -709,11 +640,6 @@ public sealed partial class TerminalControl : UserControl
 
     private void OnTerminalDataReceived(object? sender, TerminalEvents.DataEventArgs e)
     {
-        // Replayed history is read-only: a device-status answer the engine generates while Attach is replaying
-        // the backlog describes a stale frame, and injecting it into the child (now at a prompt) is the
-        // "[1;6R / [?1;6R garbage" corruption. Drop it — only LIVE queries get answered. See Attach().
-        if (_replaying) return;
-
         // While the operator is composing a line, the child's live cursor-position polls must go UNANSWERED:
         // writing a CSI…R report into stdin between the operator's keystrokes corrupts the typed line (the
         // "so w[?17;80Re ju…" leak — the live analog of the replay bug above). The child re-queries once the
@@ -972,7 +898,7 @@ public sealed partial class TerminalControl : UserControl
     /// <summary>
     /// Mouse wheel: Ctrl+wheel zooms; otherwise scrolls our scrollback. Registered on the Tunnel route so
     /// this fires before the inner ScrollViewer, letting us drive the real offset (and mark Handled to avoid
-    /// a double scroll). On the alternate buffer the running app owns scrolling, so we don't hijack it.
+    /// a double scroll). Mouse-tracking applications receive VT wheel input instead of moving the viewer.
     /// </summary>
     private void OnWheel(object? sender, PointerWheelEventArgs e)
     {
@@ -985,20 +911,42 @@ public sealed partial class TerminalControl : UserControl
             e.Handled = true;
             return;
         }
-        if (HandleWheelScroll(e.Delta.Y)) e.Handled = true;
+        if (HandleWheelScroll(e.Delta.Y, e.GetPosition(ScrollArea))) e.Handled = true;
     }
 
     /// <summary>
     /// Scrolls the transcript by <paramref name="deltaY"/> wheel notches (wheel-up = positive = scroll BACK
     /// through scrollback). Faithful to the VT buffer: it moves the real ScrollViewer offset over the
     /// virtualized transcript, so returning to the bottom resumes tail-following (see OnScrollChanged).
-    /// Returns false (a no-op) on the alternate buffer — a full-screen TUI manages its own scroll — or when
-    /// there's nothing to scroll. Internal so a headless test can drive it without synthesizing pointer input.
+    /// Mouse-tracking applications receive VT wheel reports at the pointer's cell instead. The alternate
+    /// screen must never scroll the outer viewer: applications redraw it using fixed screen coordinates.
     /// </summary>
-    internal bool HandleWheelScroll(double deltaY)
+    internal bool HandleWheelScroll(double deltaY, Point? position = null)
     {
         lock (_terminalGate)
-            if (_terminal.IsAlternateBufferActive) return false;
+        {
+            if (_terminal.MouseTrackingMode != XTerm.Input.MouseTrackingMode.None)
+            {
+                _mouseWheelRemainder = Math.Clamp(_mouseWheelRemainder + deltaY, -100, 100);
+                int notches = (int)_mouseWheelRemainder;
+                _mouseWheelRemainder -= notches;
+                if (notches != 0)
+                {
+                    var p = position ?? new Point(12, 4);
+                    int col = Math.Clamp((int)((p.X - 12) / _cellW), 0, _terminal.Cols - 1);
+                    int row = Math.Clamp((int)((p.Y - 4) / _cellH), 0, _terminal.Rows - 1);
+                    var report = _terminal.GenerateMouseEvent(
+                        notches > 0 ? XTerm.Input.MouseButton.WheelUp : XTerm.Input.MouseButton.WheelDown,
+                        col, row,
+                        notches > 0 ? XTerm.Input.MouseEventType.WheelUp : XTerm.Input.MouseEventType.WheelDown);
+                    if (report.Length > 0)
+                        _ = FireAndForgetWrite(string.Concat(Enumerable.Repeat(report, Math.Abs(notches))));
+                }
+                return true;
+            }
+            _mouseWheelRemainder = 0;
+            if (_terminal.IsAlternateBufferActive) return true;
+        }
         double max = Math.Max(0, ScrollArea.Extent.Height - ScrollArea.Viewport.Height);
         if (max <= 0) return false;
         const double rowsPerNotch = 3;
@@ -1097,7 +1045,7 @@ public sealed partial class TerminalControl : UserControl
         {
             if (cols != _terminal.Cols || rows != _terminal.Rows)
             {
-                _terminal.Resize(cols, rows);
+                _terminalState.Resize(cols, rows);
                 RebuildRows();
             }
 
@@ -1154,6 +1102,9 @@ public sealed partial class TerminalControl : UserControl
         // repaint and stale glyphs from the previous frame's taller render survive underneath → the "garbled
         // btop / overlapping redraw" corruption. So: on the alt buffer, render exactly [YBase, YBase+Rows).
         bool altBuffer = _terminal.IsAlternateBufferActive;
+        ScrollArea.VerticalScrollBarVisibility = altBuffer
+            ? Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
+            : Avalonia.Controls.Primitives.ScrollBarVisibility.Auto;
 
         int total = buffer.YBase + _terminal.Rows;
         int cursorAbsRow = buffer.YBase + buffer.Y;

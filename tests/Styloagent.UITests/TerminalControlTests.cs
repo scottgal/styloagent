@@ -1050,12 +1050,12 @@ public class TerminalControlTests
 
     /// <summary>
     /// On the ALTERNATE buffer a full-screen TUI (btop, vim, less) manages its own scroll, so the terminal
-    /// must NOT hijack the wheel — <see cref="TerminalControl.HandleWheelScroll"/> is a no-op returning false,
-    /// leaving the event free to route to the app. Regression against re-introducing scrollback hijacking that
+    /// must consume the wheel instead of letting the outer ScrollViewer move the fixed screen.
+    /// Mouse tracking is tested separately; with it disabled there is no input to forward. Regression against re-introducing scrollback hijacking that
     /// would fight btop's own paging.
     /// </summary>
     [Fact]
-    public Task WheelScroll_OnAlternateBuffer_IsIgnored_AppOwnsScroll()
+    public Task WheelScroll_OnAlternateBuffer_ConsumesEvent_WithoutMovingTheViewport()
     {
         return _fx.DispatchAsync(async () =>
         {
@@ -1074,8 +1074,9 @@ public class TerminalControlTests
             Assert.True(control.IsAltBuffer, "expected the alternate buffer to be active");
 
             // Wheel must be a no-op — the running TUI owns scroll.
-            Assert.False(control.HandleWheelScroll(3), "wheel scroll must NOT be hijacked on the alt buffer");
-            Assert.False(control.HandleWheelScroll(-3), "wheel scroll must NOT be hijacked on the alt buffer");
+            Assert.True(control.HandleWheelScroll(3));
+            Assert.True(control.HandleWheelScroll(-3));
+            Assert.Equal(0, control.GetVisualDescendants().OfType<ScrollViewer>().First().Offset.Y);
 
             window.Close();
         });

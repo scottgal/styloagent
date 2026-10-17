@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.13.4](https://github.com/scottgal/styloagent/releases/tag/v1.13.4) — 2026-10-17
+
+- Preserve terminal state across dock pane and tab replacement, including output received while hidden. Capped raw output replay no longer loses OpenCode's alternate-screen and mouse modes.
+- Route wheel and trackpad input to OpenCode using its VT mouse protocol, with the correct pointer cell and accumulated fractional deltas.
+- Prevent the outer scroll viewer from shifting a full-screen terminal; retain ordinary transcript scrollback and Ctrl+wheel zoom.
+- Add real OpenCode scrolling and pane replacement tests, a real PTY startup-overflow test, and colored diff layout regressions.
+
+[Full release notes and verification](docs/releases/v1.13.4.md).
+
 ## [1.13.3](https://github.com/scottgal/styloagent/releases/tag/v1.13.3) — 2026-10-17
 
 - Default new and restored OpenCode sessions to DeepSeek Flash, respecting explicit models and OpenRouter routing.

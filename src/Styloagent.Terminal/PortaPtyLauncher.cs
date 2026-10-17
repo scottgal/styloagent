@@ -26,7 +26,7 @@ public sealed class PortaPtyLauncher : IPtyLauncher
         };
 
         var connection = await PtyProvider.SpawnAsync(ptyOptions, ct).ConfigureAwait(false);
-        return new PortaPtySession(connection);
+        return new PortaPtySession(connection, options.Cols, options.Rows);
     }
 
     /// <summary>

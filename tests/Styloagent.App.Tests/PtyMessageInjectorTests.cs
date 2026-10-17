@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Styloagent.App.Services;
 using Styloagent.Core.Sessions;
+using Styloagent.Core.Channel;
 using Xunit;
 
 namespace Styloagent.App.Tests;
@@ -121,11 +122,11 @@ public class PtyMessageInjectorTests
     }
 
     [Fact]
-    public async Task No_live_session_is_a_no_op()
+    public async Task Missing_session_reports_unavailable_without_claiming_delivery()
     {
         var injector = new PtyMessageInjector(_ => null);
-        // Must not throw when there is nothing to inject into.
-        await injector.InjectAsync("ghost", "hello", breakFirst: true);
+        Assert.Equal(InjectionResult.Unavailable, await injector.TryInjectAsync("ghost", "hello", true));
+        await Assert.ThrowsAsync<System.IO.IOException>(() => injector.InjectAsync("ghost", "hello", true));
     }
 
     // ── Compose gate: don't clobber the operator's typing ────────────────────────
@@ -166,7 +167,7 @@ public class PtyMessageInjectorTests
     }
 
     [Fact]
-    public async Task Inject_is_bounded_and_delivers_when_operator_never_submits()
+    public async Task Compose_timeout_retains_message_without_touching_operator_input()
     {
         var prevTimeout = PtyMessageInjector.ComposeDeferTimeout;
         var prevPoll = PtyMessageInjector.ComposePollDelay;
@@ -175,12 +176,14 @@ public class PtyMessageInjectorTests
         var pty = new BreakingPty(escapesToIdle: 0);
         try
         {
-            // Operator starts a line and never submits — the gate must not starve delivery forever.
+            // A timeout must never authorize typing into an unfinished operator line.
             OperatorInputState.SetComposing(pty, true);
             var injector = new PtyMessageInjector(_ => pty);
 
-            await injector.InjectAsync("beta", "hello", breakFirst: false);
-
+            Assert.Equal(InjectionResult.Deferred, await injector.TryInjectAsync("beta", "hello", false));
+            Assert.Empty(pty.Writes);
+            OperatorInputState.Clear(pty);
+            Assert.Equal(InjectionResult.Accepted, await injector.TryInjectAsync("beta", "hello", false));
             Assert.Equal(new[] { "hello", Cr }, pty.Writes);
         }
         finally

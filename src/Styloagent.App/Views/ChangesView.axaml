@@ -7,57 +7,61 @@
              x:DataType="vm:ChangesViewModel">
 
   <Border Background="{DynamicResource PanelBgBrush}" CornerRadius="4">
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
 
-      <!-- ── Branch bar ─────────────────────────────────────────────────────── -->
-      <Border Grid.Row="0" Background="{DynamicResource PanelHeaderBgBrush}" Padding="6,4">
-        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
-          <!-- Current-branch label -->
-          <TextBlock Grid.Column="0"
-                     Text="Branch:"
-                     FontSize="11"
-                     Foreground="{DynamicResource MutedTextBrush}"
-                     VerticalAlignment="Center"
-                     Margin="0,0,4,0" />
-          <!-- Branch switcher -->
-          <ComboBox Grid.Column="1"
-                    ItemsSource="{Binding Branches}"
-                    SelectedItem="{Binding SelectedBranch}"
-                    FontSize="11"
-                    Padding="4,2"
-                    HorizontalAlignment="Left"
-                    MinWidth="150"
-                    MaxWidth="280"
-                    x:Name="BranchComboBox">
-          <ComboBox.ItemTemplate>
-            <DataTemplate DataType="git:GitBranch">
-              <StackPanel Orientation="Horizontal" Spacing="5">
-                <TextBlock Text="{Binding Name}" FontSize="11" />
-                <TextBlock Text="{Binding MergeState}" FontSize="9" Foreground="{DynamicResource MutedTextBrush}" />
-              </StackPanel>
-            </DataTemplate>
-          </ComboBox.ItemTemplate>
-          </ComboBox>
-          <TextBlock Grid.Column="2" Text="{Binding UnmergedBranchSummary}" FontSize="10"
-                     Foreground="{DynamicResource AttentionBrush}" VerticalAlignment="Center" Margin="6,0,0,0" />
-          <!-- New branch text box -->
-          <TextBox Grid.Column="3"
-                   Text="{Binding NewBranchName}"
-                   Watermark="new branch"
-                   FontSize="11"
-                   Padding="4,2"
-                   Width="110"
-                   Margin="6,0,0,0" />
-          <!-- Create branch button -->
-          <Button Grid.Column="4"
-                  Content="+"
-                  FontSize="11"
-                  Padding="6,2"
-                  Margin="4,0,0,0"
-                  ToolTip.Tip="Create branch"
-                  Command="{Binding CreateBranchCommand}" />
+      <StackPanel Grid.Row="0" Spacing="4" Margin="6,4">
+        <TextBlock Text="{Binding CurrentBranch, StringFormat='Branch: {0}'}" FontWeight="SemiBold" FontSize="12" />
+        <TextBlock Text="{Binding SyncSummary}" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" />
+        <TextBlock Text="{Binding RepositoryPath}" FontSize="9" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding RepositoryPath}" />
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto">
+          <StackPanel Grid.Row="0" Spacing="3">
+            <TextBlock Text="{Binding WriteStatus}" TextWrapping="Wrap" FontSize="11" />
+            <TextBlock Text="{Binding WriteError}" IsVisible="{Binding HasWriteError}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource AttentionBrush}" />
+          </StackPanel>
+        <!-- Push / Pull row -->
+        <StackPanel IsEnabled="{Binding CanWrite}" Grid.Row="1"
+                    Orientation="Horizontal"
+                    Spacing="6"
+                    Margin="6,4,6,0">
+          <Button Content="Push"
+                  FontSize="11" Padding="8,4"
+                  Command="{Binding PushCommand}" />
+          <Button Content="Pull"
+                  FontSize="11" Padding="8,4"
+                  Command="{Binding PullCommand}" />
+        </StackPanel>
+
+        <!-- Release/tag flow: suggestion follows the existing vX.Y.Z or X.Y.Z convention. -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="5" Margin="6,4,6,0"
+              IsVisible="{Binding HasTagging}" IsEnabled="{Binding CanWrite}">
+          <TextBlock Grid.ColumnSpan="2" Text="Release tag at HEAD" FontSize="11" VerticalAlignment="Center" Foreground="{DynamicResource MutedTextBrush}" />
+          <TextBox Grid.Row="1" Text="{Binding SuggestedTag}" Watermark="v1.2.3" FontSize="11" Padding="5,2" />
+          <TextBox Grid.Row="2" Text="{Binding TagMessage}" Watermark="release note" FontSize="11" Padding="5,2" />
+          <Button Grid.Row="1" Grid.Column="1" Content="Create tag" FontSize="11" Padding="7,3" Command="{Binding CreateTagCommand}" ToolTip.Tip="Create annotated tag at HEAD" />
+          <Button Grid.Row="2" Grid.Column="1" Content="Push tags" FontSize="11" Padding="7,3" Command="{Binding PushTagsCommand}" ToolTip.Tip="Push all local tags to the configured remote" />
         </Grid>
-      </Border>
+
+        <TextBlock Grid.Row="3" Text="{Binding ExistingTagsText}" FontSize="9"
+                   Foreground="{DynamicResource MutedTextBrush}" TextTrimming="CharacterEllipsis" Margin="6,2,6,0"
+                   IsVisible="{Binding HasTagging}" />
+
+        </Grid>
+        <Expander Header="Branches" IsEnabled="{Binding CanWrite}" HorizontalAlignment="Stretch">
+          <StackPanel Spacing="4">
+            <ComboBox x:Name="BranchComboBox" ItemsSource="{Binding Branches}" SelectedItem="{Binding SelectedBranch}" HorizontalAlignment="Stretch" FontSize="11">
+              <ComboBox.ItemTemplate>
+                <DataTemplate DataType="git:GitBranch"><TextBlock Text="{Binding Name}" FontSize="11" /></DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <TextBlock Text="{Binding UnmergedBranchSummary}" FontSize="10" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBox Text="{Binding NewBranchName}" Watermark="new branch" FontSize="11" />
+              <Button Grid.Column="1" Content="Create" Command="{Binding CreateBranchCommand}" FontSize="11" />
+            </Grid>
+          </StackPanel>
+        </Expander>
+      </StackPanel>
 
       <!-- ── Unstaged section ──────────────────────────────────────────────── -->
       <Border Grid.Row="1" Background="{DynamicResource PanelHeaderBgBrush}" Padding="8,5">
@@ -91,6 +95,7 @@
                       Content="Stage"
                       FontSize="10" Padding="6,1"
                       Margin="4,0,0,0"
+                      IsEnabled="{Binding DataContext.CanWrite, RelativeSource={RelativeSource AncestorType=UserControl}}"
                       Command="{Binding DataContext.StageCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                       CommandParameter="{Binding}" />
             </Grid>
@@ -130,6 +135,7 @@
                       Content="Unstage"
                       FontSize="10" Padding="6,1"
                       Margin="4,0,0,0"
+                      IsEnabled="{Binding DataContext.CanWrite, RelativeSource={RelativeSource AncestorType=UserControl}}"
                       Command="{Binding DataContext.UnstageCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                       CommandParameter="{Binding}" />
             </Grid>
@@ -138,23 +144,10 @@
       </ListBox>
 
       <!-- ── Commit bar + push/pull/stash actions ─────────────────────────── -->
-      <Grid Grid.Row="5" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*">
-
-        <!-- Error banner -->
-        <Border Grid.Row="0"
-                IsVisible="{Binding HasWriteError}"
-                Background="{DynamicResource AttentionBrush}"
-                CornerRadius="3"
-                Margin="6,6,6,0"
-                Padding="8,5">
-          <TextBlock Text="{Binding WriteError}"
-                     FontSize="11"
-                     TextWrapping="Wrap"
-                     Foreground="{DynamicResource PanelBgBrush}" />
-        </Border>
+      <Grid Grid.Row="5" RowDefinitions="Auto,Auto,Auto">
 
         <!-- Commit bar -->
-        <Border Grid.Row="1" Padding="6,6,6,0">
+        <Border Grid.Row="0" Padding="6,6,6,0" IsEnabled="{Binding CanWrite}">
           <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto">
             <TextBox Grid.Column="0"
                      Text="{Binding CommitMessage}"
@@ -175,36 +168,8 @@
           </Grid>
         </Border>
 
-        <!-- Push / Pull row -->
-        <StackPanel Grid.Row="2"
-                    Orientation="Horizontal"
-                    Spacing="6"
-                    Margin="6,4,6,0">
-          <Button Content="Push"
-                  FontSize="11" Padding="8,4"
-                  Command="{Binding PushCommand}" />
-          <Button Content="Pull"
-                  FontSize="11" Padding="8,4"
-                  Command="{Binding PullCommand}" />
-          <TextBlock Text="{Binding WriteStatus}" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
-        </StackPanel>
-
-        <!-- Release/tag flow: suggestion follows the existing vX.Y.Z or X.Y.Z convention. -->
-        <Grid Grid.Row="3" ColumnDefinitions="Auto,*,*,Auto,Auto" ColumnSpacing="5" Margin="6,4,6,0"
-              IsVisible="{Binding HasTagging}">
-          <TextBlock Text="Tag" FontSize="11" VerticalAlignment="Center" Foreground="{DynamicResource MutedTextBrush}" />
-          <TextBox Grid.Column="1" Text="{Binding SuggestedTag}" FontSize="11" Padding="5,2" />
-          <TextBox Grid.Column="2" Text="{Binding TagMessage}" Watermark="release note" FontSize="11" Padding="5,2" />
-          <Button Grid.Column="3" Content="Create" FontSize="11" Padding="7,3" Command="{Binding CreateTagCommand}" ToolTip.Tip="Create annotated tag at HEAD" />
-          <Button Grid.Column="4" Content="Push tags" FontSize="11" Padding="7,3" Command="{Binding PushTagsCommand}" />
-        </Grid>
-
-        <TextBlock Grid.Row="4" Text="{Binding ExistingTagsText}" FontSize="9"
-                   Foreground="{DynamicResource MutedTextBrush}" TextTrimming="CharacterEllipsis" Margin="6,2,6,0"
-                   IsVisible="{Binding HasTagging}" />
-
         <!-- Stash row -->
-        <Grid Grid.Row="5" ColumnDefinitions="Auto,Auto,*" Margin="6,4,6,6">
+        <Grid Grid.Row="1" IsEnabled="{Binding CanWrite}" ColumnDefinitions="Auto,Auto,*" Margin="6,4,6,6">
           <Button Grid.Column="0"
                   Content="Stash"
                   FontSize="11" Padding="8,4"
@@ -231,11 +196,12 @@
         </Grid>
 
         <!-- Diff panel -->
-        <views:DiffView Grid.Row="6" DataContext="{Binding Diff}" />
+        <views:DiffView Grid.Row="2" MinHeight="200" DataContext="{Binding Diff}" />
 
       </Grid>
 
     </Grid>
+    </ScrollViewer>
   </Border>
 
 </UserControl>

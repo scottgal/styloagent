@@ -19,7 +19,22 @@ permissions:
   contents: write
 
 jobs:
+  release-prerequisites:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check ImageSharp build license
+        env:
+          SIXLABORS_LICENSE_KEY: ${{ secrets.SIXLABORS_LICENSE_KEY }}
+        run: |
+          if [ -z "$SIXLABORS_LICENSE_KEY" ]; then
+            echo "::error::Configure the SIXLABORS_LICENSE_KEY repository secret for ImageSharp Release builds. See https://docs.sixlabors.com/articles/imagesharp/index.html"
+            exit 1
+          fi
+
   build:
+    needs: release-prerequisites
+    env:
+      SixLaborsLicenseKey: ${{ secrets.SIXLABORS_LICENSE_KEY }}
     strategy:
       fail-fast: false
       matrix:
@@ -41,6 +56,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: scottgal/lucidview
+          ref: 22c1a66eae5c33ced2a9c1e0ee8c2d43cb743f4c
           path: lucidview
           submodules: recursive
           # For a private lucidVIEW, add: token: ${{ secrets.LUCIDVIEW_PAT }}
@@ -91,6 +107,7 @@ jobs:
             <key>NSPrincipalClass</key><string>NSApplication</string>
           </dict></plist>
           PLIST
+          VERSION="${VERSION#v}"
           SAFE_VERSION="${VERSION//[^A-Za-z0-9._-]/}"
           sed -i '' "s/__VERSION__/${SAFE_VERSION}/" "$APP/Contents/Info.plist"
           # dotnet ad-hoc-signs the apphost as a STANDALONE Mach-O (Identifier=apphost, Info.plist
@@ -125,52 +142,8 @@ jobs:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           files: styloagent/${{ matrix.asset }}.zip
           name: Styloagent ${{ github.event.inputs.tag || github.ref_name }}
-          body: |
-            ![Styloagent cockpit](https://raw.githubusercontent.com/scottgal/styloagent/main/docs/cockpit.png)
-
-            **Styloagent** is a cross-platform cockpit for orchestrating a fleet of long-lived Claude Code agents — each agent a live terminal, coordinated over a message bus, with hydrate / dehydrate / rehydrate lifecycle, an MCP control plane, and a living view of the fleet.
-
-            ## Downloads
-
-            | Platform | Arch | File |
-            |----------|------|------|
-            | macOS (Apple Silicon) | arm64 | `styloagent-macos-arm64.zip` |
-            | macOS (Intel) | x64 | `styloagent-macos-x64.zip` |
-            | Windows | x64 | `styloagent-windows-x64.zip` |
-            | Windows | arm64 | `styloagent-windows-arm64.zip` |
-            | Linux | x64 | `styloagent-linux-x64.zip` |
-            | Linux | arm64 | `styloagent-linux-arm64.zip` |
-
-            ## Install
-
-            ### macOS — getting past Gatekeeper
-            The app is **ad-hoc signed** (there is no paid Apple Developer ID yet), so on first launch macOS Gatekeeper will block it. Pick one:
-
-            **Option A — right-click Open (once):**
-            1. Unzip `styloagent-macos-<arch>.zip`.
-            2. **Right-click** (or Control-click) `Styloagent.app` → **Open** → click **Open** in the dialog.
-            3. It launches normally from then on.
-
-            **Option B — clear the quarantine flag in Terminal:**
-            ```bash
-            xattr -dr com.apple.quarantine Styloagent.app
-            open Styloagent.app
-            ```
-
-            > If you see **"Styloagent is damaged and can't be opened"**, that is the quarantine flag on a downloaded ad-hoc-signed app — Option B clears it. (This is expected without notarization; a signed/notarized build is a future improvement.)
-
-            ### Windows
-            Unzip and run `Styloagent.App.exe`. SmartScreen may warn on first run (unsigned): **More info → Run anyway**.
-
-            ### Linux
-            ```bash
-            unzip styloagent-linux-<arch>.zip -d styloagent && cd styloagent
-            chmod +x Styloagent.App
-            ./Styloagent.App
-            ```
-
-            ---
-            Requires no runtime install — each build is self-contained (.NET 10 bundled). Release `${{ github.event.inputs.tag || github.ref_name }}`.
+          body_path: styloagent/docs/releases/${{ github.event.inputs.tag || github.ref_name }}.md
+          draft: true
 
       - name: Upload artifact (manual runs)
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag == '' }}
@@ -178,3 +151,15 @@ jobs:
         with:
           name: ${{ matrix.asset }}
           path: styloagent/${{ matrix.asset }}.zip
+
+  publish-release:
+    needs: build
+    if: ${{ startsWith(github.ref, 'refs/tags/') || github.event.inputs.tag != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish completed release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: gh release edit "$RELEASE_TAG" --draft=false --latest

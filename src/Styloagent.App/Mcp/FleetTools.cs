@@ -60,7 +60,7 @@ public sealed class FleetTools
              documentOpen ?? new DocumentOpenHub());
 
 #pragma warning disable CA1707 // Identifiers should not contain underscores — tool names are MCP contract and must match the wire protocol
-    [McpServerTool, Description("Launch a child agent under you. prefix is a short lowercase tag ending in '-'. The child runs the SAME CLI you started in by default — pass an explicit runtime to override (e.g. runtime='codex' to start a Codex agent; valid: claude, codex, claude-deepseek). tier classifies the model (opus/sonnet/haiku; spawned children default to sonnet = the fast/cheap model per runtime) and model/effort override it directly — call agent_capabilities for the live catalog. Set worktree=true when this agent's work overlaps files another agent owns, so it runs isolated on its own git worktree/branch; otherwise false to share the repo. Keep launchPrompt SHORT (identity + 'read your mission doc'); pass the full brief as missionDoc — Styloagent writes it to .styloagent/missions/<prefix>.md in the new agent's tree and tells the agent to read it. Leave missionDoc empty to inject launchPrompt alone.")]
+    [McpServerTool, Description("Launch a child agent under you. prefix is a short lowercase tag ending in '-'. The child runs the SAME CLI you started in by default — pass an explicit runtime to override (e.g. runtime='codex' to start a Codex agent; valid: claude, codex, claude-deepseek, opencode). tier classifies the model (opus/sonnet/haiku; spawned children default to sonnet = the fast/cheap model per runtime) and model/effort override it directly — call agent_capabilities for the live catalog. Set worktree=true when this agent's work overlaps files another agent owns, so it runs isolated on its own git worktree/branch; otherwise false to share the repo. Keep launchPrompt SHORT (identity + 'read your mission doc'); pass the full brief as missionDoc — Styloagent writes it to .styloagent/missions/<prefix>.md in the new agent's tree and tells the agent to read it. Leave missionDoc empty to inject launchPrompt alone.")]
     public async Task<string> spawn_agent(string prefix, string responsibility, string dir, string launchPrompt,
         bool worktree, string missionDoc = "", string runtime = "", string tier = "",
         string model = "", string effort = "")
@@ -91,14 +91,15 @@ public sealed class FleetTools
         return await _controller.RenameAgentAsync(prefix, name);
     }
 
-    [McpServerTool, Description("Return the live model and reasoning-effort choices for every supported agent runtime (claude, codex, claude-deepseek). Each runtime lists its available models with human-readable labels and the effort levels each model accepts (low, medium, high, etc.). Codex models are discovered live from its local catalog. Use this BEFORE calling spawn_agent so you pass a valid runtime/model/effort combination. Reloaded from .styloagent/agent-capabilities.json plus the live Codex catalog on every call, so the list stays current without restarting Styloagent.")]
+    [McpServerTool, Description("Return the live model and reasoning-effort choices for every supported agent runtime (claude, codex, claude-deepseek, opencode). Each runtime lists its available models with human-readable labels and the effort levels each model accepts (low, medium, high, etc.). Codex models are discovered from its local catalog; OpenCode models and variants come from its running native backend. Use this BEFORE calling spawn_agent so you pass a valid runtime/model/effort combination. Reloaded from .styloagent/agent-capabilities.json plus the live Codex catalog on every call, so the list stays current without restarting Styloagent.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public string agent_capabilities()
     {
         var ctx = _http.HttpContext;
         if (ctx is null || !_auth.TokenOk(ctx)) return "unauthorized";
         if (McpAuth.CallerPrefix(ctx) is null) return "unauthorized: missing caller identity";
-        return JsonSerializer.Serialize(_controller.AgentCapabilities(), Json);
+        try { return JsonSerializer.Serialize(_controller.AgentCapabilities(McpAuth.CallerRepo(ctx)), Json); }
+        catch (ArgumentException ex) { return "rejected: " + ex.Message; }
     }
 
     [McpServerTool, Description("Return the overview's live job-type model policy from .styloagent/model-policy.yaml: the runtime, model, and reasoning effort assigned to each job type, plus the human-readable rationale for every choice. Use this to see what runtime/model/effort to pick for a given kind of work (use agent_capabilities to see the valid choices). Reloaded on every call so the overview can adapt policy without restarting.")]
@@ -298,7 +299,7 @@ public sealed class FleetTools
         };
     }
 
-    [McpServerTool, Description("Rich live status of the whole fleet: each agent's stable prefix, display name, runtime (claude/codex/claude-deepseek), model, reasoning effort, responsibility, state (working | idle | needs-you | exited), current activity, seconds since its last output, remaining context tokens and pressure (normal | elevated | high | critical), and whether it has a git worktree — plus working/waiting counts and the paused flag. Use this to see which agents are at what effort level before spawning more.")]
+    [McpServerTool, Description("Rich live status of the whole fleet: each agent's stable prefix, display name, runtime (claude/codex/claude-deepseek/opencode), model, reasoning effort, responsibility, state (working | idle | needs-you | exited), current activity, seconds since its last output, remaining context tokens and pressure (normal | elevated | high | critical), and whether it has a git worktree — plus working/waiting counts and the paused flag. Use this to see which agents are at what effort level before spawning more.")]
     [SuppressMessage("Style", "CA1707", Justification = "MCP wire-protocol tool name — underscores are required.")]
     public string fleet_status()
     {

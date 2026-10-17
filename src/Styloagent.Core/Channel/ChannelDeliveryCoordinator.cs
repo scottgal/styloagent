@@ -22,6 +22,7 @@ public sealed class ChannelDeliveryCoordinator
     private readonly ChannelProjection _projection = new();
 
     private readonly HashSet<string> _seen = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<(string Path, string Recipient)> _admitted = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public ChannelDeliveryCoordinator(
@@ -58,28 +59,45 @@ public sealed class ChannelDeliveryCoordinator
     /// </summary>
     public async Task<int> PumpAsync(CancellationToken ct = default)
     {
-        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        if (!await _gate.WaitAsync(0, ct).ConfigureAwait(false)) return 0;
         try
         {
-            var agents = _liveAgents();
+            var agents = _liveAgents().Where(a => a.State != AgentHookState.Exited).ToArray();
+            foreach (var agent in agents.Where(a => a.State == AgentHookState.Idle))
+            {
+                try { await _delivery.OnRecipientStateChangedAsync(agent.Prefix, agent.State, ct).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch { /* retain the reservation and retry on the next pump */ }
+            }
             var prefixes = agents.Select(a => a.Prefix).ToList();
             int delivered = 0;
 
             foreach (var msg in await AllMessagesAsync(ct).ConfigureAwait(false))
             {
                 if (msg.State == BusMessageState.Archived) continue;
-                if (!_seen.Add(msg.FilePath)) continue;   // already handled
+                if (_seen.Contains(msg.FilePath)) continue;
 
-                foreach (var recipientId in MessageRouting.RecipientsFor(msg, prefixes))
+                var recipients = MessageRouting.RecipientsFor(msg, prefixes).ToList();
+                var complete = recipients.Count > 0;
+                foreach (var recipientId in recipients)
                 {
+                    if (_admitted.Contains((msg.FilePath, recipientId))) continue;
                     var state = agents.First(a => a.Prefix == recipientId).State;
-                    await _delivery.DeliverAsync(msg, recipientId, state, ct).ConfigureAwait(false);
-                    delivered++;
+                    try
+                    {
+                        await _delivery.DeliverAsync(msg, recipientId, state, ct).ConfigureAwait(false);
+                        _admitted.Add((msg.FilePath, recipientId));
+                        delivered++;
+                    }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                    catch { complete = false; } // retry this recipient, without repeating accepted ones
                 }
+                if (complete) _seen.Add(msg.FilePath);
             }
 
             return delivered;
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch { return 0; }   // tolerant: never let a bad channel read throw into the reload path
         finally { _gate.Release(); }
     }

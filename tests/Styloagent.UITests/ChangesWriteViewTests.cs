@@ -129,6 +129,9 @@ public class ChangesWriteViewTests(HeadlessAvaloniaFixture fx) : IDisposable
             window.Show();
 
             await HeadlessRender.SettleAsync(window);
+            var branches = Assert.Single(window.GetVisualDescendants().OfType<Expander>());
+            branches.IsExpanded = true;
+            await HeadlessRender.SettleAsync(window);
 
             var texts = window.GetVisualDescendants().OfType<TextBlock>()
                 .Select(t => t.Text ?? string.Empty)

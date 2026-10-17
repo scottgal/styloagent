@@ -28,6 +28,7 @@ public sealed partial class WelcomeViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsClaudeFirst))]
     [NotifyPropertyChangedFor(nameof(IsCodexFirst))]
     [NotifyPropertyChangedFor(nameof(IsClaudeDeepSeekFirst))]
+    [NotifyPropertyChangedFor(nameof(IsOpenCodeFirst))]
     private AgentRuntimeKind _selectedRuntime;
 
     // Settable so the cards can bind TwoWay: clicking a card drives SelectedRuntime directly AND the
@@ -36,6 +37,8 @@ public sealed partial class WelcomeViewModel : ObservableObject
     public bool IsClaudeFirst { get => SelectedRuntime == AgentRuntimeKind.Claude; set { if (value) SelectedRuntime = AgentRuntimeKind.Claude; } }
     public bool IsCodexFirst { get => SelectedRuntime == AgentRuntimeKind.Codex; set { if (value) SelectedRuntime = AgentRuntimeKind.Codex; } }
     public bool IsClaudeDeepSeekFirst { get => SelectedRuntime == AgentRuntimeKind.ClaudeDeepSeek; set { if (value) SelectedRuntime = AgentRuntimeKind.ClaudeDeepSeek; } }
+
+    public bool IsOpenCodeFirst { get => SelectedRuntime == AgentRuntimeKind.OpenCode; set { if (value) SelectedRuntime = AgentRuntimeKind.OpenCode; } }
 
     public WelcomeViewModel(RecentProjectsStore recents, string recentsPath, IFolderPicker picker,
         Action<string> onProjectChosen,
@@ -69,6 +72,7 @@ public sealed partial class WelcomeViewModel : ObservableObject
         OnPropertyChanged(nameof(IsClaudeFirst));
         OnPropertyChanged(nameof(IsCodexFirst));
         OnPropertyChanged(nameof(IsClaudeDeepSeekFirst));
+        OnPropertyChanged(nameof(IsOpenCodeFirst));
         _onRuntimeChanged?.Invoke(kind);
     }
 

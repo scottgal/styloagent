@@ -6,6 +6,27 @@ using Xunit;
 
 public class GitGraphViewModelTests
 {
+    private sealed class DelayedLog : IGitLog
+    {
+        public readonly TaskCompletionSource<GitResult<IReadOnlyList<Commit>>> Pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task<GitResult<IReadOnlyList<Commit>>> GetCommitsAsync(string path, int limit = 200, CancellationToken ct = default)
+            => path == "/old" ? Pending.Task : new FakeLog().GetCommitsAsync(path, limit, ct);
+    }
+
+    [Fact]
+    public async Task An_old_history_read_cannot_overwrite_a_new_selection_or_a_clear()
+    {
+        var log = new DelayedLog();
+        var vm = new GitGraphViewModel(log);
+        var old = vm.LoadAsync("/old");
+        await vm.LoadAsync("/new");
+        vm.Clear();
+        log.Pending.SetResult(GitResult<IReadOnlyList<Commit>>.Success(new List<Commit> { new() { SHA = "stale" } }));
+        await old;
+        Assert.Null(vm.Graph);
+        Assert.Empty(vm.Commits);
+    }
+
     private sealed class FakeLog : IGitLog
     {
         public Task<GitResult<IReadOnlyList<Commit>>> GetCommitsAsync(string worktreePath, int limit = 200, CancellationToken ct = default)

@@ -35,7 +35,7 @@ public class MultiRepoOverviewTests
             var extras = overviews.Skip(1).ToList();            // beta-, gamma-
             Assert.Equal(2, extras.Count);
 
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 wsChannel, new FakeLauncher(), new FakeWatcher(),
                 overviewColorHex: primaryColor, extraOverviews: extras);
 
@@ -68,7 +68,7 @@ public class MultiRepoOverviewTests
         var channel = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
             var ws = WorkspaceConfig.For("/ws", "mono", new[]
             {
                 Path.Combine("/ws", "Styloagent"),
@@ -101,7 +101,7 @@ public class MultiRepoOverviewTests
                 Path.Combine("/ws", "primary"),
                 Path.Combine("/ws", "beta"),
             });
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 channel, new FakeLauncher(), new FakeWatcher(),
                 extraOverviews: ws.RepoOverviews().Skip(1).ToList());
             vm.SetReposFromOverviews(ws.RepoOverviews());
@@ -119,7 +119,7 @@ public class MultiRepoOverviewTests
         var channel = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
             var pane = vm.Panes[0];
             var status = Assert.Single(vm.BuildFleetStatus().Agents);
             Assert.False(status.IsAvailable);
@@ -141,7 +141,7 @@ public class MultiRepoOverviewTests
         var channel = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
             var pane = vm.Panes[0];
             var key = ContextSnapshotKey.Create("/repo-a", pane.Prefix, "session-a");
             var observedAt = DateTimeOffset.UtcNow;
@@ -167,7 +167,7 @@ public class MultiRepoOverviewTests
         var channel = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
             var pane = vm.Panes[0];
             Assert.Equal(SessionState.Live, pane.State);   // FakeLauncher + zero inject-delays spawn synchronously
 

@@ -65,7 +65,7 @@ public class FleetSpawnTests
         var launcher = new FakeLauncher();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 channelRoot, launcher, new FakeWatcher(),
                 defaultAgentRuntime: AgentRuntimeKind.ClaudeDeepSeek);
             var overview = vm.Panes[0];
@@ -96,7 +96,7 @@ public class FleetSpawnTests
         var launcher = new FakeLauncher();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 channelRoot, launcher, new FakeWatcher(), defaultAgentRuntime: AgentRuntimeKind.Codex);
             var outcome = await vm.SpawnChildAsync(new SpawnRequest(
                 vm.Panes[0].Prefix, "luna-", "owns X", ".", "p", false,
@@ -124,7 +124,7 @@ public class FleetSpawnTests
         var launcher = new FakeLauncher();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 channelRoot, launcher, new FakeWatcher(), defaultAgentRuntime: AgentRuntimeKind.Codex);
 
             var outcome = await vm.SpawnChildAsync(new SpawnRequest(
@@ -168,7 +168,7 @@ public class FleetSpawnTests
         var root = MainWindowViewModelTests.MakeTwoAgentChannel();  // reuse existing helper
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
             // Attach a project so child launch prompts have somewhere to go.
             var proj = Path.Combine(Path.GetTempPath(), "fleetproj-" + Guid.NewGuid().ToString("N"));
             vm.AttachProject(ProjectScaffolder.Ensure(proj));
@@ -196,7 +196,7 @@ public class FleetSpawnTests
         var root = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
             vm.PauseFleetCommand.Execute(null);
             var outcome = await vm.SpawnChildAsync(new SpawnRequest(vm.Panes[0].Prefix, "x-", "r", ".", "p", false));
             Assert.False(outcome.Spawned);
@@ -211,7 +211,7 @@ public class FleetSpawnTests
         var root = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
             var snap = vm.BuildFleetSnapshot();
             Assert.Equal(vm.Panes.Count, snap.Members.Count);
             Assert.Equal(12, snap.MaxFleet);
@@ -228,7 +228,7 @@ public class FleetSpawnTests
         {
             // Overview mode: the first pane is the overview (root, no worktree).
             var cfg = ProjectScaffolder.Ensure(repo);
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 cfg.ChannelRoot, new FakeLauncher(), new FakeWatcher(),
                 repoRoot: repo, overviewSystemPromptPath: cfg.SystemPromptPath);
             vm.AttachProject(cfg);
@@ -270,7 +270,7 @@ public class FleetSpawnTests
         try
         {
             var cfg = ProjectScaffolder.Ensure(repo);
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 cfg.ChannelRoot, new FakeLauncher(), new FakeWatcher(),
                 gitService: git, repoRoot: repo, overviewSystemPromptPath: cfg.SystemPromptPath);
             vm.AttachProject(cfg);

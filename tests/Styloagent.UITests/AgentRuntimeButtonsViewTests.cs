@@ -74,10 +74,14 @@ public class AgentRuntimeButtonsViewTests
                 var newCodex = window.FindControl<Button>("NewCodexButton");
                 Assert.NotNull(newClaude);
                 Assert.NotNull(newCodex);
-                Assert.True(newClaude!.Bounds.Width > 90);
-                Assert.True(newCodex!.Bounds.Width > 90);
-                Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "New Claude");
-                Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "New Codex");
+                Assert.True(newClaude!.Bounds.Width > 16);
+                Assert.True(newCodex!.Bounds.Width > 16);
+                Assert.Equal("Open a new Claude agent", ToolTip.GetTip(newClaude));
+                Assert.Equal("Open a new Codex agent", ToolTip.GetTip(newCodex));
+                var newOpenCode = window.FindControl<Button>("NewOpenCodeButton");
+                Assert.NotNull(newOpenCode);
+                Assert.NotNull(newOpenCode.Command);
+                Assert.True(newOpenCode.Bounds.Width > 16);
 
                 await ScreenshotCapture.CaptureWindowAsync(window, buttonsPath, settle: true);
 

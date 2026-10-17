@@ -1,6 +1,6 @@
 namespace Styloagent.Core.Model;
 
-public enum AgentRuntimeKind { Claude, Codex, Kilo, ClaudeDeepSeek }
+public enum AgentRuntimeKind { Claude, Codex, Kilo, ClaudeDeepSeek, OpenCode }
 
 /// <summary>
 /// Centralized runtime name mapping — the only place that converts between <see cref="AgentRuntimeKind"/>
@@ -13,6 +13,7 @@ public static class AgentRuntime
         AgentRuntimeKind.Codex => "codex",
         AgentRuntimeKind.Kilo => "kilo",
         AgentRuntimeKind.ClaudeDeepSeek => "claude-deepseek",
+        AgentRuntimeKind.OpenCode => "opencode",
         _ => "claude",
     };
 
@@ -26,7 +27,9 @@ public static class AgentRuntime
             "codex" => AgentRuntimeKind.Codex,
             "kilo" => AgentRuntimeKind.Kilo,
             "claudedeepseek" => AgentRuntimeKind.ClaudeDeepSeek,
-            _ => AgentRuntimeKind.Claude,
+            "opencode" => AgentRuntimeKind.OpenCode,
+            "claude" or null or "" => AgentRuntimeKind.Claude,
+            _ => throw new ArgumentException($"Unknown agent runtime '{name}'.", nameof(name)),
         };
     }
 }

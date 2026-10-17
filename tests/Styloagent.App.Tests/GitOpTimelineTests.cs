@@ -14,7 +14,7 @@ public class GitOpTimelineTests
         try
         {
             var cfg = ProjectScaffolder.Ensure(repo);
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 cfg.ChannelRoot, new FakeLauncher(), new FakeWatcher(),
                 repoRoot: repo, overviewSystemPromptPath: cfg.SystemPromptPath);
             vm.AttachProject(cfg);

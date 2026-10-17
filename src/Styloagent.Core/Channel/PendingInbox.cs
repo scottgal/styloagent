@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Collections.Concurrent;
 using Styloagent.Core.Hooks;
 
 namespace Styloagent.Core.Channel;
@@ -22,9 +23,14 @@ namespace Styloagent.Core.Channel;
 public sealed class PendingInbox
 {
     private readonly string _hooksDir;
-    private readonly object _gate = new();
+    private static readonly ConcurrentDictionary<string, object> Gates = new(StringComparer.Ordinal);
+    private readonly object _gate;
 
-    public PendingInbox(string hooksDir) => _hooksDir = hooksDir;
+    public PendingInbox(string hooksDir)
+    {
+        _hooksDir = hooksDir;
+        _gate = Gates.GetOrAdd(Path.GetFullPath(hooksDir), _ => new object());
+    }
 
     /// <summary>The directory holding every recipient's deliver files (created lazily on first write).</summary>
     public string DeliverDir => DeliveryHookCommands.DeliverDir(_hooksDir);
@@ -49,6 +55,7 @@ public sealed class PendingInbox
         lock (_gate)
         {
             Directory.CreateDirectory(DeliverDir);
+            if (deliveredPath is not null && ReadDelivered(recipientPrefix).Contains(deliveredPath)) return;
             string raw = ReadRaw(path);
             raw += noteLine.TrimEnd('\r', '\n') + "\n";
             WriteJsonStringAtomic(path, raw);
@@ -92,13 +99,65 @@ public sealed class PendingInbox
     /// <summary>A note is still pending iff the live push or info deliver file still references its FilePath.</summary>
     private bool IsStillPending(string recipientPrefix, string filePath) =>
         ReadRaw(PushPath(recipientPrefix)).Contains(filePath, StringComparison.Ordinal) ||
+        ReadRaw(PushPath(recipientPrefix) + ".inflight").Contains(filePath, StringComparison.Ordinal) ||
         ReadRaw(InfoPath(recipientPrefix)).Contains(filePath, StringComparison.Ordinal);
 
     /// <summary>True if <paramref name="recipientPrefix"/> has any pending push or info note.</summary>
     public bool HasPending(string recipientPrefix)
     {
         lock (_gate)
-            return NonEmpty(PushPath(recipientPrefix)) || NonEmpty(InfoPath(recipientPrefix));
+            return NonEmpty(PushPath(recipientPrefix)) || NonEmpty(PushPath(recipientPrefix) + ".inflight") || NonEmpty(InfoPath(recipientPrefix));
+    }
+
+    /// <summary>
+    /// Reserve pushing notes durably until transport acceptance. A failed send restores the notes
+    /// ahead of arrivals during the send. The file lease also recovers a prior process's abandoned claim.
+    /// Informational notes remain available for explicit check_inbox or the prompt hook.
+    /// </summary>
+    public async Task<bool> TryDeliverPushAsync(string recipientPrefix, Func<string, Task<bool>> send)
+    {
+        var path = PushPath(recipientPrefix);
+        var inflight = path + ".inflight";
+        if (!File.Exists(path) && !File.Exists(inflight)) return false;
+        FileStream lease;
+        try { lease = new FileStream(path + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
+        catch (IOException) { return false; } // another caller owns this recipient's reservation
+        using (lease)
+        {
+            lock (_gate)
+            {
+                if (File.Exists(inflight)) RestoreClaim(path, inflight);
+                if (!File.Exists(path)) return false;
+                try { File.Move(path, inflight); }
+                catch (FileNotFoundException) { return false; } // a native hook claimed it first
+            }
+            var accepted = false;
+            try
+            {
+                var raw = ReadClaim(inflight);
+                accepted = string.IsNullOrWhiteSpace(raw) || await send(raw).ConfigureAwait(false);
+                return accepted;
+            }
+            finally
+            {
+                lock (_gate)
+                {
+                    if (accepted) File.Delete(inflight);
+                    else RestoreClaim(path, inflight);
+                }
+            }
+        }
+    }
+
+    private static string ReadClaim(string path)
+        => File.Exists(path) ? JsonSerializer.Deserialize<string>(File.ReadAllText(path)) ?? "" : "";
+
+    private static void RestoreClaim(string path, string inflight)
+    {
+        // Leave inflight intact if reading/writing fails, so a later attempt can recover it.
+        var raw = ReadClaim(inflight) + ReadClaim(path);
+        WriteJsonStringAtomic(path, raw);
+        File.Delete(inflight);
     }
 
     /// <summary>

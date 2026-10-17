@@ -18,7 +18,7 @@ public partial class ChangesView : UserControl
         if (DataContext is ChangesViewModel vm &&
             ((SelectingItemsControl)sender!).SelectedItem is GitChange file)
         {
-            _ = vm.SelectFileAsync(file);
+            _ = vm.SelectFileAsync(file, staged: ReferenceEquals(sender, StagedList));
         }
     }
 }

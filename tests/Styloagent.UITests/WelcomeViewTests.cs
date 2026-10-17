@@ -103,6 +103,14 @@ public class WelcomeViewTests
             Assert.True(cds.IsChecked, "Claude+DS card must end checked");
             Assert.False(vm.IsClaudeFirst);
             Assert.False(claude.IsChecked, "Claude card must unselect when a new runtime is picked");
+            var openCode = Toggle(window, "OpenCodeFirstToggle")!;
+            Assert.NotNull(openCode);
+            openCode.IsChecked = true;
+            openCode.Command!.Execute("OpenCode");
+            Assert.Equal(AgentRuntimeKind.OpenCode, vm.SelectedRuntime);
+            Assert.Equal(AgentRuntimeKind.OpenCode, saved);
+            Assert.True(openCode.IsChecked);
+            Assert.False(cds.IsChecked);
 
             window.Close();
         });

@@ -137,7 +137,7 @@ public class GitPanelRefreshTests
         File.WriteAllText(Path.Combine(savedContext, "agent-context.md"), "# agent");
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 channelRoot, new FakeLauncher(), new FakeWatcher());
 
             // Wire the pre-loaded sub-VMs into the main VM.
@@ -179,7 +179,7 @@ public class GitPanelRefreshTests
         File.WriteAllText(Path.Combine(channelRoot, "saved-context", "agent-context.md"), "# agent");
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(channelRoot, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(channelRoot, new FakeLauncher(), new FakeWatcher());
             vm.GitGraph = new GitGraphViewModel(log);
             vm.Changes = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash());
 
@@ -221,7 +221,7 @@ public class GitPanelRefreshTests
         File.WriteAllText(Path.Combine(channelRoot, "saved-context", "agent-context.md"), "# agent");
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(channelRoot, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(channelRoot, new FakeLauncher(), new FakeWatcher());
             vm.GitGraph = new GitGraphViewModel(log);
             vm.Changes = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash());
 

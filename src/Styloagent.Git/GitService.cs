@@ -93,7 +93,24 @@ public sealed class GitService : IGitService, IGitLog, IGitDiff, IGitWrite, IGit
         => ToResult(await RunAsync(worktreePath, ct, "commit", "-m", message).ConfigureAwait(false));
 
     public async Task<GitResult> PushAsync(string worktreePath, CancellationToken ct = default)
-        => ToResult(await RunAsync(worktreePath, ct, "push").ConfigureAwait(false));
+    {
+        var upstream = await RunAsync(worktreePath, ct, "rev-parse", "--abbrev-ref", "@{upstream}").ConfigureAwait(false);
+        if (upstream.Ok)
+            return ToResult(await RunAsync(worktreePath, ct, "push").ConfigureAwait(false));
+
+        var branch = await RunAsync(worktreePath, ct, "branch", "--show-current").ConfigureAwait(false);
+        if (!branch.Ok || string.IsNullOrWhiteSpace(branch.Stdout))
+            return GitResult.Fail("Cannot push a detached HEAD. Switch to a branch first.");
+        var remotes = await RunAsync(worktreePath, ct, "remote").ConfigureAwait(false);
+        if (!remotes.Ok) return ToResult(remotes);
+        var names = remotes.Stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var remote = names.Contains("origin", StringComparer.Ordinal) ? "origin" : names.Length == 1 ? names[0] : null;
+        if (remote is null)
+            return GitResult.Fail(names.Length == 0 ? "No remote configured for this repository." :
+                "Multiple remotes: configure an upstream for this branch before pushing.");
+        return ToResult(await RunAsync(worktreePath, ct, "push", "--set-upstream", remote,
+            $"HEAD:refs/heads/{branch.Stdout.Trim()}").ConfigureAwait(false));
+    }
 
     public async Task<GitResult> PullAsync(string worktreePath, CancellationToken ct = default)
         => ToResult(await RunAsync(worktreePath, ct, "pull", "--no-edit").ConfigureAwait(false));
@@ -196,10 +213,20 @@ public sealed class GitService : IGitService, IGitLog, IGitDiff, IGitWrite, IGit
                 return Process.Start(psi);
             }, ct).ConfigureAwait(false);
             if (proc is null) return new ProcOutcome(false, "", "failed to start git");
-            string stdout = await proc.StandardOutput.ReadToEndAsync(ct).ConfigureAwait(false);
-            string stderr = await proc.StandardError.ReadToEndAsync(ct).ConfigureAwait(false);
-            await proc.WaitForExitAsync(ct).ConfigureAwait(false);
-            return new ProcOutcome(proc.ExitCode == 0, stdout, stderr);
+            // Drain both pipes concurrently: a verbose push can fill stderr before stdout closes.
+            var stdout = proc.StandardOutput.ReadToEndAsync(ct);
+            var stderr = proc.StandardError.ReadToEndAsync(ct);
+            try
+            {
+                await Task.WhenAll(stdout, stderr, proc.WaitForExitAsync(ct)).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); }
+                catch (InvalidOperationException) { }
+                throw;
+            }
+            return new ProcOutcome(proc.ExitCode == 0, await stdout.ConfigureAwait(false), await stderr.ConfigureAwait(false));
         }
         catch (Exception ex)
         {

@@ -76,7 +76,7 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     // checkpoint target, and Rehydrate when dehydrated. Keeps the buttons disabled in invalid states so
     // e.g. "Spawn" on an already-running agent can't orphan its process.
     private bool CanSpawn => State != SessionState.Live;
-    private bool CanDehydrate => State == SessionState.Live && !string.IsNullOrWhiteSpace(_manifest.SavedContextPath);
+    private bool CanDehydrate => State == SessionState.Live && (Runtime == AgentRuntimeKind.OpenCode || !string.IsNullOrWhiteSpace(_manifest.SavedContextPath));
     private bool CanRehydrate => State == SessionState.Dehydrated;
 
     /// <summary>
@@ -424,7 +424,7 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     public void RefreshUsage()
     {
         var cwd = _cwd ?? _manifest.Worktree;
-        var sid = _sessionId;
+        var sid = _session.NativeControl?.SessionId ?? _sessionId;
         if (string.IsNullOrEmpty(sid)) return;
         if (Interlocked.Exchange(ref _usageRefreshInFlight, 1) != 0) return;
 
@@ -433,7 +433,7 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
             try
             {
                 var profile = AgentRuntimeProfile.For(_manifest.Runtime);
-                var usage = profile.UseCodexTranscriptReader
+                var usage = _session.NativeControl is { } native ? native.Usage : profile.UseCodexTranscriptReader
                     ? Styloagent.Core.Transcripts.CodexTranscriptReader.ReadLatestForSession(sid)
                     : Styloagent.Core.Transcripts.TranscriptReader.ReadLatest(
                         Styloagent.Core.Transcripts.TranscriptReader.PathFor(cwd, sid), _manifest.Model);
@@ -540,11 +540,12 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     public ModelTier? Tier => _manifest.Tier;
 
     /// <summary>The resolved runtime/model/effort selection shown in the agent roster.</summary>
-    public string SelectedModel =>
+    public string SelectedModel => _session.NativeControl?.Model ?? (
         string.IsNullOrWhiteSpace(_manifest.Model)
             ? AgentRuntimeProfile.For(_manifest.Runtime).DefaultModel ?? "default"
-            : _manifest.Model;
-    public string SelectedEffort => string.IsNullOrWhiteSpace(_manifest.Effort) ? "default" : _manifest.Effort;
+            : _manifest.Model);
+    public string SelectedEffort => _session.NativeControl?.Effort ?? (string.IsNullOrWhiteSpace(_manifest.Effort) ? "default" : _manifest.Effort);
+    public INativeAgentSession? NativeControl => _session.NativeControl;
 
     public string AgentSelectionText
         => $"{RuntimeName()} · {SelectedModel} · effort {SelectedEffort}";
@@ -629,6 +630,20 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
         // hook, so the hook state would otherwise stay stuck (e.g. ⚠ needs-you) on a dead agent. Wire every
         // spawn/rehydrate, plus the current PTY if this pane is created for an already-live session.
         _session.PtyStarted += WirePtyExit;
+        _session.RuntimeEvent += value =>
+        {
+            void Apply()
+            {
+                if (Host is not null) Host.AcceptRuntimeEvent(value);
+                else ApplyHookEvent(value);
+                OnPropertyChanged(nameof(SelectedModel));
+                OnPropertyChanged(nameof(SelectedEffort));
+                OnPropertyChanged(nameof(AgentSelectionText));
+                RefreshUsage();
+            }
+            if (global::Avalonia.Threading.Dispatcher.UIThread.CheckAccess()) Apply();
+            else global::Avalonia.Threading.Dispatcher.UIThread.Post(Apply);
+        };
         if (_session.CurrentPty is { } livePty) WirePtyExit(livePty);
     }
 
@@ -654,10 +669,9 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
     /// </summary>
     private void OnPtyExited()
     {
-        if (global::Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
-            HookState = AgentHookState.Exited;
-        else
-            global::Avalonia.Threading.Dispatcher.UIThread.Post(() => HookState = AgentHookState.Exited);
+        void ApplyExit() { State = SessionState.Exited; HookState = AgentHookState.Exited; }
+        if (global::Avalonia.Threading.Dispatcher.UIThread.CheckAccess()) ApplyExit();
+        else global::Avalonia.Threading.Dispatcher.UIThread.Post(ApplyExit);
     }
 
     /// <summary>
@@ -684,6 +698,8 @@ public sealed partial class AgentPaneViewModel : Document, global::Dock.Controls
             Styloagent.Core.Sessions.SpawnDiag.Log($"AgentPaneViewModel.SpawnAsync THREW prefix={_manifest.Prefix}: {ex}");
             System.Diagnostics.Trace.WriteLine(
                 $"[AgentPaneViewModel] spawn failed for '{_manifest.Prefix}': {ex}");
+            HookState = AgentHookState.WaitingForHuman;
+            WaitingQuestion = "Could not start " + AgentRuntime.Name(_manifest.Runtime) + ": " + ex.Message;
         }
         State = _session.State;
     }

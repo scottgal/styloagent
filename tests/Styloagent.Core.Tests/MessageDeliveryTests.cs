@@ -5,6 +5,54 @@ using Xunit;
 
 public class MessageDeliveryTests
 {
+    private sealed class AdmissionInjector : IMessageInjector
+    {
+        public InjectionResult Result = InjectionResult.Unavailable;
+        public Task InjectAsync(string agentId, string text, bool breakFirst, CancellationToken ct = default)
+            => throw new Exception("The service must inspect admission instead of assuming success.");
+        public Task<InjectionResult> TryInjectAsync(string agentId, string text, bool breakFirst, CancellationToken ct = default)
+            => Task.FromResult(Result);
+    }
+
+    [Fact]
+    public async Task Missing_or_composing_idle_recipient_retains_durable_message_until_accepted()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "delivery-admission-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var pending = new PendingInbox(root);
+            var injector = new AdmissionInjector();
+            var service = new MessageDeliveryService(PriorityPolicy.Default, injector, pending);
+            var message = Msg(MessagePriority.Normal);
+            Assert.Equal(DeliveryAction.EnqueuePending, await service.DeliverAsync(message, "beta-", AgentHookState.Idle));
+            Assert.False(pending.PickedUp("beta-", message.FilePath));
+            injector.Result = InjectionResult.Deferred;
+            await service.OnRecipientStateChangedAsync("beta-", AgentHookState.Idle);
+            Assert.True(pending.HasPending("beta-"));
+            Assert.False(pending.PickedUp("beta-", message.FilePath));
+            injector.Result = InjectionResult.Accepted;
+            await service.OnRecipientStateChangedAsync("beta-", AgentHookState.Idle);
+            Assert.False(pending.HasPending("beta-"));
+            Assert.True(pending.PickedUp("beta-", message.FilePath));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task Fallback_queue_dequeues_only_after_transport_accepts()
+    {
+        var injector = new AdmissionInjector();
+        var service = new MessageDeliveryService(PriorityPolicy.Default, injector);
+        await service.DeliverAsync(Msg(MessagePriority.Normal), "beta-", AgentHookState.Working);
+        await service.OnRecipientStateChangedAsync("beta-", AgentHookState.Idle);
+        Assert.Equal(1, service.DeferredCount("beta-"));
+        injector.Result = InjectionResult.Accepted;
+        await service.OnRecipientStateChangedAsync("beta-", AgentHookState.Idle);
+        Assert.Equal(0, service.DeferredCount("beta-"));
+        injector.Result = InjectionResult.Unavailable;
+        await Assert.ThrowsAsync<IOException>(() => service.DeliverAsync(Msg(MessagePriority.Normal), "beta-", AgentHookState.Idle));
+    }
+
     private static BusMessage Msg(MessagePriority priority) =>
         new("topic", "alpha-", BusMessageKind.Inbox, BusMessageState.New,
             "/ch/inbox/alpha-topic.md", null, "ops", "body", priority);

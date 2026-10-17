@@ -11,6 +11,7 @@ public sealed class AgentSession
     private readonly IReadOnlyList<string> _launchArgs;
     private readonly IReadOnlyDictionary<string, string>? _env;
     private readonly AgentRuntimeProfile _runtime;
+    private readonly OpenCodeOptions? _openCodeOptions;
     private IPtySession? _pty;
 
     /// <summary>Completes when the child emits its first output — see <see cref="InjectBootTimeout"/>.</summary>
@@ -61,9 +62,10 @@ public sealed class AgentSession
         IPtyLauncher launcher,
         IFileWatcher watcher,
         IReadOnlyList<string>? launchArgs = null,
-        IReadOnlyDictionary<string, string>? env = null)
-        => (_manifest, _launcher, _watcher, _launchArgs, _env, _runtime)
-            = (manifest, launcher, watcher, launchArgs ?? Array.Empty<string>(), env, AgentRuntimeProfile.For(manifest.Runtime));
+        IReadOnlyDictionary<string, string>? env = null,
+        OpenCodeOptions? openCodeOptions = null)
+        => (_manifest, _launcher, _watcher, _launchArgs, _env, _runtime, _openCodeOptions)
+            = (manifest, launcher, watcher, launchArgs ?? Array.Empty<string>(), env, AgentRuntimeProfile.For(manifest.Runtime), openCodeOptions);
 
     public SessionState State { get; private set; } = SessionState.Unspawned;
 
@@ -71,6 +73,8 @@ public sealed class AgentSession
     public IPtySession? CurrentPty { get; private set; }
 
     public event Action<string>? Output;
+    public event Action<Hooks.HookEvent>? RuntimeEvent;
+    public INativeAgentSession? NativeControl => _pty as INativeAgentSession;
 
     /// <summary>Raised after <see cref="CurrentPty"/> is set, passing the new session.</summary>
     public event Action<IPtySession>? PtyStarted;
@@ -80,6 +84,28 @@ public sealed class AgentSession
         // Already running — re-spawning would overwrite _pty and orphan the live process (and leak its
         // Output handler). Spawn is only valid from a non-Live state.
         if (State == SessionState.Live) return;
+        if (_pty is not null)
+        {
+            _pty.Exited -= OnBackendExited;
+            await _pty.DisposeAsync();
+            _pty = CurrentPty = null;
+        }
+        if (_manifest.Runtime == AgentRuntimeKind.OpenCode)
+        {
+            var options = _openCodeOptions ?? new OpenCodeOptions(_manifest.Prefix, _manifest.Repo, _manifest.Prefix);
+            var native = await OpenCodeSession.StartAsync(options,
+                new PtySpawnOptions("opencode", Array.Empty<string>(), _manifest.Worktree, _env, _initialCols, _initialRows),
+                _launcher, launchPrompt, _manifest.Model, _manifest.Effort, ct);
+            native.RuntimeEvent += ForwardRuntimeEvent;
+            native.Output += OnOutput;
+            native.Exited += OnBackendExited;
+            _pty = CurrentPty = native;
+            State = SessionState.Live;
+            PtyStarted?.Invoke(native);
+            RuntimeEvent?.Invoke(new(options.HookId, "SessionStart", null, null, native.SessionId, _manifest.Worktree));
+            await native.ReconcileAsync(ct, force: true);
+            return;
+        }
         SpawnDiag.Log($"AgentSession.SpawnAsync START prefix={_manifest.Prefix} runtime={_runtime.Kind} command={_runtime.Command} cwd={_manifest.Worktree} cols={_initialCols} rows={_initialRows} argc={_launchArgs.Count}");
         // Log the actual argv (values truncated) so we can see WHY a child's launch differs from the
         // surviving root's — a broken/empty flag value would make claude exit 1 on startup.
@@ -92,6 +118,7 @@ public sealed class AgentSession
             Command: _runtime.Command, Args: ArgsForPrompt(launchPrompt),
             WorkingDirectory: _manifest.Worktree, Env: _env, Cols: _initialCols, Rows: _initialRows), ct);
         _pty.Output += OnOutput;
+        _pty.Exited += OnBackendExited;
         var promptMode = _runtime.SupportsInitialPromptArgument ? "passing prompt as CLI argument" : "injecting prompt";
         SpawnDiag.Log($"AgentSession.SpawnAsync launched prefix={_manifest.Prefix}; {promptMode} ({launchPrompt?.Length ?? 0} chars, settle={InjectSettleDelay.TotalMilliseconds}ms retry={InjectEnterRetryDelay.TotalMilliseconds}ms)");
         if (!string.IsNullOrEmpty(launchPrompt) && !_runtime.SupportsInitialPromptArgument)
@@ -145,6 +172,14 @@ public sealed class AgentSession
     public async Task<bool> DehydrateAsync(TimeSpan ackTimeout, CancellationToken ct = default)
     {
         if (_pty is null || State != SessionState.Live) return false;
+        if (_pty is INativeAgentSession native)
+        {
+            await native.InterruptAsync(resume: false, ct);
+            await _pty.DisposeAsync();
+            _pty = CurrentPty = null;
+            State = SessionState.Dehydrated;
+            return true;
+        }
         // No checkpoint target (e.g. the overview agent) — cannot dehydrate; keep it live rather than
         // ask it to checkpoint to nowhere and then watch an empty path.
         if (string.IsNullOrWhiteSpace(_manifest.SavedContextPath)) return false;
@@ -192,9 +227,11 @@ public sealed class AgentSession
     public async Task RehydrateAsync(string restartPrompt, CancellationToken ct = default)
     {
         if (State != SessionState.Dehydrated) return;
+        if (_manifest.Runtime == AgentRuntimeKind.OpenCode) { await SpawnAsync(restartPrompt, ct); return; }
         _pty = await _launcher.SpawnAsync(new PtySpawnOptions(
             _runtime.Command, ArgsForPrompt(restartPrompt), _manifest.Worktree, _env, _initialCols, _initialRows), ct);
         _pty.Output += OnOutput;
+        _pty.Exited += OnBackendExited;
         if (!_runtime.SupportsInitialPromptArgument)
             await InjectPromptAsync(_pty, restartPrompt, ct);
         CurrentPty = _pty;
@@ -208,6 +245,10 @@ public sealed class AgentSession
         _firstPaint.TrySetResult();
         Output?.Invoke(chunk);
     }
+
+    private void OnBackendExited() => State = SessionState.Exited;
+
+    private void ForwardRuntimeEvent(Hooks.HookEvent value) => RuntimeEvent?.Invoke(value);
 
     private IReadOnlyList<string> ArgsForPrompt(string prompt)
     {

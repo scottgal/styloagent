@@ -12,9 +12,11 @@ public class ChannelDeliveryCoordinatorTests
     private sealed class FakeInjector : IMessageInjector
     {
         public readonly List<Injection> Calls = new();
+        public string? FailOnceFor;
         public Task InjectAsync(string agentId, string text, bool breakFirst, CancellationToken ct = default)
         {
             Calls.Add(new Injection(agentId, text, breakFirst));
+            if (agentId == FailOnceFor) { FailOnceFor = null; throw new IOException("temporary delivery failure"); }
             return Task.CompletedTask;
         }
     }
@@ -34,6 +36,25 @@ public class ChannelDeliveryCoordinatorTests
     {
         var svc = new MessageDeliveryService(PriorityPolicy.Default, inj);
         return new ChannelDeliveryCoordinator(root, Prefixes, svc, () => agents);
+    }
+
+    [Fact]
+    public async Task Failed_broadcast_recipient_is_retried_without_repeating_accepted_recipients()
+    {
+        var root = NewChannel();
+        try
+        {
+            var injector = new FakeInjector { FailOnceFor = "beta-" };
+            var coordinator = Coordinator(root, injector,
+                new AgentPresence("alpha-", AgentHookState.Idle), new AgentPresence("beta-", AgentHookState.Idle));
+            Drop(root, "all-retry.md", "**From:** operator-\n**Priority:** urgent");
+            Assert.Equal(1, await coordinator.PumpAsync());
+            Assert.Equal(1, await coordinator.PumpAsync());
+            Assert.Equal(0, await coordinator.PumpAsync());
+            Assert.Single(injector.Calls, c => c.AgentId == "alpha-");
+            Assert.Equal(2, injector.Calls.Count(c => c.AgentId == "beta-"));
+        }
+        finally { Directory.Delete(root, true); }
     }
 
     [Fact]

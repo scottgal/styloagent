@@ -215,10 +215,13 @@ public class HookLogicTests
 
         using var doc = JsonDocument.Parse(json);
         var picker = doc.RootElement.GetProperty("modelPicker");
-        Assert.False(picker.GetProperty("replaceBuiltInOptions").GetBoolean());
+        Assert.True(picker.GetProperty("replaceBuiltInOptions").GetBoolean());
 
-        var row = Assert.Single(picker.GetProperty("options").EnumerateArray());
+        var rows = picker.GetProperty("options").EnumerateArray().ToArray();
+        var row = Assert.Single(rows, r => r.GetProperty("model").GetString() == "deepseek-flash");
         Assert.Equal("deepseek-flash", row.GetProperty("model").GetString());
         Assert.Equal("sonnet", row.GetProperty("behavesAs").GetString());
+        Assert.DoesNotContain(rows, r => r.GetProperty("model").GetString() ==
+            Styloagent.Core.Sessions.DeepSeekModels.OpenRouterFlash);
     }
 }

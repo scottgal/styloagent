@@ -118,13 +118,18 @@ public class ChangesViewModelTests
 
     private sealed class FakeDiff : IGitDiff
     {
+        public bool LastStaged;
         public Task<GitResult<FileDiff>> GetDiffAsync(string w, string path, bool staged, CancellationToken ct = default)
-            => Task.FromResult(GitResult<FileDiff>.Success(new FileDiff(path, 1, 0, false,
+        {
+            LastStaged = staged;
+            return Task.FromResult(GitResult<FileDiff>.Success(new FileDiff(path, 1, 0, false,
                 new[] { new DiffLine(DiffLineKind.Added, "hello", 0, 1) })));
+        }
     }
 
     private sealed class FakeWrite : IGitWrite
     {
+        public TaskCompletionSource<GitResult>? PendingPush;
         public string? LastStaged;
         public string? LastCommitMsg;
         public bool NextFails;
@@ -145,7 +150,7 @@ public class ChangesViewModelTests
         }
 
         public Task<GitResult> PushAsync(string w, CancellationToken ct = default)
-            => Task.FromResult(NextFails ? GitResult.Fail("boom") : GitResult.Success());
+            => PendingPush?.Task ?? Task.FromResult(NextFails ? GitResult.Fail("boom") : GitResult.Success());
 
         public Task<GitResult> PullAsync(string w, CancellationToken ct = default)
             => Task.FromResult(NextFails ? GitResult.Fail("boom") : GitResult.Success());
@@ -565,5 +570,61 @@ public class ChangesViewModelTests
         Assert.Equal("v2.4.9", tags.CreatedName);
         Assert.Equal("Cockpit release", tags.CreatedMessage);
         Assert.True(tags.Pushed);
+    }
+
+    [Fact]
+    public async Task Watcher_refresh_preserves_a_tag_name_being_edited()
+    {
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash(), new FakeTags());
+        await vm.LoadAsync("/wt");
+        vm.SuggestedTag = "v3.0.0-rc1";
+        await vm.LoadAsync("/wt");
+        Assert.Equal("v3.0.0-rc1", vm.SuggestedTag);
+    }
+
+    [Fact]
+    public async Task Commands_cannot_mutate_before_a_repository_is_selected()
+    {
+        var tags = new FakeTags();
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), new FakeWrite(), new FakeBranch(), new FakeStash(), tags);
+        vm.SuggestedTag = "v1.0.0";
+        await vm.CreateTagAsync();
+        await vm.PushTagsAsync();
+        Assert.Null(tags.CreatedName);
+        Assert.False(tags.Pushed);
+        Assert.False(vm.CanWrite);
+    }
+
+    [Fact]
+    public async Task Writes_do_not_overlap_or_change_the_selected_repository_when_they_finish()
+    {
+        var write = new FakeWrite { PendingPush = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        var tags = new FakeTags();
+        var vm = new ChangesViewModel(new FakeGit(), new FakeDiff(), write, new FakeBranch(), new FakeStash(), tags);
+        await vm.LoadAsync("/first");
+        var push = vm.PushAsync();
+        Assert.True(vm.IsBusy);
+        Assert.False(vm.CanWrite);
+        await vm.CreateTagAsync();
+        Assert.Null(tags.CreatedName);
+        await vm.LoadAsync("/second");
+        write.PendingPush.SetResult(GitResult.Success());
+        await push;
+        Assert.Equal("/second", vm.RepositoryPath);
+        Assert.True(vm.CanWrite);
+        Assert.Null(vm.WriteStatus);
+    }
+
+    [Fact]
+    public async Task A_partially_staged_file_can_show_either_index_or_working_tree_diff()
+    {
+        var diff = new FakeDiff();
+        var vm = new ChangesViewModel(new FakeGit(), diff, new FakeWrite(), new FakeBranch(), new FakeStash());
+        await vm.LoadAsync("/wt");
+        var file = new GitChange("partial.txt", GitChangeKind.Modified, true, true);
+        await vm.SelectFileAsync(file, staged: true);
+        Assert.True(diff.LastStaged);
+        await vm.SelectFileAsync(file, staged: false);
+        Assert.False(diff.LastStaged);
     }
 }

@@ -11,7 +11,7 @@ public class DiagramCommandsTests
         var root = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
             vm.ShowSystemMapCommand.Execute(null);
 
             var diagrams = vm.OpenDiagramsForTest();
@@ -29,7 +29,7 @@ public class DiagramCommandsTests
         var root = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
             vm.ShowSystemMapCommand.Execute(null);
             var diagrams = vm.OpenDiagramsForTest();
             var doc = diagrams[diagrams.Count - 1];
@@ -50,7 +50,7 @@ public class DiagramCommandsTests
         var root = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
             vm.ShowBusSequenceCommand.Execute(null);
 
             var diagrams = vm.OpenDiagramsForTest();

@@ -624,8 +624,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// explicit per-prompt human action — NOT auto-bypass; the operator chooses to approve each one.
     /// </summary>
     [RelayCommand]
-    private void ApprovePermission(AgentPaneViewModel? pane)
+    private async Task ApprovePermission(AgentPaneViewModel? pane)
     {
+        if (pane?.NativeControl is { } native)
+        {
+            try { await native.ReplyToPermissionAsync("once"); }
+            catch (Exception ex) { pane.WaitingQuestion = "OpenCode approval failed: " + ex.Message; }
+            return;
+        }
         if (pane?.CurrentPty is not { } pty) return;
         _ = pty.WriteAsync(AgentRuntimeProfile.For(pane.Runtime).PtyWakeString);
         if (_codexApprovals.TryGetValue(pane, out var approval)) approval.Detector.Resolve();
@@ -1567,7 +1573,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string firstHookId = vm.ReserveHookId(first.Prefix);
         var session = new AgentSession(first, launcher, watcher,
             vm.LaunchArgsFor(firstHookId, first, vm._overviewSystemPromptArgs),
-            vm.BuildEnv(first, repoRoot));
+            vm.BuildEnv(first, repoRoot),
+            vm.OpenCodeOptionsFor(first, firstHookId, vm._hookChannel, repoRoot, vm._project?.ProtocolPath, vm._overviewSystemPromptArgs));
 
         vm.Pane = new AgentPaneViewModel(
             session,
@@ -1652,6 +1659,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     [RelayCommand]
     public void AddClaudeDeepSeek() => AddAgent(AgentRuntimeKind.ClaudeDeepSeek);
 
+    [RelayCommand]
+    public void AddOpenCode() => AddAgent(AgentRuntimeKind.OpenCode);
+
     private void AddAgent(AgentRuntimeKind? runtimeOverride)
     {
         if (_dockFactory is null || _launcher is null || _watcher is null)
@@ -1706,7 +1716,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         entry = WithWorkingDir(entry);
         string hookId = ReserveHookId(entry.Prefix);
         var session = new AgentSession(entry, _launcher, _watcher, LaunchArgsFor(hookId, entry),
-            BuildEnv(entry, _repoRoot));
+            BuildEnv(entry, _repoRoot),
+            OpenCodeOptionsFor(entry, hookId, _hookChannel, _repoRoot, _project?.ProtocolPath));
         var owner = OverviewPane();   // the overview owns agents added to its fleet
         var paneVm = new AgentPaneViewModel(
             session,
@@ -1783,7 +1794,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string hookId = ReserveHookId(entry.Prefix);
         var session = new AgentSession(entry, _launcher, _watcher,
             LaunchArgsFor(hookId, entry, hooks, channelRoot, repoRoot, protocolPath, systemPromptArgs),
-            BuildEnv(entry, repoRoot));
+            BuildEnv(entry, repoRoot),
+            OpenCodeOptionsFor(entry, hookId, hooks, repoRoot, protocolPath, systemPromptArgs));
 
         var paneVm = new AgentPaneViewModel(session, entry, overview.Prefix.TrimEnd('-'), overview.ColorHex)
         {
@@ -2323,9 +2335,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         // A spawned child inherits the PARENT's CLI by default ("spin up the same cli you started in");
         // spawn_agent can still pass an explicit runtime to override. Falls back to the global default
         // only when there is no live parent.
-        var runtime = string.IsNullOrWhiteSpace(req.Runtime)
-            ? ParentRuntime(req.ParentPrefix)
-            : AgentRuntime.Parse(req.Runtime);
+        AgentRuntimeKind runtime;
+        try { runtime = string.IsNullOrWhiteSpace(req.Runtime) ? ParentRuntime(req.ParentPrefix) : AgentRuntime.Parse(req.Runtime); }
+        catch (ArgumentException ex) { return SpawnOutcome.Reject(RejectReason.InvalidRuntime, ex.Message); }
         // Spawned specialists are classified by TIER, never by a raw model id. Unasked, a child runs ONE TIER
         // BELOW the agent that spawned it (overview flagship -> standard -> cheap), so depth degrades down the
         // tree on its own and job-type policy never has to name a runtime or a model. An explicit tier/model
@@ -2335,7 +2347,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             tier = Styloagent.Core.Model.ModelTierResolver.StepDown(ParentTier(req.ParentPrefix));
         var model = req.Model;
         var runtimeName = RuntimeName(runtime);
-        var capabilities = BuildAgentCapabilities();
+        var capabilities = BuildAgentCapabilitiesForRepo(RepoForPrefix(req.ParentPrefix)?.Path ?? _repoRoot);
         // An EXPLICIT model is checked as given (asking for something this machine lacks is a real error the
         // spawner must see). A TIER, though, is only a classification — resolve it to a model this machine
         // can actually run, falling back to the CLI's own configured default when the tier's preferred id has
@@ -2415,8 +2427,35 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     /// <summary>Reloads the repo capability catalog and overlays the live Codex catalog.</summary>
     public AgentCapabilities BuildAgentCapabilities()
-        => AgentCapabilities.Load(_project?.Root ?? _repoRoot)
-            .WithCodexModels(Core.Mcp.CodexModelDiscovery.GetOrStartRefresh());
+        => BuildAgentCapabilitiesForRepo(_project?.Root ?? _repoRoot);
+
+    public AgentCapabilities BuildAgentCapabilities(string? repoName)
+    {
+        if (string.IsNullOrWhiteSpace(repoName)) return BuildAgentCapabilities();
+        var repo = _repos.FirstOrDefault(r => r.Name.Equals(repoName, StringComparison.OrdinalIgnoreCase))
+            ?? throw new ArgumentException("Unknown repository: " + repoName, nameof(repoName));
+        return BuildAgentCapabilitiesForRepo(repo.Path);
+    }
+
+    private static AgentCapabilities BuildAgentCapabilitiesForRepo(string? root)
+    {
+        DeepSeekEnv.Load(root).TryGetValue("ANTHROPIC_BASE_URL", out var endpoint);
+        return AgentCapabilities.Load(root)
+            .WithOpenCodeModels(OpenCodeModelCatalog.For(root).Select(m => m.Capability).ToArray())
+            .WithCodexModels(Core.Mcp.CodexModelDiscovery.GetOrStartRefresh())
+            .WithDeepSeekModels(DiscoverDeepSeekModels(root).Select(m => m.Capability).ToArray())
+            .WithDeepSeekEndpoint(endpoint);
+    }
+
+    private static IReadOnlyList<DiscoveredDeepSeekModel> DiscoverDeepSeekModels(string? repoRoot)
+    {
+        var routing = DeepSeekEnv.Load(repoRoot);
+        routing.TryGetValue("ANTHROPIC_BASE_URL", out var baseUrl);
+        if (!DeepSeekModels.IsOpenRouter(baseUrl))
+            return Array.Empty<DiscoveredDeepSeekModel>();
+        routing.TryGetValue("ANTHROPIC_AUTH_TOKEN", out var token);
+        return DeepSeekModelDiscovery.Shared.GetOrStartRefresh(token);
+    }
 
     private static string? LiveCodexDefaultModel()
         => Core.Mcp.CodexModelDiscovery.GetOrStartRefresh()
@@ -2471,17 +2510,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// when no workspace repos are known (single-repo tests).
     /// </summary>
     private string RepoNameForPrefix(string prefix)
+        => RepoForPrefix(prefix)?.Name ?? "";
+
+    private RepoInfo? RepoForPrefix(string prefix)
     {
-        if (_repos.Count == 0) return "";
+        if (_repos.Count == 0) return null;
         var seen = new HashSet<string>();
         string? p = prefix;
         while (p is not null && seen.Add(p))
         {
             var hit = _repos.FirstOrDefault(r => r.Prefix == p);
-            if (hit is not null) return hit.Name;
+            if (hit is not null) return hit;
             p = Panes.FirstOrDefault(x => x.Prefix == p)?.ParentPrefix;
         }
-        return _repos[0].Name;   // default: the primary (anchor) repo
+        return _repos.FirstOrDefault(r => r.Primary) ?? _repos[0];
     }
 
     /// <summary>Context-window fill at which an agent is nudged to dehydrate / hand off before its scope dilutes.</summary>
@@ -2833,7 +2875,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string hookId = ReserveHookId(entry.Prefix);
         var session = new AgentSession(entry, _launcher, _watcher,
             LaunchArgsFor(hookId, entry),
-            BuildEnv(entry, _repoRoot));
+            BuildEnv(entry, _repoRoot),
+            OpenCodeOptionsFor(entry, hookId, _hookChannel, _repoRoot, _project?.ProtocolPath));
         var paneVm = new AgentPaneViewModel(
             session,
             entry,
@@ -2927,7 +2970,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         // repository is detected and its history/changes render even before any worktree agent exists
         // (e.g. the overview agent, which shares the main checkout). _repoRoot is set in InitializeAsync
         // — earlier than _project (AttachProject), which is null while the first pane is being selected.
-        var gitDir = pane?.WorktreePath ?? _repoRoot ?? _project?.Root;
+        var gitDir = GitPathFor(pane);
 
         // Re-point the live watcher at whichever checkout we're showing (or stop if there's none), OFF the
         // UI thread: FileSystemWatcher.StartRaisingEvents() blocks while it establishes the macOS
@@ -2940,6 +2983,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         RefreshGitPanelForPath(gitDir);
         if (pane is not null && _git is not null) _ = pane.RefreshGitStatusAsync(_git);
     }
+
+    internal string? GitPathFor(AgentPaneViewModel? pane)
+        => pane?.WorktreePath ?? (pane is null ? null : RepoForPrefix(pane.Prefix)?.Path) ?? _repoRoot ?? _project?.Root;
 
     /// <summary>
     /// Loads the Git panel for a checkout. Split out of <see cref="RefreshGitPanelFor"/> so the
@@ -3105,24 +3151,34 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         }
     }
 
+    private readonly object _metadataGate = new();
+    private Task _metadataWrites = Task.CompletedTask;
+    private int _disposed;
+
     private void PersistRevivalMetadata(AgentManifestEntry entry)
     {
         if (string.IsNullOrWhiteSpace(_channelRoot)) return;
         var path = RevivalManifestPath(_channelRoot);
-        _ = Task.Run(async () =>
+        lock (_metadataGate)
         {
-            try
+            if (Volatile.Read(ref _disposed) != 0) return;
+            var previous = _metadataWrites;
+            _metadataWrites = Task.Run(async () =>
             {
-                var store = new ManifestStore();
-                var existing = File.Exists(path) ? await store.LoadAsync(path) : Array.Empty<AgentManifestEntry>();
-                var entries = existing.Where(e => e.Prefix != entry.Prefix).Append(entry).ToList();
-                await store.SaveAsync(path, entries);
-            }
-            catch
-            {
-                // Persistence is best-effort; a live agent must never be held back by a metadata write.
-            }
-        });
+                await previous.ConfigureAwait(false);
+                try
+                {
+                    var store = new ManifestStore();
+                    var existing = File.Exists(path) ? await store.LoadAsync(path).ConfigureAwait(false) : Array.Empty<AgentManifestEntry>();
+                    var entries = existing.Where(e => e.Prefix != entry.Prefix).Append(entry).ToList();
+                    await store.SaveAsync(path, entries).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Persistence is best-effort; a live agent must never be held back by a metadata write.
+                }
+            });
+        }
     }
 
     /// <summary>The <c>--settings</c> hook args for a hook id, or none if the channel is unavailable.</summary>
@@ -3157,6 +3213,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string? protocolPath, IEnumerable<string>? claudeOnlyArgs = null)
     {
         var runtime = AgentRuntimeProfile.For(entry.Runtime);
+        if (entry.Runtime == AgentRuntimeKind.OpenCode) return Array.Empty<string>();
         var runtimeInstructions = RuntimeInstructionArgs(entry, repoRoot, protocolPath, claudeOnlyArgs);
 
         // Codex: --config hooks.*=, --config mcp_servers.*=, --sandbox, positional prompt
@@ -3195,11 +3252,34 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
         // Claude's normal-screen renderer is selected in BuildEnv. Unlike --ax-screen-reader it retains
         // Claude's rich ANSI colours and layout while keeping output in the terminal's scrollback buffer.
+        var model = entry.Runtime == AgentRuntimeKind.ClaudeDeepSeek ? ResolveDeepSeekModel(entry, repoRoot) : entry.Model;
         return HookArgs(hookId, entry, hooks, channelRoot, repoRoot, protocolPath)
             .Concat(runtimeInstructions)
             .Concat(McpArgsFor(entry.Prefix))
-            .Concat(runtime.ModelEffortArgs(entry.Model, entry.Effort, entry.Tier))
+            .Concat(runtime.ModelEffortArgs(model, entry.Effort, entry.Tier))
             .ToArray();
+    }
+
+    private OpenCodeOptions? OpenCodeOptionsFor(AgentManifestEntry entry, string hookId, HookChannel? hooks,
+        string? repoRoot, string? protocolPath, IEnumerable<string>? overlays = null)
+    {
+        if (entry.Runtime != AgentRuntimeKind.OpenCode) return null;
+        var host = Environment.ProcessPath ?? "dotnet";
+        IReadOnlyList<string> gate = string.Equals(Path.GetFileNameWithoutExtension(host), "dotnet", StringComparison.OrdinalIgnoreCase)
+            ? new[] { host, Path.Combine(AppContext.BaseDirectory, "Styloagent.App.dll") } : new[] { host };
+        var instructions = RuntimeInstructionArgs(entry, repoRoot, protocolPath, overlays);
+        return new(entry.Prefix, string.IsNullOrWhiteSpace(entry.Repo) ? repoRoot ?? entry.Worktree : entry.Repo,
+            hookId, hooks?.HooksDirectory, _mcpServer is { IsRunning: true } server ? server.BaseUrl : null,
+            instructions.Count > 1 ? instructions[1] : null, PermissionMode, gate);
+    }
+
+    private static string ResolveDeepSeekModel(AgentManifestEntry entry, string? repoRoot)
+    {
+        var routing = DeepSeekEnv.Load(repoRoot);
+        routing.TryGetValue("ANTHROPIC_BASE_URL", out var baseUrl);
+        return DeepSeekModels.ResolveForEndpoint(
+            entry.Model ?? ModelTierResolver.ResolveModel(entry.Runtime, entry.Tier ?? ModelTier.Default) ?? DeepSeekModels.Flash,
+            baseUrl, DeepSeekModelDiscovery.LatestFlash(DiscoverDeepSeekModels(repoRoot)));
     }
 
     /// <summary>Composes project overlays with the current canonical runtime instructions for every launch.</summary>
@@ -3240,6 +3320,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         if (entry.Runtime == AgentRuntimeKind.ClaudeDeepSeek)
         {
             vars[DeepSeekMaxContextTokensEnvironmentVariable] = DeepSeekMaxContextTokensDefault;
+            var models = DiscoverDeepSeekModels(repoRoot);
+            var selectedModel = ResolveDeepSeekModel(entry, repoRoot);
+            var discovered = models.FirstOrDefault(m => m.Capability.Id == selectedModel);
+            if (discovered is { ContextLength: > 0 })
+                vars[DeepSeekMaxContextTokensEnvironmentVariable] = discovered.ContextLength.ToString(System.Globalization.CultureInfo.InvariantCulture);
             foreach (var pair in Core.Sessions.DeepSeekEnv.Load(repoRoot))
                 vars[pair.Key] = pair.Value;
         }
@@ -3323,9 +3408,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         Dispatcher.UIThread.Post(() => ApplyHookEventOnUiThread(e));
     }
 
+    internal void AcceptRuntimeEvent(HookEvent value) => ApplyHookEventOnUiThread(value);
+
     /// <summary>Applies a hook event on the UI thread — extracted so tests can call it directly.</summary>
     private void ApplyHookEventOnUiThread(HookEvent e)
     {
+        if (Volatile.Read(ref _disposed) != 0) return;
         if (_panesByHookId.TryGetValue(e.AgentId, out var pane) && pane is not null)
         {
             // PreCompact fallback: persist a best-effort resume anchor right before a compaction, then stop —
@@ -3346,8 +3434,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             if (!_interaction.IsBusy(IdleWindow)) AutoRevealHead();
 
             // When the agent goes idle, flush any NextPrompt messages that were deferred for it.
-            if (_deliveryService is not null)
-                _ = _deliveryService.OnRecipientStateChangedAsync(pane.Prefix, pane.HookState);
+            var delivery = _paneRepoRoot.TryGetValue(pane, out var repo)
+                ? _repoInstances.FirstOrDefault(i => string.Equals(i.Instance.Channel.RepoRoot, repo, StringComparison.OrdinalIgnoreCase))?.Instance.Delivery ?? _deliveryService
+                : _deliveryService;
+            if (delivery is not null) _ = delivery.OnRecipientStateChangedAsync(pane.Prefix, pane.HookState);
         }
     }
 
@@ -3510,7 +3600,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// <summary>Resolves an agent id (pane prefix) to its live PTY for message injection.</summary>
     private IPtySession? ResolvePty(string agentId)
     {
-        try { return Panes.FirstOrDefault(p => p.Prefix == agentId)?.CurrentPty; }
+        try { return Panes.FirstOrDefault(p => p.Prefix == agentId && (!_paneRepoRoot.TryGetValue(p, out var root) || string.Equals(root, _repoRoot, StringComparison.OrdinalIgnoreCase)))?.CurrentPty; }
         catch (InvalidOperationException) { return null; }  // panes changed mid-lookup
     }
 
@@ -3542,7 +3632,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     {
         for (int attempt = 0; attempt < 3; attempt++)
         {
-            try { return Panes.Select(p => new AgentPresence(p.Prefix, p.HookState)).ToList(); }
+            try { return Panes.Where(p => !_paneRepoRoot.TryGetValue(p, out var root) || string.Equals(root, _repoRoot, StringComparison.OrdinalIgnoreCase)).Select(p => new AgentPresence(p.Prefix, p.HookState)).ToList(); }
             catch (InvalidOperationException) { /* collection changed mid-enumeration; retry */ }
         }
         return Array.Empty<AgentPresence>();
@@ -3715,6 +3805,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     internal void OnIdleTick()
     {
+        if (Volatile.Read(ref _disposed) != 0) return;
         // Refresh each roster's relative "last output Ns" readout off the shared 1s tick
         // (no per-pane timer). Runs on the UI thread; panes only mutate here too.
         // The compact roster hides this field by default; do not fan out N PropertyChanged notifications
@@ -3733,6 +3824,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         if (++_usageTick % 3 == 0)
         {
             foreach (var pane in Panes) pane.RefreshUsage();
+            _ = _deliveryCoordinator?.PumpAsync();
+            foreach (var instance in _repoInstances) _ = instance.Instance.Coordinator.PumpAsync();
             CheckContextDilution();
             // Feed the 0.80 checkpoint monitor off the fresh readings — fires CheckpointNeeded once per
             // fill-up (re-arms after a compaction), so it's safe to observe every tick.
@@ -4074,6 +4167,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// </summary>
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        Task metadata;
+        lock (_metadataGate) metadata = _metadataWrites;
+        metadata.GetAwaiter().GetResult();
         _lifetimeCts.Cancel();
         var docNamesBuild = _docNamesBuildTask;
         if (docNamesBuild is not null && !docNamesBuild.IsCompleted)
@@ -4141,6 +4238,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             _hookChannel = null;
         }
 
+        foreach (var pane in Panes.Where(p => p.Runtime == AgentRuntimeKind.OpenCode).ToArray())
+            _ = pane.KillAsync(force: false);
         _cockpitProcess.Dispose();
     }
 }

@@ -48,7 +48,7 @@ public class WrapUpFreezeTests
         try
         {
             var channelRoot = MainWindowViewModelTests.MakeTwoAgentChannel();
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 channelRoot, new FakeLauncher(), new FakeWatcher(), gitService: git, repoRoot: repo);
             vm.AttachProject(ProjectConfig.For(repo));
 

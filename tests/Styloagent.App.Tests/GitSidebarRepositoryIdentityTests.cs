@@ -11,7 +11,7 @@ public class GitSidebarRepositoryIdentityTests
         var channel = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
             var primary = new RepoOverview("overview-", "/ws/primary",
                 "/ws/primary/.styloagent/system-prompt.md", 0, "#4CDB6E", true);
             var beta = new RepoOverview("beta-", "/ws/beta",
@@ -25,6 +25,9 @@ public class GitSidebarRepositoryIdentityTests
             vm.SelectedPane = vm.Panes.Single(p => p.Prefix == "beta-");
 
             Assert.Equal("beta", vm.GitSidebarRepositoryName);
+            Assert.Equal(beta.RepoRoot, vm.GitPathFor(vm.SelectedPane));
+            vm.SelectedPane!.WorktreePath = "/ws/beta/.worktrees/task";
+            Assert.Equal("/ws/beta/.worktrees/task", vm.GitPathFor(vm.SelectedPane));
 
             vm.SetReposFromOverviews(new[] { primary });
 

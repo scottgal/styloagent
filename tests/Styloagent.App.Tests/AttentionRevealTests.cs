@@ -26,7 +26,7 @@ public class AttentionRevealTests
         var root = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
 
             // Add a second agent so we have a background pane to reveal.
             vm.AddAgentCommand.Execute(null);
@@ -56,7 +56,7 @@ public class AttentionRevealTests
         var root = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
             // Add a second agent and switch back to first so second is inactive.
             vm.AddAgentCommand.Execute(null);
             var secondHookId = vm.SecondHookIdForTest();
@@ -83,7 +83,7 @@ public class AttentionRevealTests
         var root = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
             // Add a second agent and switch back to first.
             vm.AddAgentCommand.Execute(null);
             var secondHookId = vm.SecondHookIdForTest();
@@ -114,7 +114,7 @@ public class AttentionRevealTests
         var root = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
 
             // Add a second agent and switch back to first so the second is NOT active.
             vm.AddAgentCommand.Execute(null);

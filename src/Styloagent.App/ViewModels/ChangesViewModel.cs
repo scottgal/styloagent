@@ -20,9 +20,22 @@ public sealed partial class ChangesViewModel : ObservableObject
     private readonly IGitStash _stash;
     private readonly IGitTag? _tags;
     private string _worktreePath = string.Empty;
+    private string _requestedPath = string.Empty;
+    private bool _hasRepository;
     private readonly SemaphoreSlim _loadGate = new(1, 1);
     private readonly object _loadCancellationGate = new();
     private CancellationTokenSource? _loadCancellation;
+    private string _lastSuggestedTag = "";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanWrite))]
+    [NotifyPropertyChangedFor(nameof(CanCommit))]
+    private bool _isBusy;
+
+    public bool CanWrite => !IsBusy && _hasRepository && _worktreePath == _requestedPath;
+    public string RepositoryPath => _worktreePath;
+
+    [ObservableProperty] private string _syncSummary = "";
 
     [ObservableProperty]
     private GitChange? _selectedFile;
@@ -66,7 +79,7 @@ public sealed partial class ChangesViewModel : ObservableObject
     public DiffViewModel Diff { get; } = new();
 
     /// <summary>True when there is at least one staged file and a non-empty commit message.</summary>
-    public bool CanCommit => StagedFiles.Count > 0 && !string.IsNullOrWhiteSpace(CommitMessage);
+    public bool CanCommit => CanWrite && StagedFiles.Count > 0 && !string.IsNullOrWhiteSpace(CommitMessage);
 
     public ChangesViewModel(IGitService git, IGitDiff diff, IGitWrite write, IGitBranch branch, IGitStash stash, IGitTag? tags = null)
     {
@@ -78,16 +91,42 @@ public sealed partial class ChangesViewModel : ObservableObject
         _tags = tags;
     }
 
-    private void Report(GitResult r)
+    private async Task ExecuteWriteAsync(Func<string, Task<GitResult>> operation, string success, Action? onSuccess = null)
     {
-        WriteError = r.Ok ? null : r.Error;
-        WriteStatus = r.Ok ? "Done" : null;
+        if (!CanWrite) return;
+        var path = _worktreePath;
+        IsBusy = true;
+        WriteError = null;
+        WriteStatus = "Working…";
+        try
+        {
+            var result = await operation(path);
+            if (_requestedPath != path) return;
+            WriteError = result.Ok ? null : result.Error;
+            WriteStatus = result.Ok ? success : null;
+            if (result.Ok) onSuccess?.Invoke();
+            await LoadAsync(path);
+        }
+        catch (Exception ex)
+        {
+            if (_requestedPath == path) { WriteError = ex.Message; WriteStatus = null; }
+        }
+        finally { IsBusy = false; }
     }
 
     /// <summary>Clears all file lists, the diff, the commit message, branch state, and any write error.</summary>
     public void Clear()
     {
         _worktreePath = string.Empty;
+        _requestedPath = string.Empty;
+        _hasRepository = false;
+        lock (_loadCancellationGate) _loadCancellation?.Cancel();
+        WriteStatus = null;
+        SyncSummary = "";
+        SuggestedTag = _lastSuggestedTag = "";
+        OnPropertyChanged(nameof(CanWrite));
+        OnPropertyChanged(nameof(CanCommit));
+        OnPropertyChanged(nameof(RepositoryPath));
         SelectedFile  = null;
         CommitMessage = "";
         WriteError    = null;
@@ -117,11 +156,19 @@ public sealed partial class ChangesViewModel : ObservableObject
     /// </summary>
     public async Task LoadAsync(string worktreePath)
     {
+        if (_requestedPath != worktreePath)
+        {
+            _requestedPath = worktreePath;
+            CommitMessage = NewBranchName = SuggestedTag = _lastSuggestedTag = "";
+            WriteStatus = WriteError = null;
+            Diff.File = null;
+            OnPropertyChanged(nameof(CanWrite));
+            OnPropertyChanged(nameof(CanCommit));
+        }
         CancellationTokenSource cancellation;
         lock (_loadCancellationGate)
         {
             _loadCancellation?.Cancel();
-            _loadCancellation?.Dispose();
             _loadCancellation = cancellation = new CancellationTokenSource();
         }
 
@@ -152,18 +199,32 @@ public sealed partial class ChangesViewModel : ObservableObject
 
     private async Task LoadCoreAsync(string worktreePath, CancellationToken ct)
     {
+        if (_worktreePath != worktreePath) _hasRepository = false;
         _worktreePath = worktreePath;
+        OnPropertyChanged(nameof(CanWrite));
+        OnPropertyChanged(nameof(RepositoryPath));
 
         var result = await _git.GetStatusAsync(worktreePath, ct);
         ct.ThrowIfCancellationRequested();
         if (!result.Ok || result.Value is null)
         {
+            _hasRepository = false;
+            Files.Clear();
+            StagedFiles.Clear();
+            UnstagedFiles.Clear();
+            Branches.Clear();
+            Tags.Clear();
+            SyncSummary = "";
+            WriteError = result.Error ?? "Could not read repository status.";
+            OnPropertyChanged(nameof(CanWrite));
             OnPropertyChanged(nameof(CanCommit));
             await LoadBranchesAsync(ct);
             await LoadStashesAsync(ct);
             await LoadTagsAsync(ct);
             return;
         }
+
+        SyncSummary = $"↑ {result.Value.Ahead} ahead · ↓ {result.Value.Behind} behind";
 
         // Do not blank the panel at the start of every watcher refresh. Apply one completed snapshot on
         // the captured UI context; cancelled/stale loads never partially clear or repopulate collections.
@@ -181,6 +242,9 @@ public sealed partial class ChangesViewModel : ObservableObject
         await LoadBranchesAsync(ct);
         await LoadStashesAsync(ct);
         await LoadTagsAsync(ct);
+        _hasRepository = true;
+        OnPropertyChanged(nameof(CanWrite));
+        OnPropertyChanged(nameof(CanCommit));
     }
 
     private async Task LoadTagsAsync(CancellationToken ct = default)
@@ -191,7 +255,10 @@ public sealed partial class ChangesViewModel : ObservableObject
         if (!result.Ok || result.Value is null) return;
         Tags.Clear();
         foreach (var tag in result.Value.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)) Tags.Add(tag);
-        SuggestedTag = SuggestNextTag(result.Value.Select(t => t.Name));
+        var suggestion = SuggestNextTag(result.Value.Select(t => t.Name));
+        if (string.IsNullOrWhiteSpace(SuggestedTag) || SuggestedTag == _lastSuggestedTag)
+            SuggestedTag = suggestion;
+        _lastSuggestedTag = suggestion;
         OnPropertyChanged(nameof(ExistingTagsText));
     }
 
@@ -200,19 +267,16 @@ public sealed partial class ChangesViewModel : ObservableObject
     {
         if (_tags is null || string.IsNullOrWhiteSpace(SuggestedTag)) return;
         var tag = SuggestedTag.Trim();
-        var r = await _tags.CreateAnnotatedTagAsync(_worktreePath, tag, string.IsNullOrWhiteSpace(TagMessage) ? tag : TagMessage.Trim());
-        Report(r);
-        if (r.Ok) WriteStatus = $"Created tag {tag} at HEAD";
-        await LoadTagsAsync();
+        var message = string.IsNullOrWhiteSpace(TagMessage) ? tag : TagMessage.Trim();
+        await ExecuteWriteAsync(path => _tags.CreateAnnotatedTagAsync(path, tag, message),
+            $"Created tag {tag} at HEAD", () => SuggestedTag = "");
     }
 
     [RelayCommand]
     public async Task PushTagsAsync()
     {
         if (_tags is null) return;
-        var r = await _tags.PushTagsAsync(_worktreePath);
-        Report(r);
-        if (r.Ok) WriteStatus = "Pushed tags";
+        await ExecuteWriteAsync(path => _tags.PushTagsAsync(path), "Pushed tags");
     }
 
     internal static string SuggestNextTag(IEnumerable<string> names)
@@ -271,8 +335,7 @@ public sealed partial class ChangesViewModel : ObservableObject
     [RelayCommand]
     public async Task SwitchAsync(GitBranch b)
     {
-        Report(await _branch.SwitchBranchAsync(_worktreePath, b.Name));
-        await LoadAsync(_worktreePath);
+        await ExecuteWriteAsync(path => _branch.SwitchBranchAsync(path, b.Name), $"Switched to {b.Name}");
     }
 
     /// <summary>Creates a new branch from <see cref="NewBranchName"/> then reloads. No-ops on whitespace.</summary>
@@ -280,36 +343,34 @@ public sealed partial class ChangesViewModel : ObservableObject
     public async Task CreateBranchAsync()
     {
         if (string.IsNullOrWhiteSpace(NewBranchName)) return;
-        var r = await _branch.CreateBranchAsync(_worktreePath, NewBranchName.Trim());
-        Report(r);
-        if (r.Ok) NewBranchName = "";
-        await LoadAsync(_worktreePath);
+        var name = NewBranchName.Trim();
+        await ExecuteWriteAsync(path => _branch.CreateBranchAsync(path, name), $"Created branch {name}", () => NewBranchName = "");
     }
 
     /// <summary>
     /// Sets <see cref="SelectedFile"/> and loads the diff for that file.
     /// </summary>
-    public async Task SelectFileAsync(GitChange file)
+    public async Task SelectFileAsync(GitChange file, bool? staged = null)
     {
         SelectedFile = file;
-        var result = await _diff.GetDiffAsync(_worktreePath, file.Path, staged: false);
-        Diff.File = result.Ok ? result.Value : null;
+        var path = _requestedPath;
+        var result = await _diff.GetDiffAsync(path, file.Path, staged: staged ?? (file.Staged && !file.Unstaged));
+        if (_requestedPath == path && SelectedFile == file)
+            Diff.File = result.Ok ? result.Value : null;
     }
 
     /// <summary>Stages <paramref name="change"/> then reloads the status.</summary>
     [RelayCommand]
     public async Task StageAsync(GitChange change)
     {
-        Report(await _write.StageAsync(_worktreePath, change.Path));
-        await LoadAsync(_worktreePath);
+        await ExecuteWriteAsync(path => _write.StageAsync(path, change.Path), $"Staged {change.Path}");
     }
 
     /// <summary>Unstages <paramref name="change"/> then reloads the status.</summary>
     [RelayCommand]
     public async Task UnstageAsync(GitChange change)
     {
-        Report(await _write.UnstageAsync(_worktreePath, change.Path));
-        await LoadAsync(_worktreePath);
+        await ExecuteWriteAsync(path => _write.UnstageAsync(path, change.Path), $"Unstaged {change.Path}");
     }
 
     /// <summary>
@@ -321,26 +382,22 @@ public sealed partial class ChangesViewModel : ObservableObject
     {
         if (!CanCommit) return;
 
-        var r = await _write.CommitAsync(_worktreePath, CommitMessage);
-        Report(r);
-        if (r.Ok) CommitMessage = "";
-        await LoadAsync(_worktreePath);
+        var message = CommitMessage;
+        await ExecuteWriteAsync(path => _write.CommitAsync(path, message), "Committed staged changes", () => CommitMessage = "");
     }
 
     /// <summary>Pushes the current branch then reloads.</summary>
     [RelayCommand]
     public async Task PushAsync()
     {
-        Report(await _write.PushAsync(_worktreePath));
-        await LoadAsync(_worktreePath);
+        await ExecuteWriteAsync(path => _write.PushAsync(path), "Pushed branch");
     }
 
     /// <summary>Pulls the current branch then reloads.</summary>
     [RelayCommand]
     public async Task PullAsync()
     {
-        Report(await _write.PullAsync(_worktreePath));
-        await LoadAsync(_worktreePath);
+        await ExecuteWriteAsync(path => _write.PullAsync(path), "Pulled branch");
     }
 
     /// <summary>
@@ -351,15 +408,13 @@ public sealed partial class ChangesViewModel : ObservableObject
     public async Task StashAsync()
     {
         var label = string.IsNullOrWhiteSpace(CommitMessage) ? null : CommitMessage;
-        Report(await _stash.StashAsync(_worktreePath, label));
-        await LoadAsync(_worktreePath);
+        await ExecuteWriteAsync(path => _stash.StashAsync(path, label), "Stashed changes");
     }
 
     /// <summary>Pops the most recent stash entry then reloads.</summary>
     [RelayCommand]
     public async Task StashPopAsync()
     {
-        Report(await _stash.StashPopAsync(_worktreePath));
-        await LoadAsync(_worktreePath);
+        await ExecuteWriteAsync(path => _stash.StashPopAsync(path), "Applied latest stash");
     }
 }

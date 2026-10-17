@@ -25,6 +25,7 @@ public sealed record AgentRuntimeProfile(
         AgentRuntimeKind.Codex => Codex,
         AgentRuntimeKind.ClaudeDeepSeek => ClaudeDeepSeek,
         AgentRuntimeKind.Claude => Claude,
+        AgentRuntimeKind.OpenCode => OpenCode,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "This runtime is not supported."),
     };
 
@@ -62,12 +63,18 @@ public sealed record AgentRuntimeProfile(
         PtyWakeString: "1\r",
         DefaultLaunchPromptTemplate: "You are agent '{0}'. Begin your work.");
 
+    public static readonly AgentRuntimeProfile OpenCode = new(
+        AgentRuntimeKind.OpenCode, "opencode", "OpenCode", false, false, false,
+        SkipHookStateMachine: true,
+        DefaultLaunchPromptTemplate: "You are the '{0}' Styloagent workspace agent. Read .styloagent/PROTOCOL.md and your mission doc if present, check the fleet inbox, then carry out your assigned task.");
+
     /// <summary>
     /// Runtime-native permission flags. Claude family uses HookSettings.PermissionArgs (scoped/permission-mode
     /// flags); Codex uses its own sandbox/approval flags.
     /// </summary>
     public IReadOnlyList<string> PermissionArgs(FleetPermissionMode mode) => Kind switch
     {
+        AgentRuntimeKind.OpenCode => Array.Empty<string>(),
         AgentRuntimeKind.Codex => mode switch
         {
             FleetPermissionMode.Bypass => new[] { "--dangerously-bypass-approvals-and-sandbox" },
@@ -83,6 +90,7 @@ public sealed record AgentRuntimeProfile(
     /// </summary>
     public IReadOnlyList<string> ModelEffortArgs(string? model, string? effort, Styloagent.Core.Model.ModelTier? tier = null)
     {
+        if (Kind == AgentRuntimeKind.OpenCode) return Array.Empty<string>(); // API session selection
         var args = new List<string>();
         // An explicit model is the only model id this layer may launch. In particular, Codex's old tier
         // aliases (gpt-5 / gpt-5-codex) are not valid account models. The spawner resolves a tier against

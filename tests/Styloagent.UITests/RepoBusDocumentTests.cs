@@ -50,7 +50,7 @@ public class RepoBusDocumentTests
                 Assert.Contains(window.GetVisualDescendants().OfType<BusView>(), _ => true);
                 var texts = window.GetVisualDescendants().OfType<TextBlock>()
                     .Select(t => t.Text ?? string.Empty).ToList();
-                Assert.Contains(texts, s => s.Contains("NEEDS ATTENTION"));
+                Assert.Contains(texts, s => s == "ACTIVE");
                 Assert.Contains(texts, s => s.Contains("open"));   // the second-instance thread materialized
 
                 window.Close();

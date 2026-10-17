@@ -17,7 +17,7 @@ public class WindowTitleTests
         var channel = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
 
             var ws = WorkspaceConfig.For("/ws", "mono", new[]
             {
@@ -46,7 +46,7 @@ public class WindowTitleTests
         try
         {
             // repoRoot given, SetReposFromOverviews NOT called → derive the name from the root folder.
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 channel, new FakeLauncher(), new FakeWatcher(), repoRoot: repoDir);
 
             Assert.StartsWith("MyCoolProject-", vm.ProjectName);

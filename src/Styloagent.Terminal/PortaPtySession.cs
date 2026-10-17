@@ -22,6 +22,7 @@ public sealed class PortaPtySession : IPtySession
     private readonly StringBuilder _pendingOutput = new();
     private readonly SemaphoreSlim _outputReady = new(0, 1);
     private bool _readCompleted;
+    private int _disposed;
     private const int OutputBatchWindowMs = 16;
 
     // Serializes ALL writes to the PTY (keystrokes, terminal-query answers, injected bus messages,
@@ -141,6 +142,7 @@ public sealed class PortaPtySession : IPtySession
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         Styloagent.Core.Sessions.SpawnDiag.Log("PortaPtySession.DisposeAsync CALLED (about to Kill) — CALLER STACK:", includeStack: true);
         _connection.ProcessExited -= OnProcessExited;
 

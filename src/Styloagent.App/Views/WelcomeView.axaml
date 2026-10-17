@@ -80,6 +80,20 @@
                 </StackPanel>
               </StackPanel>
             </ToggleButton>
+            <ToggleButton x:Name="OpenCodeFirstToggle"
+                          IsChecked="{Binding IsOpenCodeFirst, Mode=TwoWay}"
+                          Command="{Binding SetRuntimeModeCommand}" CommandParameter="OpenCode"
+                          Padding="12,10" CornerRadius="6" HorizontalContentAlignment="Stretch"
+                          ToolTip.Tip="OpenCode v2 · native sessions and live model catalog">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <ic:SymbolIcon Symbol="WindowConsole" FontSize="20" VerticalAlignment="Center" />
+                <StackPanel Spacing="1">
+                  <TextBlock Text="OpenCode" FontSize="13" FontWeight="SemiBold" />
+                  <TextBlock Text="Native API · live models" FontSize="10.5"
+                             Foreground="{DynamicResource MutedTextBrush}" />
+                </StackPanel>
+              </StackPanel>
+            </ToggleButton>
           </UniformGrid>
         </StackPanel>
       </Border>

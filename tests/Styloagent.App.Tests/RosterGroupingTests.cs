@@ -79,7 +79,7 @@ public class RosterGroupingTests
         var channel = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
 
             // Startup: the workspace knows only the primary repo (overview- anchors it).
             var primary = new RepoOverview("overview-", "/ws/styloagent",

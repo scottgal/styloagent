@@ -29,7 +29,7 @@ public class WorktreeAgentsTests
                 new GitWorktree(wtB, "beta", "bbb"));
             var launcher = new FakeLauncher();
 
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 "/tmp/no-such-channel", launcher, new FakeWatcher(), reader, repo);
 
             // First agent = first worktree, not a channel prefix.
@@ -58,7 +58,7 @@ public class WorktreeAgentsTests
             var reader = new FakeGitReader();     // no worktrees
             var launcher = new FakeLauncher();
 
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 "/tmp/no-such-channel", launcher, new FakeWatcher(), reader, repo);
 
             Assert.NotNull(vm.Pane);

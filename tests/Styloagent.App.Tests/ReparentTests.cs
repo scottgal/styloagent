@@ -29,7 +29,7 @@ public class ReparentTests
     private static async Task<(MainWindowViewModel vm, AgentPaneViewModel overview, AgentPaneViewModel a,
         AgentPaneViewModel a1, AgentPaneViewModel b)> Fleet()
     {
-        var vm = await MainWindowViewModel.InitializeAsync(
+        using var vm = await MainWindowViewModel.InitializeAsync(
             MainWindowViewModelTests.MakeTwoAgentChannel(), new FakeLauncher(), new FakeWatcher());
         vm.Panes.Clear();
         var overview = Pane("overview-", null, 0);
@@ -108,7 +108,7 @@ public class ReparentTests
     [Fact]
     public async Task Reparent_onto_a_worktree_holder_is_rejected_by_the_lint()
     {
-        var vm = await MainWindowViewModel.InitializeAsync(
+        using var vm = await MainWindowViewModel.InitializeAsync(
             MainWindowViewModelTests.MakeTwoAgentChannel(), new FakeLauncher(), new FakeWatcher());
         vm.Panes.Clear();
         var overview = Pane("overview-", null, 0);

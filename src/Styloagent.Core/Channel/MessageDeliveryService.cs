@@ -15,6 +15,7 @@ public sealed class MessageDeliveryService
 {
     private readonly IMessageInjector _injector;
     private readonly PendingInbox? _pending;
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _flushGates = new();
 
     // Recipient agentId -> messages waiting for that agent to go idle (NextPrompt while busy).
     // Only used on the injection FALLBACK path (non-MCP / hooks-not-wired recipients); connected
@@ -60,6 +61,9 @@ public sealed class MessageDeliveryService
         bool connected = recipientState != AgentHookState.Unknown; // hooks live → MCP-native pull available
         bool pushing = mode is DeliveryMode.Interrupt or DeliveryMode.NextPrompt;
 
+        if (pushing && await _injector.TryDeliverNativeAsync(recipientId, message, mode, ct).ConfigureAwait(false))
+            return DeliveryAction.Inject; // admission only; native reconciliation records consumption
+
         if (connected && _pending is not null)
         {
             // Surfacing modes (low/info) → the .info file; shown at the next UserPromptSubmit, never forces.
@@ -82,12 +86,11 @@ public sealed class MessageDeliveryService
                 return DeliveryAction.EnqueuePending;
             }
 
-            // Already idle: no hook will fire on its own → wake it via the injection fallback (the narrow,
-            // least-fragile inject-at-a-prompt case; no ESC-break needed). Record it delivered so the bus
-            // viewer reads it as picked up immediately (it was never queued, so nothing is left pending).
-            await InjectAsync(recipientId, message, breakFirst: false, ct).ConfigureAwait(false);
-            _pending.MarkDelivered(recipientId, message.FilePath);
-            return DeliveryAction.Inject;
+            // Reserve before waking an idle agent; acceptance commits the claim, otherwise it remains pending.
+            _pending.Enqueue(recipientId, MessageDelivery.FormatNudge(message), pushing: true, deliveredPath: message.FilePath);
+            var accepted = await _pending.TryDeliverPushAsync(recipientId, async text =>
+                await _injector.TryInjectAsync(recipientId, text, false, ct).ConfigureAwait(false) == InjectionResult.Accepted).ConfigureAwait(false);
+            return accepted ? DeliveryAction.Inject : DeliveryAction.EnqueuePending;
         }
 
         // Fallback: non-MCP / hooks-not-wired (Unknown), or no PendingInbox configured → the terminal injector.
@@ -114,8 +117,11 @@ public sealed class MessageDeliveryService
         return action;
     }
 
-    private Task InjectAsync(string recipientId, BusMessage message, bool breakFirst, CancellationToken ct)
-        => _injector.InjectAsync(recipientId, MessageDelivery.FormatNudge(message), breakFirst, ct);
+    private async Task InjectAsync(string recipientId, BusMessage message, bool breakFirst, CancellationToken ct)
+    {
+        var result = await _injector.TryInjectAsync(recipientId, MessageDelivery.FormatNudge(message), breakFirst, ct).ConfigureAwait(false);
+        if (result != InjectionResult.Accepted) throw new IOException($"Message delivery is {result}; retry this recipient.");
+    }
 
     /// <summary>
     /// Notify the service that <paramref name="agentId"/> transitioned to <paramref name="newState"/>.
@@ -125,26 +131,24 @@ public sealed class MessageDeliveryService
     {
         if (newState != AgentHookState.Idle) return;
 
-        // 1. Unknown-recipient fallback queue (pre-MCP / hooks-not-wired).
-        if (_deferred.TryRemove(agentId, out var queue))
+        // Keep fallback entries until accepted, including when a session disappeared or an operator is composing.
+        var gate = _flushGates.GetOrAdd(agentId, _ => new SemaphoreSlim(1, 1));
+        if (!await gate.WaitAsync(0, ct).ConfigureAwait(false)) return;
+        try
         {
-            while (queue.TryDequeue(out var message))
+            if (_deferred.TryGetValue(agentId, out var queue))
             {
-                await _injector.InjectAsync(agentId, MessageDelivery.FormatNudge(message), breakFirst: false, ct)
-                    .ConfigureAwait(false);
+                while (queue.TryPeek(out var message))
+                {
+                    if (await _injector.TryInjectAsync(agentId, MessageDelivery.FormatNudge(message), false, ct).ConfigureAwait(false) != InjectionResult.Accepted) return;
+                    queue.TryDequeue(out _);
+                }
             }
+            if (_pending is not null)
+                await _pending.TryDeliverPushAsync(agentId, async text =>
+                    await _injector.TryInjectAsync(agentId, text, false, ct).ConfigureAwait(false) == InjectionResult.Accepted).ConfigureAwait(false);
         }
-
-        // 2. MCP-native path: a message parked in the PendingInbox for a busy hook-connected recipient has
-        //    no turn-boundary hook to surface it once the recipient finishes — kilo has no hooks.json, so
-        //    nothing tells it to check_inbox. Now that the recipient is idle, claim and type the nudges,
-        //    mirroring Claude's Stop force-continue so no message is left undelivered.
-        if (_pending is not null && _pending.HasPending(agentId))
-        {
-            var nudge = _pending.DrainFormatted(agentId);
-            if (!string.IsNullOrWhiteSpace(nudge))
-                await _injector.InjectAsync(agentId, nudge, breakFirst: false, ct).ConfigureAwait(false);
-        }
+        finally { gate.Release(); }
     }
 
     /// <summary>Count of messages currently deferred for <paramref name="agentId"/> (for the HUD/tests).</summary>

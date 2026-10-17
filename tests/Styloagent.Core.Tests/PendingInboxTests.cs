@@ -4,6 +4,73 @@ using Xunit;
 
 public class PendingInboxTests
 {
+    [Fact]
+    public async Task Failed_transport_restores_claim_before_concurrent_arrivals_and_never_marks_pickup()
+    {
+        var root = TempDir();
+        try
+        {
+            var inbox = new PendingInbox(root);
+            var peer = new PendingInbox(root);
+            inbox.Enqueue("beta-", "/old.md", true, "/old.md");
+            Assert.False(await inbox.TryDeliverPushAsync("beta-", async text =>
+            {
+                Assert.Contains("/old.md", text);
+                Assert.False(peer.PickedUp("beta-", "/old.md"));
+                Assert.False(await peer.TryDeliverPushAsync("beta-", _ => throw new Exception("reservation must be exclusive")));
+                peer.Enqueue("beta-", "/new.md", true, "/new.md");
+                return false;
+            }));
+            Assert.True(peer.HasPending("beta-"));
+            Assert.False(peer.PickedUp("beta-", "/old.md"));
+            Assert.True(await peer.TryDeliverPushAsync("beta-", text =>
+            {
+                Assert.Equal("/old.md\n/new.md\n", text);
+                return Task.FromResult(true);
+            }));
+            Assert.True(inbox.PickedUp("beta-", "/old.md"));
+            Assert.True(inbox.PickedUp("beta-", "/new.md"));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task Exceptions_and_abandoned_process_claims_remain_retryable()
+    {
+        var root = TempDir();
+        try
+        {
+            var inbox = new PendingInbox(root);
+            inbox.Enqueue("beta-", "/message.md", true, "/message.md");
+            await Assert.ThrowsAsync<IOException>(() => inbox.TryDeliverPushAsync("beta-", _ => throw new IOException("disconnected")));
+            Assert.False(inbox.PickedUp("beta-", "/message.md"));
+            var push = DeliveryHookCommands.PushFile(root, "beta-");
+            File.Move(push, push + ".inflight"); // process died after claiming but before submitting
+            var restored = new PendingInbox(root);
+            Assert.True(await restored.TryDeliverPushAsync("beta-", text =>
+            {
+                Assert.Contains("/message.md", text);
+                return Task.FromResult(true);
+            }));
+            Assert.True(restored.PickedUp("beta-", "/message.md"));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task Idle_retry_does_not_force_informational_messages_into_a_new_turn()
+    {
+        var root = TempDir();
+        try
+        {
+            var inbox = new PendingInbox(root);
+            inbox.Enqueue("beta-", "FYI", false);
+            Assert.False(await inbox.TryDeliverPushAsync("beta-", _ => throw new Exception("info must not wake an agent")));
+            Assert.Contains("FYI", inbox.DrainFormatted("beta-"));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     private static string TempDir() =>
         Path.Combine(Path.GetTempPath(), "styloagent-pending-tests", Guid.NewGuid().ToString("N"));
 

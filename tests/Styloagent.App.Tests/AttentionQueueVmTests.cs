@@ -15,7 +15,7 @@ public class AttentionQueueVmTests
         var root = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
             var hookId = vm.FirstHookIdForTest();
             Assert.Empty(vm.AttentionQueue);
 

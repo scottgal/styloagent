@@ -4,8 +4,8 @@ namespace Styloagent.Git;
 
 /// <summary>
 /// Narrow seam for mutating the working tree and history via the git CLI.
-/// Stage/Unstage/Commit are implemented in <c>GitService</c>.
-/// Push and Pull are declared here for interface stability and implemented in Task 3.
+/// Implemented by <c>GitService</c>. Push establishes an upstream for a new branch when the
+/// repository has an origin or a single remote.
 /// </summary>
 public interface IGitWrite
 {

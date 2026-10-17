@@ -156,7 +156,7 @@ You have these MCP tools from the `styloagent` server:
    (DeepSeek v4 Pro / opus / gpt-5), while each specialist picks the model that fits its job from
    `agent_capabilities()` (e.g. v4 Flash for routine implementation, a stronger model for gnarly
    debugging), mixing runtimes/models/efforts freely. Pass `runtime` + `model` + `effort` from that list
-   (`claude`, `codex`, or `kilo`; kilo defaults to v4 Pro for overviews and v4 Flash for spawned agents)
+   (`claude`, `codex`, `claude-deepseek`, or `opencode`; call `agent_capabilities` for live models and variants)
    or leave them empty to use the cockpit default. This is the prompt-in-a-doc path; don't hand-place
    mission files or stuff a huge brief inline.
 - `agent_capabilities()` — the live runtime/model/effort choices that may be selected.

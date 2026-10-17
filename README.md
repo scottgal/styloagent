@@ -76,10 +76,57 @@ the bus. Click a file op to open it in a syntax-highlighted read-only source vie
 
 ### Real terminals, in colour
 
-Each pane launches a real coding CLI — `claude`, `codex`, `kilo` (DeepSeek models by default), or any CLI — over a PTY and renders its full-colour TUI —
+Each agent pane launches `claude`, `codex`, or Claude Code routed through DeepSeek over a PTY and renders its full-colour TUI —
 24-bit truecolor, the 256-colour palette, background highlights, bold and inverse:
 
 ![Colour terminal](docs/screenshots/terminal-colour.png)
+
+### DeepSeek models and automatic updates
+
+Choose **Claude + DeepSeek** to use DeepSeek with the existing Claude Code hooks and fleet tools.
+Configure credentials in `~/.styloagent/deepseek.env`; a project's `.styloagent/deepseek.env`
+overrides the global file. For the direct API:
+
+```dotenv
+ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
+ANTHROPIC_AUTH_TOKEN=your-deepseek-key
+ANTHROPIC_API_KEY=
+```
+
+The `deepseek-flash` alias follows DeepSeek's latest Flash release, currently V4.1 Flash 1017.
+For OpenRouter, use its Anthropic-compatible endpoint (the Claude CLI uses Messages, rather than
+calling Chat Completions itself):
+
+```dotenv
+ANTHROPIC_BASE_URL=https://openrouter.ai/api
+ANTHROPIC_AUTH_TOKEN=your-openrouter-key
+ANTHROPIC_API_KEY=
+```
+
+Use literal key values in this file; shell variable expansion is not supported. Styloagent discovers
+tool-capable DeepSeek models from OpenRouter's catalog in the background, refreshing on demand at
+most every five minutes. New sessions and `agent_capabilities` pick up discovered models without
+restarting the app. The default follows the newest stable Flash release by catalog creation date;
+preview, experimental, batch and free variants never replace the automatic default. Explicit dated
+OpenRouter IDs stay pinned, including `deepseek/deepseek-v4.1-flash-1017`.
+
+Discovery failures retain the last successful in-memory catalog. Before discovery succeeds, the
+bundled Flash 1017 ID is the OpenRouter fallback. Existing sessions keep their launch-time picker
+and selected model. Discovered context limits apply to new launches; an explicit context limit in
+`deepseek.env` takes precedence. Flash 1017 currently has no OpenRouter EU in-region route.
+
+Provider references: [DeepSeek model aliases](https://api-docs.deepseek.com/quick_start/pricing/),
+[OpenRouter catalog](https://openrouter.ai/docs/api/api-reference/models/list-all-models-and-their-properties),
+[Claude Code connection](https://openrouter.ai/docs/guides/coding-agents/claude-code-integration).
+
+### Git operations
+
+The **Git → Changes** panel shows the selected checkout, branch and ahead/behind counts. **Push**,
+**Pull**, **Create tag** and **Push tags** are at the top, with staging, commits, branches, stashes
+and diffs below. The panel scrolls at narrow widths. Create tag makes an annotated tag at HEAD;
+Push tags publishes all local tags. Git reports errors and completion in the panel and serializes
+write operations. A branch's first push establishes tracking on `origin`, or the sole remote when
+there is no origin; ambiguous remote configurations require an upstream to be configured first.
 
 ### Signal Bus — attention-first
 
@@ -144,6 +191,12 @@ The design and implementation plans live under [`docs/superpowers/`](docs/superp
 XTerm.NET · [VYaml](https://github.com/hadashiA/VYaml) ·
 `Mostlylucid.LucidView.Markdown` (LiveMarkdown.Avalonia + Naiad) ·
 [`Mostlylucid.Avalonia.UITesting`](https://www.nuget.org/packages/Mostlylucid.Avalonia.UITesting) · xUnit.
+
+## OpenCode v2
+
+Select **OpenCode** on the welcome screen or use the OpenCode toolbar button. The cockpit owns a private backend per agent and attaches its terminal to the exact native session. Startup, bus messages and approvals use HTTP; park/resume preserves history. The running backend supplies model IDs and reasoning variants automatically.
+
+Use provider API-key environment variables or the existing DeepSeek routing file. Global OpenCode configuration and legacy auth.json credentials are retained. Tested with OpenCode **2.0.25**; v1 produces a visible startup error. [Integration details, live tests and limits](docs/opencode-integration.md).
 
 ## Building
 

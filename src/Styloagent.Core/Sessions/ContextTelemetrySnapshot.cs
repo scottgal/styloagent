@@ -5,7 +5,7 @@ using Styloagent.Core.Transcripts;
 namespace Styloagent.Core.Sessions;
 
 /// <summary>Where a context observation came from. A missing observation is never represented as zero usage.</summary>
-public enum ContextTelemetrySource { Unavailable, CodexTranscript, ClaudeTranscript }
+public enum ContextTelemetrySource { Unavailable, CodexTranscript, ClaudeTranscript, OpenCodeApi }
 
 /// <summary>How reliable the current observation is. Retained means a non-telemetry frame followed a valid reading.</summary>
 public enum ContextTelemetryConfidence { Unavailable, Observed, Retained }
@@ -94,8 +94,12 @@ public sealed class ContextTelemetryStore
     public ContextTelemetrySnapshot Observe(ContextSnapshotKey key, AgentRuntimeKind runtime, TranscriptUsage? usage,
         string? configuredModel = null, string? effort = null, DateTimeOffset? observedAt = null)
     {
-        var source = runtime == AgentRuntimeKind.Codex
-            ? ContextTelemetrySource.CodexTranscript : ContextTelemetrySource.ClaudeTranscript;
+        var source = runtime switch
+        {
+            AgentRuntimeKind.Codex => ContextTelemetrySource.CodexTranscript,
+            AgentRuntimeKind.OpenCode => ContextTelemetrySource.OpenCodeApi,
+            _ => ContextTelemetrySource.ClaudeTranscript,
+        };
         var now = observedAt ?? DateTimeOffset.UtcNow;
         if (ContextTelemetrySnapshot.TryCreate(key, runtime, usage, configuredModel, effort, source, now, out var observed))
         {

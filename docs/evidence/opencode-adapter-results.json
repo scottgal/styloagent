@@ -1,0 +1,102 @@
+{
+  "verified_at_utc": "2026-10-17T12:31:49.755105+00:00",
+  "opencode_version": "opencode v2.0.25",
+  "platform": "macOS arm64",
+  "regression_command": "dotnet test Styloagent.sln",
+  "regression_suites": [
+    {
+      "suite": "Core",
+      "passed": 612,
+      "failed": 0,
+      "total": 612
+    },
+    {
+      "suite": "Git",
+      "passed": 26,
+      "failed": 0,
+      "total": 26
+    },
+    {
+      "suite": "App",
+      "passed": 386,
+      "failed": 0,
+      "total": 390
+    },
+    {
+      "suite": "UI",
+      "passed": 148,
+      "failed": 0,
+      "total": 148
+    }
+  ],
+  "live_command": "STYLOAGENT_LIVE_OPENCODE=1 dotnet test tests/Styloagent.App.Tests --no-build --no-restore --filter 'FullyQualifiedName~Native_adapter|FullyQualifiedName~Native_ownership|FullyQualifiedName~Agent_session_parks|FullyQualifiedName~Native_backends_write'",
+  "live_checks": [
+    {
+      "testName": "Styloagent.App.Tests.StyloagentMcpServerTests.Native_ownership_plugin_blocks_a_real_write_before_mutation",
+      "outcome": "Passed",
+      "duration": "00:00:03.8647677"
+    },
+    {
+      "testName": "Styloagent.App.Tests.StyloagentMcpServerTests.Native_adapter_runs_real_MCP_delivery_permissions_terminal_detach_and_restore",
+      "outcome": "Passed",
+      "duration": "00:00:21.8790336"
+    },
+    {
+      "testName": "Styloagent.App.Tests.StyloagentMcpServerTests.Agent_session_parks_and_resumes_native_history_without_a_checkpoint_file",
+      "outcome": "Passed",
+      "duration": "00:00:07.3089689"
+    },
+    {
+      "testName": "Styloagent.App.Tests.StyloagentMcpServerTests.Native_backends_write_only_to_their_respective_real_git_worktrees",
+      "outcome": "Passed",
+      "duration": "00:00:04.0729372"
+    }
+  ],
+  "live_adapter_behaviors": [
+    "private authenticated server and exact-session TUI",
+    "actual Styloagent MCP server and repo membership",
+    "durable session instructions",
+    "live model variants and usage",
+    "idempotent bus admission and consumption receipts",
+    "permission approval before shell execution",
+    "urgent bus message interrupts running shell",
+    "terminal detachment preserves backend control",
+    "native model variant changes and history recovery",
+    "re-admission after crash between local receipt and native POST",
+    "AgentSession park/resume without checkpoint file",
+    "ownership plugin denies before file mutation",
+    "manual compaction preserves remembered context through park/resume",
+    "abrupt backend termination recovers the same native session",
+    "two real Git worktrees retain isolated file writes"
+  ],
+  "limitations": [
+    "Windows and V2-only OAuth credential import not live-tested",
+    "arbitrary inherited third-party plugins not live-tested",
+    "experimental v2 instruction endpoint compatibility required",
+    "abrupt parent death tested with an idle backend, not during provider generation",
+    "SVG badge remains approximate against resvg: MSE 662, versus original 2537; strict threshold 100 not met"
+  ],
+  "nuget_audit": "Enabled; no suppression or command-line override used for the regression or live suite.",
+  "fixed_review_findings": [
+    "explicit transport admission for missing/deferred sessions",
+    "durable inflight reservations retained until accepted, with rollback and abandoned-claim recovery",
+    "compose timeouts defer without editing operator input",
+    "provider-specific DeepSeek capabilities, picker and launch validation",
+    "repo-local model and delivery routing",
+    "serialized metadata saves and deterministic disposal",
+    "patched ImageSharp dependency with renderer migration and pixel regressions"
+  ],
+  "parent_death_probe": {
+    "command": "python3 scripts/test-opencode-parent-death.py",
+    "passed": true
+  },
+  "adjacent_checkout_changes": [
+    "../lucidview/Mostlylucid.ImageSharp.Svg/Mostlylucid.ImageSharp.Svg.csproj",
+    "../lucidview/Mostlylucid.ImageSharp.Svg/Internal/SvgRenderer.cs",
+    "../lucidview/Mostlylucid.ImageSharp.Svg.Conformance/Mostlylucid.ImageSharp.Svg.Conformance.csproj"
+  ],
+  "package_audit": {
+    "command": "dotnet list Styloagent.sln package --include-transitive --vulnerable --no-restore",
+    "result": "No vulnerable packages reported for all nine projects by the configured NuGet source."
+  }
+}

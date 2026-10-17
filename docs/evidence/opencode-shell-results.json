@@ -1,0 +1,237 @@
+{
+  "tests": [
+    {
+      "name": "private_server_readiness",
+      "passed": true,
+      "seconds": 0.224
+    },
+    {
+      "name": "authentication_required",
+      "passed": true
+    },
+    {
+      "name": "native_model_discovery",
+      "passed": true,
+      "variants": [
+        "none",
+        "low",
+        "high",
+        "max"
+      ],
+      "context": 1000000
+    },
+    {
+      "name": "durable_inbox_and_duplicate_admission",
+      "passed": true,
+      "duplicate_status": 200
+    },
+    {
+      "name": "real_prompt_and_completion",
+      "passed": true,
+      "assistant_messages": 1
+    },
+    {
+      "name": "tui_attaches_to_exact_session",
+      "passed": true,
+      "bytes": 10238,
+      "session_replayed": true
+    },
+    {
+      "name": "tui_exit_preserves_server",
+      "passed": true
+    },
+    {
+      "name": "message_snapshot_recovery_and_log_sync",
+      "passed": true,
+      "events": 1,
+      "sample_keys": [
+        "type",
+        "aggregateID",
+        "seq"
+      ]
+    },
+    {
+      "name": "inbox_survives_restart_and_can_cancel",
+      "passed": true
+    },
+    {
+      "name": "session_history_and_model_survive_restart",
+      "passed": true
+    },
+    {
+      "name": "real_mcp_tool_and_fleet_headers",
+      "passed": true,
+      "calls": 1
+    },
+    {
+      "name": "permission_rejection_and_active_turn_steering",
+      "passed": true,
+      "action": "shell"
+    },
+    {
+      "name": "permission_approval_once_executes_tool",
+      "passed": true
+    },
+    {
+      "name": "running_tool_interrupt_and_idle_noop",
+      "passed": true
+    },
+    {
+      "name": "concurrent_session_message_isolation",
+      "passed": true
+    },
+    {
+      "name": "missing_session_and_invalid_request_errors",
+      "passed": true,
+      "statuses": [
+        404,
+        400
+      ]
+    },
+    {
+      "name": "live_sse_events",
+      "passed": true,
+      "count": 161
+    }
+  ],
+  "version": "2.0.25",
+  "limitations": [
+    "Durable log after=0 returned only log.synced, without historical events; recover with paginated message snapshots instead."
+  ],
+  "event_samples": [
+    {
+      "keys": [
+        "id",
+        "type",
+        "data"
+      ],
+      "type": "server.connected"
+    },
+    {
+      "keys": [
+        "id",
+        "created",
+        "type",
+        "location",
+        "data",
+        "durable"
+      ],
+      "type": "session.created"
+    },
+    {
+      "keys": [
+        "id",
+        "created",
+        "type",
+        "location",
+        "data",
+        "durable"
+      ],
+      "type": "session.inbox.enqueued"
+    },
+    {
+      "keys": [
+        "id",
+        "created",
+        "type",
+        "location",
+        "data",
+        "durable"
+      ],
+      "type": "session.created"
+    },
+    {
+      "keys": [
+        "id",
+        "created",
+        "type",
+        "location",
+        "data",
+        "durable"
+      ],
+      "type": "session.inbox.enqueued"
+    },
+    {
+      "keys": [
+        "id",
+        "created",
+        "type",
+        "data",
+        "durable"
+      ],
+      "type": "session.execution.started"
+    },
+    {
+      "keys": [
+        "id",
+        "created",
+        "metadata",
+        "type",
+        "location",
+        "data",
+        "durable"
+      ],
+      "type": "session.instructions.updated"
+    },
+    {
+      "keys": [
+        "id",
+        "created",
+        "type",
+        "location",
+        "data",
+        "durable"
+      ],
+      "type": "session.inbox.delivered"
+    }
+  ],
+  "event_counts": {
+    "server.connected": 2,
+    "session.created": 7,
+    "session.inbox.enqueued": 10,
+    "session.execution.started": 8,
+    "session.instructions.updated": 6,
+    "session.inbox.delivered": 9,
+    "session.step.started": 11,
+    "session.text.started": 7,
+    "session.text.delta": 8,
+    "session.text.ended": 7,
+    "session.step.streamed": 11,
+    "session.step.ended": 10,
+    "session.usage.updated": 11,
+    "session.execution.succeeded": 7,
+    "project.updated": 1,
+    "mcp.status.changed": 2,
+    "integration.updated": 2,
+    "provider.updated": 2,
+    "model.updated": 2,
+    "mcp.resources.changed": 1,
+    "command.updated": 2,
+    "vcs.branch.updated": 1,
+    "agent.updated": 1,
+    "skill.updated": 1,
+    "websearch.updated": 1,
+    "reference.updated": 1,
+    "plugin.updated": 1,
+    "session.tool.input.started": 4,
+    "session.tool.input.ended": 4,
+    "session.tool.called": 4,
+    "session.tool.success": 2,
+    "permission.asked": 2,
+    "permission.replied": 2,
+    "session.tool.failed": 2,
+    "shell.created": 2,
+    "session.tool.progress": 2,
+    "shell.exited": 2,
+    "shell.deleted": 1,
+    "session.step.failed": 1,
+    "session.execution.interrupted": 1
+  },
+  "session_cost_usd": 0.001865172,
+  "passed": true,
+  "date": "2026-10-17",
+  "provider": "deepseek",
+  "model": "deepseek-flash",
+  "variant": "none",
+  "platform": "macOS arm64"
+}

@@ -1,6 +1,6 @@
 namespace Styloagent.Core.Mcp;
 
-public enum RejectReason { FleetFull, MaxDepth, Paused, DuplicatePrefix, InvalidPrefix, UnknownParent }
+public enum RejectReason { FleetFull, MaxDepth, Paused, DuplicatePrefix, InvalidPrefix, UnknownParent, InvalidRuntime }
 
 /// <summary>One live agent as the governor / list_fleet sees it.</summary>
 public sealed record FleetMember(string Prefix, string Responsibility, string? ParentPrefix, int Depth, string State);
@@ -15,7 +15,7 @@ public sealed record FleetSnapshot(IReadOnlyList<FleetMember> Members, int MaxFl
 /// A spawn_agent request, parented by prefix. <paramref name="MissionDoc"/> is an optional larger mission
 /// brief: when non-empty, it's placed at <c>.styloagent/missions/&lt;prefix&gt;.md</c> in the new agent's tree
 /// (committed on its branch when isolated) so a worktree agent can read it from its own checkout.
-/// <paramref name="Runtime"/> optionally selects the spawned CLI ("claude" or "codex"); null/blank means
+/// <paramref name="Runtime"/> optionally selects the spawned CLI ("claude", "codex", "claude-deepseek", or "opencode"); null/blank means
 /// inherit the cockpit's current default.
 /// </summary>
 public sealed record SpawnRequest(string ParentPrefix, string Prefix, string Responsibility, string Dir,

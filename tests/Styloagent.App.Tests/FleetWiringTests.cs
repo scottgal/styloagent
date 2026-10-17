@@ -152,7 +152,8 @@ public class FleetWiringTests
             Assert.True(settingsIdx >= 0, "claude-deepseek must receive an explicit --settings blob");
             using var settingsDoc = System.Text.Json.JsonDocument.Parse(spawn.Args[settingsIdx + 1]);
             var picker = settingsDoc.RootElement.GetProperty("modelPicker");
-            var row = Assert.Single(picker.GetProperty("options").EnumerateArray());
+            var row = Assert.Single(picker.GetProperty("options").EnumerateArray(),
+                r => r.GetProperty("model").GetString() == "deepseek-flash");
             Assert.Equal("deepseek-flash", row.GetProperty("model").GetString());
             Assert.Equal("sonnet", row.GetProperty("behavesAs").GetString());
         }

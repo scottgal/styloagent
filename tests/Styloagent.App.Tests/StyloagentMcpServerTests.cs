@@ -8,10 +8,11 @@ using Xunit;
 
 namespace Styloagent.App.Tests;
 
-public class StyloagentMcpServerTests
+public partial class StyloagentMcpServerTests
 {
     private sealed class FakeController : IFleetController
     {
+        public string? NativeRepo;
         public Task<SpawnOutcome> SpawnAsync(SpawnRequest req) => Task.FromResult(SpawnOutcome.Ok(req.Prefix));
         public Task<string> RenameAgentAsync(string prefix, string name) => Task.FromResult($"renamed {prefix} to {name}");
         public FleetSnapshot Snapshot() => new(Array.Empty<FleetMember>(), 12, 3, false);
@@ -24,7 +25,8 @@ public class StyloagentMcpServerTests
         public Task<MessageOutcome> SendMessageAsync(MessageRequest req) => Task.FromResult(MessageOutcome.Ok("/ch/inbox/x.md"));
         public Task<MessageOutcome> ReplyToThreadAsync(string callerPrefix, string thread, string body) => Task.FromResult(MessageOutcome.Ok("/ch/outbox/x.reply.md"));
         public Task<string> CaptureScreenshotAsync(string? target) => Task.FromResult("/shots/x.png");
-        public FleetStatusReport FleetStatus() => new(Array.Empty<AgentStatus>(), 0, 0, false);
+        public FleetStatusReport FleetStatus() => new(NativeRepo is null ? Array.Empty<AgentStatus>() :
+            [new AgentStatus("native-test-", "integration test", "idle", "idle", 0, "", false, NativeRepo)], 0, 0, false);
         public IReadOnlyList<TimelineOp> ReadTimeline(int limit) => Array.Empty<TimelineOp>();
         public Task<string> DehydrateAgentAsync(string prefix) => Task.FromResult($"dehydrated {prefix}");
         public Task<string> RehydrateAgentAsync(string prefix) => Task.FromResult($"rehydrated {prefix}");

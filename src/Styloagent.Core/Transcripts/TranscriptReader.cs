@@ -155,6 +155,9 @@ public static class TranscriptReader
     /// </summary>
     private static long? WindowFor(string? model, string? configuredModel, long contextTokens)
     {
+        var discovered = Mcp.DeepSeekModelDiscovery.Shared.CachedModels.FirstOrDefault(m =>
+            m.Capability.Id == model || m.Capability.Id == configuredModel);
+        if (discovered is { ContextLength: > 0 }) return discovered.ContextLength;
         if (Has1MSignal(model) || Has1MSignal(configuredModel)) return 1_000_000;
         if (IsDeepSeekModel(model) || IsDeepSeekModel(configuredModel)) return 1_000_000;
         if (contextTokens > 200_000) return 1_000_000;

@@ -58,7 +58,13 @@ public sealed class ManifestStore
             }).ToList(),
         };
         var bytes = YamlSerializer.Serialize(file);
-        await File.WriteAllBytesAsync(path, bytes.ToArray());
+        var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await File.WriteAllBytesAsync(temp, bytes.ToArray()).ConfigureAwait(false);
+            File.Move(temp, path, overwrite: true);
+        }
+        finally { if (File.Exists(temp)) File.Delete(temp); }
     }
 
     public async Task<IReadOnlyList<AgentManifestEntry>> LoadAsync(string path)

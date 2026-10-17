@@ -36,7 +36,7 @@ public class MainWindowViewModelTests : IDisposable
     [Fact]
     public async Task Initialize_WithOneContextFile_ExposesOnePaneForFirstAgent()
     {
-        var vm = await MainWindowViewModel.InitializeAsync(
+        using var vm = await MainWindowViewModel.InitializeAsync(
             _channelRoot,
             new FakeLauncher(),
             new FakeWatcher());
@@ -47,7 +47,7 @@ public class MainWindowViewModelTests : IDisposable
     [Fact]
     public async Task Initialize_Pane_HasCorrectPrefix()
     {
-        var vm = await MainWindowViewModel.InitializeAsync(
+        using var vm = await MainWindowViewModel.InitializeAsync(
             _channelRoot,
             new FakeLauncher(),
             new FakeWatcher());
@@ -59,7 +59,7 @@ public class MainWindowViewModelTests : IDisposable
     [Fact]
     public async Task Initialize_Pane_HasBorderColorHex()
     {
-        var vm = await MainWindowViewModel.InitializeAsync(
+        using var vm = await MainWindowViewModel.InitializeAsync(
             _channelRoot,
             new FakeLauncher(),
             new FakeWatcher());
@@ -107,7 +107,7 @@ public class MainWindowViewModelTests : IDisposable
             new("foss-", "My FOSS Agent", "#FF0000"),
         ]);
 
-        var vm = await MainWindowViewModel.InitializeAsync(
+        using var vm = await MainWindowViewModel.InitializeAsync(
             _channelRoot,
             new FakeLauncher(),
             new FakeWatcher(),
@@ -124,7 +124,7 @@ public class MainWindowViewModelTests : IDisposable
         // Don't create the saved-context directory.
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 emptyRoot,
                 new FakeLauncher(),
                 new FakeWatcher());
@@ -159,7 +159,7 @@ public class MainWindowViewModelTests : IDisposable
         var root = MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 root, new FakeLauncher(), new FakeWatcher());
 
             var dock = vm.DocumentDock;
@@ -175,7 +175,7 @@ public class MainWindowViewModelTests : IDisposable
         var root = MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 root, new FakeLauncher(), new FakeWatcher());
 
             vm.AddAgentCommand.Execute(null);
@@ -193,6 +193,24 @@ public class MainWindowViewModelTests : IDisposable
         finally { Directory.Delete(root, recursive: true); }
     }
 
+    [Fact]
+    public async Task Additional_agent_metadata_is_serialized_and_flushed_before_disposal_returns()
+    {
+        var root = MakeTwoAgentChannel();
+        try
+        {
+            using var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            vm.AddAgentCommand.Execute(null);
+            vm.AddAgentCommand.Execute(null);
+            vm.AddAgentCommand.Execute(null);
+            var expected = vm.Panes.Skip(1).Select(p => p.Prefix).ToArray();
+            vm.Dispose();
+            var persisted = await new Styloagent.Core.Config.ManifestStore().LoadAsync(Path.Combine(root, "agents.yaml"));
+            Assert.All(expected, prefix => Assert.Contains(persisted, e => e.Prefix == prefix));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     /// <summary>
     /// Runtime-specific toolbar buttons must spawn the blank agent in the PROJECT ROOT —
     /// the old path resolved the empty worktree against the user's home, leaving the agent with no repo
@@ -207,7 +225,7 @@ public class MainWindowViewModelTests : IDisposable
         try
         {
             var launcher = new FakeLauncher();
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 channel, launcher, new FakeWatcher(), repoRoot: repo);
 
             vm.AddCodexCommand.Execute(null);
@@ -236,7 +254,7 @@ public class MainWindowViewModelTests : IDisposable
         try
         {
             var launcher = new FakeLauncher();
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 root, launcher, new FakeWatcher());
 
             vm.AddCodexCommand.Execute(null);
@@ -267,7 +285,7 @@ public class MainWindowViewModelTests : IDisposable
         try
         {
             var launcher = new FakeLauncher();
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 root, launcher, new FakeWatcher());
 
             vm.AddClaudeDeepSeekCommand.Execute(null);
@@ -301,7 +319,7 @@ public class MainWindowViewModelTests : IDisposable
         try
         {
             var launcher = new FakeLauncher();
-            var vm = await MainWindowViewModel.InitializeAsync(root, launcher, new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(root, launcher, new FakeWatcher());
 
             vm.AddClaudeCommand.Execute(null);
             await WaitUntil(() => launcher.Options.Count >= 2);
@@ -319,7 +337,7 @@ public class MainWindowViewModelTests : IDisposable
         var root = MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
             var pane = vm.Panes[0];
             var prefix = pane.Prefix;
 
@@ -342,7 +360,7 @@ public class MainWindowViewModelTests : IDisposable
         try
         {
             var launcher = new FakeLauncher();
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 root, launcher, new FakeWatcher(), defaultAgentRuntime: AgentRuntimeKind.Codex);
 
             await WaitUntil(() => launcher.Options.Count >= 1);
@@ -381,7 +399,7 @@ public class MainWindowViewModelTests : IDisposable
             ]);
             var launcher = new FakeLauncher();
 
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 _channelRoot, launcher, new FakeWatcher(), repoRoot: repoRoot,
                 overviewSystemPromptPath: promptPath, defaultAgentRuntime: AgentRuntimeKind.Claude);
             await WaitUntil(() => launcher.Options.Count >= 1);
@@ -402,7 +420,7 @@ public class MainWindowViewModelTests : IDisposable
         try
         {
             var launcher = new FakeLauncher();
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 root, launcher, new FakeWatcher(), defaultAgentRuntime: AgentRuntimeKind.Codex);
             await WaitUntil(() => launcher.Options.Count >= 1);
 
@@ -410,6 +428,7 @@ public class MainWindowViewModelTests : IDisposable
                 vm.Panes[0].Prefix, "claude-child-", "r", ".", "p", Worktree: false, Runtime: "claude"));
             await WaitUntil(() => launcher.Options.Count >= 2);
 
+            await WaitUntil(() => vm.Panes[1].State == SessionState.Live);
             Assert.True(outcome.Spawned);
             Assert.Equal(AgentRuntimeKind.Claude, vm.Panes[1].Runtime);
             Assert.Equal("claude", launcher.Options[1].Command);
@@ -475,7 +494,7 @@ public class MainWindowViewModelTests : IDisposable
         var root = MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 root, new FakeLauncher(), new FakeWatcher());
 
             // Add second seeded entry
@@ -559,7 +578,7 @@ public class MainWindowViewModelTests : IDisposable
         try
         {
             // Must not throw even though the file does not exist.
-            var vm = await MainWindowViewModel.InitializeAsync(
+            using var vm = await MainWindowViewModel.InitializeAsync(
                 _channelRoot,
                 launcher,
                 new FakeWatcher(),

@@ -85,6 +85,15 @@ public class GitServiceIntegrationTests
 
             var git = new Styloagent.Git.GitService();
             Assert.True((await git.PushAsync(work)).Ok, "push should succeed to the configured upstream");
+
+            Run(work, "switch -c agent/new-work");
+            var firstPush = await git.PushAsync(work);
+            Assert.True(firstPush.Ok, firstPush.Error);
+            Run(work, "rev-parse --verify refs/remotes/origin/agent/new-work");
+            Run(bare, "show-ref --verify refs/heads/agent/new-work");
+
+            Run(work, "checkout --detach");
+            Assert.Contains("detached HEAD", (await git.PushAsync(work)).Error);
         }
         finally { TryDeleteRepo(root); }
     }

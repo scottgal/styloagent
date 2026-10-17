@@ -51,6 +51,10 @@
                   ToolTip.Tip="Open a new Claude agent with DeepSeek models">
             <ic:SymbolIcon Symbol="Cloud" FontSize="18" />
           </Button>
+          <Button x:Name="NewOpenCodeButton" Command="{Binding AddOpenCodeCommand}" Padding="6,4"
+                  ToolTip.Tip="Open a new OpenCode v2 agent" AutomationProperties.Name="Open a new OpenCode agent">
+            <ic:SymbolIcon Symbol="WindowConsole" FontSize="18" />
+          </Button>
           <Button x:Name="NewConsoleButton" Command="{Binding NewConsoleCommand}" Padding="7,4"
                   ToolTip.Tip="Open a plain shell terminal (not an agent)"
                   AutomationProperties.Name="Open a new console">

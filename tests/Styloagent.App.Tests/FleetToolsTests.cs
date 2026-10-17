@@ -15,6 +15,8 @@ public class FleetToolsTests
         public SpawnRequest? LastReq;
         public SpawnOutcome Next = SpawnOutcome.Ok("foss-");
         public IssueRequest? LastIssue;
+        public string? CapabilitiesRepo;
+        public AgentCapabilities AgentCapabilities(string? repo) { CapabilitiesRepo = repo; return AgentCapabilities(); }
         public IssueOutcome NextIssue = IssueOutcome.Ok("some-issue");
         public string? LastWrapUp;
         public WrapUpOutcome NextWrapUp = new(WrapUpStatus.Merged, "merged foss-", null);
@@ -243,6 +245,15 @@ public class FleetToolsTests
         var json = tools.agent_capabilities();
         Assert.Contains("gpt-test", json);
         Assert.Contains("high", json);
+    }
+
+    [Fact]
+    public void agent_capabilities_uses_callers_repository_provider_configuration()
+    {
+        var controller = new FakeController();
+        var tools = new FleetTools(AccessorWith("overview-", "Bearer secret", "second-repo"), controller, new McpAuth("secret"));
+        Assert.Contains("gpt-test", tools.agent_capabilities());
+        Assert.Equal("second-repo", controller.CapabilitiesRepo);
     }
 
     [Fact]

@@ -156,26 +156,33 @@ public static class HookSettings
         // settings are honored for modelPicker (never project settings), so it must ride this per-launch
         // --settings blob rather than a file dropped into the target repo.
         if (includeDeepSeekModelPicker)
-            settings["modelPicker"] = DeepSeekModelPicker;
+            settings["modelPicker"] = DeepSeekModelPicker(repoRoot);
 
         return JsonSerializer.Serialize(settings);
     }
 
-    private static readonly Dictionary<string, object> DeepSeekModelPicker = new()
+    private static Dictionary<string, object> DeepSeekModelPicker(string? repoRoot)
     {
-        ["options"] = new object[]
+        var routing = Sessions.DeepSeekEnv.Load(repoRoot);
+        routing.TryGetValue("ANTHROPIC_BASE_URL", out var baseUrl);
+        var discovered = Mcp.DeepSeekModelDiscovery.Shared.CachedModels;
+        var latest = Mcp.DeepSeekModelDiscovery.LatestFlash(discovered);
+        var models = Mcp.AgentCapabilities.Load(repoRoot).WithDeepSeekModels(discovered.Select(m => m.Capability).ToArray())
+            .WithDeepSeekEndpoint(baseUrl).Agents.FirstOrDefault(a => a.Agent == "claude-deepseek")?.Models ?? [];
+        return new()
         {
-            new Dictionary<string, object>
-            {
-                ["model"] = "deepseek-flash",
-                ["label"] = "DeepSeek V4.1 Flash",
-                ["description"] = "DeepSeek V4.1 Flash via an Anthropic-compatible endpoint (.styloagent/deepseek.env)",
-                ["behavesAs"] = "sonnet",
-            },
-        },
-        // Append to (never replace) the built-in lineup — the native Claude models must stay selectable.
-        ["replaceBuiltInOptions"] = false,
-    };
+            ["options"] = models.Where(m => m.Id != "default")
+                .Select(m => new { Model = Sessions.DeepSeekModels.ResolveForEndpoint(m.Id, baseUrl, latest), m.Label })
+                .DistinctBy(m => m.Model)
+                .Select(m => (object)new Dictionary<string, object>
+                {
+                    ["model"] = m.Model, ["label"] = m.Label,
+                    ["description"] = Sessions.DeepSeekModels.IsOpenRouter(baseUrl) ? "OpenRouter" : "DeepSeek direct API",
+                    ["behavesAs"] = "sonnet",
+                }).ToArray(),
+            ["replaceBuiltInOptions"] = true,
+        };
+    }
 
     /// <summary>
     /// The <c>SessionStart</c> command that still drops the raw event for observation AND, when the

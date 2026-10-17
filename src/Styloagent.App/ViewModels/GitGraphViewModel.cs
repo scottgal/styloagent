@@ -12,6 +12,7 @@ namespace Styloagent.App.ViewModels;
 public sealed partial class GitGraphViewModel : ObservableObject
 {
     private readonly IGitLog _log;
+    private int _loadVersion;
 
     /// <summary>One row of history text, aligned (by <see cref="CommitGraphLayout.RowHeight"/>) with
     /// the graph dots drawn beside it.</summary>
@@ -35,6 +36,7 @@ public sealed partial class GitGraphViewModel : ObservableObject
     /// <summary>Blanks the graph (no worktree selected).</summary>
     public void Clear()
     {
+        Interlocked.Increment(ref _loadVersion);
         Graph = null;
         Layout = null;
         CommitCount = 0;
@@ -43,7 +45,9 @@ public sealed partial class GitGraphViewModel : ObservableObject
 
     public async Task LoadAsync(string worktreePath)
     {
+        var version = Interlocked.Increment(ref _loadVersion);
         var result = await _log.GetCommitsAsync(worktreePath);
+        if (version != Volatile.Read(ref _loadVersion)) return;
         if (!result.Ok || result.Value is null || result.Value.Count == 0)
         {
             Clear();

@@ -39,7 +39,7 @@ public class ThrottleTests
     [Fact]
     public async Task Agent_rate_limit_output_flips_the_pane_to_throttled()
     {
-        var vm = await MainWindowViewModel.InitializeAsync(
+        using var vm = await MainWindowViewModel.InitializeAsync(
             MainWindowViewModelTests.MakeTwoAgentChannel(), new FakeLauncher(), new FakeWatcher());
 
         var launcher = new FakeLauncher();
@@ -68,7 +68,7 @@ public class ThrottleTests
         try
         {
             var launcher = new FakeLauncher();
-            var vm = await MainWindowViewModel.InitializeAsync(root, launcher, new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(root, launcher, new FakeWatcher());
 
             var entry = new AgentManifestEntry("rl-", "/repo", "/repo/wt", "", "", "/ctx.md", AgentTransport.Local);
             var pane = new AgentPaneViewModel(new AgentSession(entry, launcher, new FakeWatcher()), entry, "rl", "#888888");

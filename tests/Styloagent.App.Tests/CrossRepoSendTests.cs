@@ -17,7 +17,7 @@ public class CrossRepoSendTests
         var root = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
 
             var outcome = await vm.SendBusMessage(
                 new MessageRequest("cockpit-", "overview-", "hello there", "body", "normal"));
@@ -35,7 +35,7 @@ public class CrossRepoSendTests
         var root = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
 
             var outcome = await vm.SendBusMessage(
                 new MessageRequest("cockpit-", "overview-", "q", "b", "normal", Repo: "no-such-repo"));

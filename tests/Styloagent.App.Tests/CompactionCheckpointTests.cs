@@ -17,7 +17,7 @@ public class CompactionCheckpointTests
         var root = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
             var prefix = vm.Panes.First().Prefix;
             var docPath = Path.Combine(root, "saved-context", prefix + "context.md");
             var timelineBefore = vm.TimelineCount;

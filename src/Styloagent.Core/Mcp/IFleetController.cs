@@ -13,6 +13,7 @@ public interface IFleetController
     Task<string> RenameAgentAsync(string prefix, string name);
     FleetSnapshot Snapshot();
     AgentCapabilities AgentCapabilities();
+    AgentCapabilities AgentCapabilities(string? repo) => AgentCapabilities();
     Projects.ModelPolicy ModelPolicy();
     Task<IssueOutcome> ReportIssueAsync(IssueRequest req);
     Task<WrapUpOutcome> WrapUpAsync(string callerPrefix);

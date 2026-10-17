@@ -11,6 +11,7 @@ public sealed record AgentRuntimeCapabilities(string Agent, IReadOnlyList<AgentC
 public sealed record AgentCapabilities(IReadOnlyList<AgentRuntimeCapabilities> Agents, string SourcePath)
 {
     private static readonly JsonSerializerOptions LoadJson = new() { PropertyNameCaseInsensitive = true };
+    private static readonly string[] DefaultEfforts = ["default"];
 
     public static AgentCapabilities Load(string? repoRoot)
     {
@@ -23,11 +24,12 @@ public sealed record AgentCapabilities(IReadOnlyList<AgentRuntimeCapabilities> A
             {
                 var loaded = JsonSerializer.Deserialize<AgentCapabilitiesFile>(File.ReadAllText(path), LoadJson);
                 if (loaded?.Agents is { Count: > 0 })
-                    return new(loaded.Agents
+                    return new AgentCapabilities(loaded.Agents
                         .Where(a => !a.Agent.Equals("kilo", StringComparison.OrdinalIgnoreCase))
                         .Select(a => new AgentRuntimeCapabilities(
                         a.Agent, a.Models.Select(m => new AgentCapability(m.Id, m.Label ?? m.Id,
-                            m.Efforts is { } efforts ? efforts : new List<string> { "default" })).ToList())).ToList(), path);
+                            m.Efforts is { } efforts ? efforts : new List<string> { "default" })).ToList())).ToList(), path)
+                        .WithDeepSeekModels().WithOpenCodeModels(Array.Empty<AgentCapability>());
             }
         }
         catch { /* malformed/missing capability files fall back to safe defaults */ }
@@ -59,12 +61,27 @@ public sealed record AgentCapabilities(IReadOnlyList<AgentRuntimeCapabilities> A
         {
             new AgentCapability("default", "CLI default", new[] { "default", "low", "medium", "high", "xhigh" }),
         }),
+        new AgentRuntimeCapabilities("opencode", new[]
+        {
+            new AgentCapability("default", "OpenCode provider default", new[] { "default" }),
+        }),
         new AgentRuntimeCapabilities("claude-deepseek", new[]
         {
-            new AgentCapability("default", "deepseek-flash", new[] { "default", "low", "medium", "high", "max" }),
-            new AgentCapability("deepseek-flash", "DeepSeek V4.1 Flash", new[] { "default", "low", "medium", "high", "max" }),
+            new AgentCapability("default", "Latest DeepSeek Flash (automatic)", new[] { "default", "low", "medium", "high", "max" }),
+            new AgentCapability(Sessions.DeepSeekModels.Flash, "DeepSeek Flash (latest direct release)", new[] { "default", "low", "medium", "high", "max" }),
+            new AgentCapability(Sessions.DeepSeekModels.OpenRouterFlash, "DeepSeek V4.1 Flash 1017 (OpenRouter)", new[] { "default", "low", "medium", "high", "max" }),
         }),
     };
+
+    // Existing project catalogs keep their explicit overrides while gaining newly supported models.
+    private AgentCapabilities WithDeepSeekModels()
+    {
+        var builtIn = Default.First(a => a.Agent == "claude-deepseek");
+        return this with { Agents = Agents.Select(a => a.Agent.Equals(builtIn.Agent, StringComparison.OrdinalIgnoreCase)
+            ? a with { Models = a.Models.Concat(builtIn.Models.Where(m =>
+                !a.Models.Any(existing => existing.Id.Equals(m.Id, StringComparison.OrdinalIgnoreCase)))).ToList() }
+            : a).ToList() };
+    }
 
     /// <summary>
     /// Replaces the <c>codex</c> runtime's model list with the live catalog discovered from the codex CLI's
@@ -73,6 +90,27 @@ public sealed record AgentCapabilities(IReadOnlyList<AgentRuntimeCapabilities> A
     /// </summary>
     public AgentCapabilities WithCodexModels(IReadOnlyList<AgentCapability> models)
         => WithDiscoveredModels("codex", models);
+
+    public AgentCapabilities WithOpenCodeModels(IReadOnlyList<AgentCapability> models)
+    {
+        var entries = new[] { new AgentCapability("default", "OpenCode provider default", DefaultEfforts) }.Concat(models).ToArray();
+        if (models.Count == 0 && Agents.Any(a => a.Agent == "opencode")) return this;
+        return WithDiscoveredModels("opencode", entries);
+    }
+
+    public AgentCapabilities WithDeepSeekModels(IReadOnlyList<AgentCapability> models)
+    {
+        if (models.Count == 0) return this;
+        return this with { Agents = Agents.Select(a => a.Agent.Equals("claude-deepseek", StringComparison.OrdinalIgnoreCase)
+            ? a with { Models = a.Models.Concat(models.Where(m => !a.Models.Any(existing =>
+                existing.Id.Equals(m.Id, StringComparison.OrdinalIgnoreCase)))).ToList() }
+            : a).ToList() };
+    }
+
+    public AgentCapabilities WithDeepSeekEndpoint(string? baseUrl)
+        => this with { Agents = Agents.Select(a => a.Agent.Equals("claude-deepseek", StringComparison.OrdinalIgnoreCase)
+            ? a with { Models = a.Models.Where(m => Sessions.DeepSeekModels.IsCompatible(m.Id, baseUrl)).ToArray() }
+            : a).ToArray() };
 
     /// <summary>
     /// Resolves a <see cref="Styloagent.Core.Model.ModelTier"/> to a model this machine can ACTUALLY run.

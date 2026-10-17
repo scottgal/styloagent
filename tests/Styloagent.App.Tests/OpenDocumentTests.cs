@@ -17,7 +17,7 @@ public class OpenDocumentTests
         var root = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
             var dock = vm.DocumentDock!;
             var docsBefore = dock.VisibleDockables!.OfType<Document>().Count();
             var timelineBefore = vm.TimelineCount;

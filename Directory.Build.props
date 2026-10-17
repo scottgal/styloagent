@@ -1,5 +1,6 @@
 <Project>
   <PropertyGroup>
+    <Version>1.13.0</Version>
     <!-- Keep dependency security checks explicit and make advisories build-blocking. -->
     <NuGetAudit>true</NuGetAudit>
     <NuGetAuditMode>all</NuGetAuditMode>

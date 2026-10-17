@@ -16,6 +16,13 @@ namespace Styloagent.App;
 
 public partial class App : Application
 {
+    private static AgentRuntimeKind PreferredRuntime(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return AgentRuntimeKind.Codex;
+        try { return AgentRuntime.Parse(value); }
+        catch (ArgumentException) { return AgentRuntimeKind.Codex; }
+    }
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
@@ -156,7 +163,7 @@ public partial class App : Application
                 // Don't Show() here — let the desktop lifetime show MainWindow when its main loop
                 // starts. Showing it now would fire Window.Opened before post-Startup hooks (e.g. the
                 // UI-test driver) attach, so they'd miss it. The lifetime shows MainWindow for us.
-                _ = OpenProjectAsync(repoEnv, welcomeWindow: null, existing: placeholder);
+                _ = OpenProjectAsync(repoEnv, welcomeWindow: null, existing: placeholder, defaultRuntime: PreferredRuntime(prefs.DefaultRuntime));
             }
             else
             {
@@ -172,11 +179,7 @@ public partial class App : Application
                 WelcomeViewModel? welcome = null;
                 // The "start with" runtime choice is persisted in preferences, so the next app start
                 // opens with the same default (and the welcome screen preselects it).
-                var initialRuntime = prefs.DefaultRuntime.Equals("claude", StringComparison.OrdinalIgnoreCase)
-                    ? AgentRuntimeKind.Claude
-                    : prefs.DefaultRuntime.Equals("claude-deepseek", StringComparison.OrdinalIgnoreCase)
-                        ? AgentRuntimeKind.ClaudeDeepSeek
-                        : AgentRuntimeKind.Codex;
+                var initialRuntime = PreferredRuntime(prefs.DefaultRuntime);
                 welcome = new WelcomeViewModel(recents, recentsPath,
                     new StorageFolderPicker(welcomeWindow),
                     root => _ = OpenProjectAsync(root, welcomeWindow,

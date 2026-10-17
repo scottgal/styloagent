@@ -17,7 +17,7 @@ public class LayoutSwitchLeakTests
         var root = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(root, new FakeLauncher(), new FakeWatcher());
 
             var weakOldLayouts = new List<WeakReference>();
             // Switch modes MANY times (each differs from the previous, so it always rebuilds). The leak was

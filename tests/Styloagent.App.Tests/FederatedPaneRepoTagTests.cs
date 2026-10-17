@@ -19,7 +19,7 @@ public class FederatedPaneRepoTagTests
         var channel = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
             vm.SetReposFromOverviews(new[] { new RepoOverview(
                 "overview-", "/ws/styloagent", "/ws/styloagent/.styloagent/system-prompt.md", 0, "#4CDB6E", true) });
 

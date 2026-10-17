@@ -34,7 +34,7 @@ public class TabRepoBandTests
         var channel = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
             vm.SetReposFromOverviews(new[]
             {
                 Repo("overview-", "Styloagent", 0, "#4CDB6E", primary: true),
@@ -64,7 +64,7 @@ public class TabRepoBandTests
         var channel = MainWindowViewModelTests.MakeTwoAgentChannel();
         try
         {
-            var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
+            using var vm = await MainWindowViewModel.InitializeAsync(channel, new FakeLauncher(), new FakeWatcher());
             vm.SetReposFromOverviews(new[] { Repo("overview-", "Styloagent", 0, "#4CDB6E", primary: true) });
 
             vm.Panes.Clear();

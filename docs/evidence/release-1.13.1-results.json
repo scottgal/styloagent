@@ -1,0 +1,44 @@
+{
+  "verified_at_utc": "2026-10-17T12:41:27.734324+00:00",
+  "lucidview_revision": "c4eb74097943326ebfa4507a6cec905933a5d6d7",
+  "release_tests": {
+    "command": "dotnet test Styloagent.sln -c Release",
+    "passed": 1177,
+    "failed": 0,
+    "skipped": 4,
+    "suites": {
+      "Core": 612,
+      "Git": 26,
+      "App": 391,
+      "UI": 148
+    }
+  },
+  "local_launch": {
+    "command": "./run.sh Release",
+    "exit_code": 0,
+    "build_errors": 0
+  },
+  "publish": {
+    "command": "dotnet publish src/Styloagent.App -c Release -r osx-arm64 --self-contained -p:PublishSingleFile=false",
+    "exit_code": 0
+  },
+  "dependency_graph": {
+    "sixlabors_present": false,
+    "imagesharp_present": false,
+    "svg_skia": "5.1.1",
+    "skiasharp": "3.119.2",
+    "linux_native_skiasharp": "3.119.2"
+  },
+  "package_audit": "No known vulnerable packages reported for all nine solution projects.",
+  "svg_checks": [
+    "transforms and clips",
+    "gradients and fonts",
+    "cached local SVG at double resolution",
+    "Mermaid PNG export",
+    "invalid scale rejection"
+  ],
+  "limits": [
+    "Windows and Linux runtime execution not verified locally; cross-platform binaries built by the release workflow.",
+    "OpenCode live tests from v1.13.0 were not repeated for the SVG dependency change."
+  ]
+}

@@ -40,4 +40,26 @@ public class CodexApprovalDetectorTests
 
         Assert.Equal(1, count);
     }
+
+    [Fact]
+    public void Resolved_approval_stays_cleared_when_command_output_arrives()
+    {
+        var detector = new CodexApprovalDetector();
+        var changes = new List<CodexApprovalPrompt?>();
+        detector.Changed += changes.Add;
+        const string frame = "Would you like to run the following command?\nls\n1. Yes\nPress enter to confirm or esc to cancel";
+        detector.Feed(frame);
+        detector.Resolve();
+
+        detector.Feed("\nCommand completed successfully.\n");
+
+        Assert.Null(detector.Current);
+        Assert.Equal(2, changes.Count);
+        // A later request for the same command is still a new approval.
+        detector.Feed(frame[..40]);
+        Assert.Null(detector.Current);
+        detector.Feed(frame[40..]);
+        Assert.NotNull(detector.Current);
+        Assert.Equal(3, changes.Count);
+    }
 }

@@ -42,6 +42,7 @@ public sealed class CodexApprovalDetector
         if (Current is null) return;
         Current = null;
         _activeId = null;
+        _buffer = string.Empty;
         Changed?.Invoke(null);
     }
 

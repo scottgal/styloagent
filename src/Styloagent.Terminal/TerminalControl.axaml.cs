@@ -428,15 +428,6 @@ public sealed partial class TerminalControl : UserControl
     }
 
     /// <inheritdoc />
-    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
-    {
-        base.OnAttachedToVisualTree(e);
-        // Focus the terminal as soon as it appears so it's immediately typeable
-        // (no need to click first). Clicking another pane moves focus to it.
-        Focus();
-    }
-
-    /// <inheritdoc />
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         // Fix 4: auto-teardown — unsubscribe session events when the control leaves the tree

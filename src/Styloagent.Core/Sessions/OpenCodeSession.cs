@@ -24,7 +24,7 @@ public sealed class OpenCodeSession : IPtySession, INativeAgentSession
     private readonly SemaphoreSlim _reconcile = new(1, 1);
     private readonly SemaphoreSlim _sendGate = new(1, 1);
     private readonly object _stateGate = new();
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(20) };
+    private readonly HttpClient _http;
     private readonly Dictionary<string, string> _pending = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _pendingInputs = new(StringComparer.Ordinal);
     private readonly string _directory;
@@ -41,6 +41,7 @@ public sealed class OpenCodeSession : IPtySession, INativeAgentSession
     private int _rows;
     private string _initialId = "msg_" + Guid.NewGuid().ToString("N");
     private string? _lastState;
+    private bool _connectionInterrupted;
     private string? _lastToolId;
     private DateTimeOffset _catalogAt;
     private IReadOnlyList<OpenCodeModel> _models = [];
@@ -76,8 +77,9 @@ public sealed class OpenCodeSession : IPtySession, INativeAgentSession
     public event Action? Exited;
     public event Action<HookEvent>? RuntimeEvent;
 
-    private OpenCodeSession(OpenCodeOptions options, PtySpawnOptions spawn, IPtyLauncher launcher)
+    internal OpenCodeSession(OpenCodeOptions options, PtySpawnOptions spawn, IPtyLauncher launcher, HttpClient? http = null)
     {
+        _http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         _options = options;
         _spawn = spawn;
         _launcher = launcher;
@@ -380,7 +382,7 @@ public sealed class OpenCodeSession : IPtySession, INativeAgentSession
         Exited?.Invoke();
     }
 
-    private async Task PollAsync(CancellationToken ct)
+    internal async Task PollAsync(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
@@ -389,7 +391,11 @@ public sealed class OpenCodeSession : IPtySession, INativeAgentSession
             catch (Exception ex) when (ex is HttpRequestException or JsonException or IOException or TaskCanceledException)
             {
                 _lastState = null;
-                Emit("Notification", "agent_needs_input", "OpenCode connection interrupted; recovering session state.");
+                if (!_connectionInterrupted)
+                {
+                    _connectionInterrupted = true;
+                    Emit("Notification", "connection_interrupted", "OpenCode connection interrupted; recovering session state.");
+                }
             }
             try { await Task.Delay(TimeSpan.FromSeconds(2), ct).ConfigureAwait(false); }
             catch (OperationCanceledException) { break; }
@@ -452,16 +458,27 @@ public sealed class OpenCodeSession : IPtySession, INativeAgentSession
             var forms = (await GetAsync($"/api/session/{SessionId}/form", ct).ConfigureAwait(false)).GetProperty("data");
             var form = forms.EnumerateArray().FirstOrDefault();
             var formId = Str(form, "id");
-            var state = PendingPermissionId is not null ? "permission:" + PendingPermissionId : formId is not null ? "form:" + formId : IsIdle ? "idle" : "working";
+            var messages = (await GetAsync($"/api/session/{SessionId}/message?order=desc&limit=100", ct).ConfigureAwait(false)).GetProperty("data");
+            // Only the latest completed turn can require action for a model error. A null error
+            // or an older failed turn must not override a running/new prompt's native status.
+            var latest = messages.EnumerateArray().FirstOrDefault(m => Str(m, "type") is "assistant" or "user");
+            var modelError = IsIdle && Str(latest, "type") == "assistant"
+                && latest.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null
+                ? error.GetRawText() : null;
+            var state = PendingPermissionId is not null ? "permission:" + PendingPermissionId
+                : formId is not null ? "form:" + formId
+                : modelError is not null ? "error:" + Str(latest, "id") + ":" + modelError
+                : IsIdle ? "idle" : "working";
             if (_lastState != state)
             {
                 _lastState = state;
                 if (PendingPermissionId is not null) Emit("PermissionRequest", message: "Approve " + Str(first, "action") + ": " + first.GetProperty("resources").GetRawText());
                 else if (formId is not null) Emit("Notification", "agent_needs_input", "Answer in the OpenCode terminal: " + Str(form, "title"));
+                else if (modelError is not null) Emit("Notification", "agent_needs_input", "OpenCode model error: " + modelError);
                 else if (IsIdle) Emit("Notification", "idle_prompt");
                 else Emit("UserPromptSubmit");
             }
-            var messages = (await GetAsync($"/api/session/{SessionId}/message?order=desc&limit=100", ct).ConfigureAwait(false)).GetProperty("data");
+            _connectionInterrupted = false;
             KeyValuePair<string, string>[] pending;
             lock (_stateGate) pending = _pending.ToArray();
             foreach (var (id, path) in pending)
@@ -484,7 +501,6 @@ public sealed class OpenCodeSession : IPtySession, INativeAgentSession
             var assistant = messages.EnumerateArray().FirstOrDefault(m => Str(m, "type") == "assistant");
             if (assistant.ValueKind != JsonValueKind.Undefined)
             {
-                if (assistant.TryGetProperty("error", out var error)) Emit("Notification", "agent_needs_input", "OpenCode model error: " + error.GetRawText());
                 if (assistant.TryGetProperty("tokens", out var tokens))
                 {
                     var cache = tokens.TryGetProperty("cache", out var cached) ? cached : default;

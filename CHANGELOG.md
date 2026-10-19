@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.13.5](https://github.com/scottgal/styloagent/releases/tag/v1.13.5) — 2026-10-19
+
+- Stop repeated OpenCode “needs input” alerts from null or superseded model errors; report each current idle failure once and clear it when work resumes.
+- Keep automatic OpenCode connection recovery out of the human-input queue, and prevent terminal attachment from grabbing keyboard focus.
+- Clear resolved Codex approval frames so normal command output cannot raise the same approval again.
+- Wait for each new Claude or Claude+DeepSeek terminal to paint before injecting resume or restart prompts.
+- Observe checkpoint changes before requesting them, catching fast replies while retaining live sessions on timeout, cancellation or submission failure.
+
+[Full release notes and verification](docs/releases/v1.13.5.md).
+
 ## [1.13.4](https://github.com/scottgal/styloagent/releases/tag/v1.13.4) — 2026-10-17
 
 - Preserve terminal state across dock pane and tab replacement, including output received while hidden. Capped raw output replay no longer loses OpenCode's alternate-screen and mouse modes.

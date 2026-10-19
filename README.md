@@ -198,6 +198,8 @@ Select **OpenCode** on the welcome screen or use the OpenCode toolbar button. Th
 
 Use provider API-key environment variables or the existing DeepSeek routing file. Global OpenCode configuration and legacy auth.json credentials are retained. Tested with OpenCode **2.0.25**; v1 produces a visible startup error. [Integration details, live tests and limits](docs/opencode-integration.md).
 
+In v1.13.5, null or superseded model errors and automatic connection recovery no longer raise repeated input alerts. Attaching or revealing a terminal preserves keyboard focus in the control you are using. See the [release notes](docs/releases/v1.13.5.md) for the related Codex approval and Claude resume/checkpoint fixes.
+
 ## Building
 
 ```bash

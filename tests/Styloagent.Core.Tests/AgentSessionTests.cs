@@ -2,6 +2,10 @@ using Styloagent.Core.Abstractions;
 using Styloagent.Core.Model;
 using Styloagent.Core.Sessions;
 
+[CollectionDefinition("Agent session timing", DisableParallelization = true)]
+public class AgentSessionTimingCollection;
+
+[Collection("Agent session timing")]
 public class AgentSessionTests
 {
     private sealed class FakePty : IPtySession
@@ -247,6 +251,8 @@ public class AgentSessionTests
     private sealed class BootingPty : IPtySession
     {
         public List<string> Writes { get; } = new();
+        public Action<string>? OnWrite { get; set; }
+        public bool Disposed { get; private set; }
         public bool SawWriteBeforeFirstPaint { get; private set; }
         public bool Painted { get; private set; }
         public event Action<string>? Output;
@@ -261,18 +267,25 @@ public class AgentSessionTests
 
         public ValueTask WriteAsync(string text, CancellationToken ct = default)
         {
+            ct.ThrowIfCancellationRequested();
             if (!Painted) SawWriteBeforeFirstPaint = true;
             Writes.Add(text);
+            OnWrite?.Invoke(text);
             return ValueTask.CompletedTask;
         }
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
     }
 
     private sealed class BootingLauncher : IPtyLauncher
     {
-        public BootingPty Pty { get; } = new();
+        public List<BootingPty> Spawned { get; } = new();
+        public BootingPty Pty => Spawned[^1];
         public Task<IPtySession> SpawnAsync(PtySpawnOptions o, CancellationToken ct = default)
-            => Task.FromResult<IPtySession>(Pty);
+        {
+            var pty = new BootingPty();
+            Spawned.Add(pty);
+            return Task.FromResult<IPtySession>(pty);
+        }
     }
 
     /// <summary>Initial prompts are held until an interactive CLI has painted its first frame.</summary>
@@ -300,5 +313,130 @@ public class AgentSessionTests
         Assert.False(launcher.Pty.SawWriteBeforeFirstPaint,
             "the prompt was typed before the TUI painted — kilo discards those bytes and the agent " +
             "never receives its initial prompt");
+    }
+
+    [Theory]
+    [InlineData(AgentRuntimeKind.Claude, false)]
+    [InlineData(AgentRuntimeKind.Claude, true)]
+    [InlineData(AgentRuntimeKind.ClaudeDeepSeek, false)]
+    [InlineData(AgentRuntimeKind.ClaudeDeepSeek, true)]
+    public async Task Resume_and_restart_wait_for_the_new_process_to_paint(AgentRuntimeKind runtime, bool restart)
+    {
+        var launcher = new BootingLauncher();
+        var session = new AgentSession(Entry() with { Runtime = runtime }, launcher, new FakeWatcher());
+        var previousTimeout = AgentSession.InjectBootTimeout;
+        try
+        {
+            await session.SpawnAsync("");
+            var old = launcher.Pty;
+            old.Paint();
+            if (restart) await session.KillAsync();
+            else Assert.True(await session.DehydrateAsync(TimeSpan.FromSeconds(1)));
+
+            AgentSession.InjectBootTimeout = TimeSpan.FromSeconds(5);
+            var start = restart ? session.SpawnAsync("RESUME") : session.RehydrateAsync("RESUME");
+            try
+            {
+                Assert.False(start.IsCompleted);
+                Assert.Empty(launcher.Pty.Writes);
+                old.Paint(); // Late output from the previous process cannot satisfy readiness.
+                Assert.Empty(launcher.Pty.Writes);
+            }
+            finally { launcher.Pty.Paint(); await start; }
+
+            Assert.False(launcher.Pty.SawWriteBeforeFirstPaint);
+            Assert.Collection(launcher.Pty.Writes,
+                text => Assert.Equal("RESUME", text), text => Assert.Equal("\r", text));
+            Assert.Equal(SessionState.Live, session.State);
+        }
+        finally
+        {
+            AgentSession.InjectBootTimeout = previousTimeout;
+            await session.KillAsync();
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Checkpoint_written_during_submission_is_acknowledged(bool existingFile)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "styloagent-checkpoint-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "context.md");
+        var launcher = new BootingLauncher();
+        var session = new AgentSession(Entry() with { SavedContextPath = path }, launcher, new FileSystemFileWatcher());
+        try
+        {
+            if (existingFile) await File.WriteAllTextAsync(path, "previous checkpoint");
+            await session.SpawnAsync("");
+            launcher.Pty.OnWrite = text =>
+            {
+                if (text == "\r") File.WriteAllText(path, "new checkpoint written during submission");
+            };
+
+            Assert.True(await session.DehydrateAsync(TimeSpan.FromMilliseconds(500)));
+            Assert.Equal(SessionState.Dehydrated, session.State);
+            Assert.True(launcher.Pty.Disposed);
+        }
+        finally { await session.KillAsync(); Directory.Delete(directory, recursive: true); }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Failed_checkpoint_submission_cancels_the_watch_and_keeps_session_live(bool cancel)
+    {
+        var watcher = new PendingWatcher();
+        var launcher = new BootingLauncher();
+        var session = new AgentSession(Entry(), launcher, watcher);
+        using var cts = new CancellationTokenSource();
+        try
+        {
+            await session.SpawnAsync("");
+            launcher.Pty.OnWrite = _ =>
+            {
+                if (cancel) { cts.Cancel(); cts.Token.ThrowIfCancellationRequested(); }
+                throw new IOException("submission failed");
+            };
+            if (cancel)
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => session.DehydrateAsync(TimeSpan.FromSeconds(1), cts.Token));
+            else
+                await Assert.ThrowsAsync<IOException>(() => session.DehydrateAsync(TimeSpan.FromSeconds(1), cts.Token));
+
+            Assert.True(watcher.Stopped);
+            Assert.Equal(SessionState.Live, session.State);
+            Assert.False(launcher.Pty.Disposed);
+        }
+        finally { await session.KillAsync(); }
+    }
+
+    [Fact]
+    public async Task Checkpoint_timeout_stops_the_watch_and_keeps_session_live()
+    {
+        var watcher = new PendingWatcher();
+        var session = new AgentSession(Entry(), new BootingLauncher(), watcher);
+        try
+        {
+            await session.SpawnAsync("");
+            Assert.False(await session.DehydrateAsync(TimeSpan.FromMilliseconds(50)));
+            Assert.True(watcher.Stopped);
+            Assert.Equal(SessionState.Live, session.State);
+        }
+        finally { await session.KillAsync(); }
+    }
+
+    private sealed class PendingWatcher : IFileWatcher
+    {
+        public bool Stopped { get; private set; }
+        public async Task<bool> WaitForChangeAsync(string path, TimeSpan timeout, CancellationToken ct = default)
+        {
+            try
+            {
+                await Task.Delay(timeout, ct);
+                return false;
+            }
+            finally { Stopped = true; }
+        }
     }
 }

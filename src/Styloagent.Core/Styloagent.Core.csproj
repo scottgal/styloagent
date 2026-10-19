@@ -13,4 +13,8 @@
     <PackageReference Include="Markdig" Version="0.39.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Styloagent.Core.Tests" />
+  </ItemGroup>
+
 </Project>

@@ -87,3 +87,19 @@ VT parsing now belongs to the PTY session and begins before its reader tasks. Do
 A second failing regression exposed missing native wheel forwarding: returning an unhandled wheel event on the alternate screen only let Avalonia's outer scroll viewer move; it never delivered input to OpenCode. Wheel input now uses the negotiated VT mouse protocol and pointer cell, accumulates fractional trackpad deltas and consumes the event. The full-screen outer scrollbar is disabled. Colored transcript layout tests retain fixed shaped row heights while output continues.
 
 The Release suite passed 1,195 tests. Four live UI/process checks separately cover real OpenCode startup, shutdown, long-session scrolling and pane replacement, and a real shell overflowing its replay before the first view. See [v1.13.4 verification](releases/v1.13.4.md).
+
+
+## Runtime attention and lifecycle follow-up (v1.13.5)
+
+The 19 October review reproduced six defects across OpenCode, Codex and the shared Claude lifecycle. All six are fixed in v1.13.5:
+
+| Finding | Change | Regression coverage |
+| --- | --- | --- |
+| Every snapshot re-emitted stored OpenCode errors, including `error: null`, overriding working/idle state | Reconcile the latest relevant message together with execution, permission and form state; emit a current idle failure once | Null errors, repeated errors, resumed work, newer user turns and successful responses |
+| Polling failures put automatic recovery in the human-input queue | Deduplicate nonblocking connection notifications and restore state from a successful snapshot | Two consecutive poll failures followed by recovery through the real state machine |
+| A terminal called `Focus()` on every visual attachment despite automatic reveal requesting no focus | Remove attachment-time focus; retain explicit focus and click handling | Actual TextBox/terminal focus before attachment, reattachment and explicit terminal focus |
+| Resolving a Codex approval retained its parse buffer | Clear the resolved frame, allowing later genuine requests for the same command | Normal output after resolution plus a later split approval frame |
+| Resume skipped the first-paint wait, and restart reused the old process's readiness signal | Resume through the common spawn path, reset readiness per process and unsubscribe retired sessions | Claude and Claude+DeepSeek resume/restart wait for the new process and ignore old-process output |
+| Checkpoint observation began after prompt submission, missing fast replies | Arm the watcher before submission; apply the acknowledgement timeout afterwards and cancel/drain observation on every exit | New/existing real checkpoint files written synchronously during submission; timeout, failed submission and cancellation keep the session live |
+
+The Codex and shared lifecycle regression cases failed before their fixes. Release validation and its platform limits are recorded in [the v1.13.5 release notes](releases/v1.13.5.md) and [verification evidence](evidence/release-1.13.5-results.json).

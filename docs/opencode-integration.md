@@ -125,6 +125,14 @@ The test observed native events including:
 
 On reconnect, subscribe and buffer live events, then reload session details, paginated messages, inbox entries, active executions, pending permissions and forms. Reconcile those snapshots before releasing buffered updates. Deduplicate using durable event or message identity when available and re-fetch state if ordering is ambiguous. Session messages and a parked inbox item survived a full backend restart in the shell test, and the resumed model recalled a marker from its previous turn.
 
+## Attention and keyboard focus
+
+Since v1.13.5, snapshot reconciliation reports one attention state for the current session. Pending permissions and forms require human input. A non-null error on the latest assistant message requires attention only while the session is idle; a newer user turn or resumed execution supersedes the previous failure. Unchanged errors are reported once rather than on every poll. An `error: null` field is not a failure.
+
+A polling failure reports one nonblocking `connection_interrupted` notification per recovery episode. It does not place the agent in the human-input queue. A successful snapshot restores the native execution or pending-input state.
+
+Terminal controls do not focus themselves when attached or reattached. Automatic attention reveal can expose a waiting tab while preserving keyboard focus; explicit operator navigation and terminal clicks can focus the terminal.
+
 ## MCP and identity
 
 The tested v2 configuration shape was:

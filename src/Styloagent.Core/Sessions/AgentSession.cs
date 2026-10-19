@@ -15,7 +15,7 @@ public sealed class AgentSession
     private IPtySession? _pty;
 
     /// <summary>Completes when the child emits its first output — see <see cref="InjectBootTimeout"/>.</summary>
-    private readonly TaskCompletionSource _firstPaint = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private TaskCompletionSource _firstPaint = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     // Enter in a terminal TUI is carriage-return (0x0D), NOT line-feed (0x0A). Claude Code's input
     // box treats a bare "\n" as "insert a newline in the buffer" — so the prompt is typed but never
@@ -87,7 +87,7 @@ public sealed class AgentSession
         if (State == SessionState.Live) return;
         if (_pty is not null)
         {
-            _pty.Exited -= OnBackendExited;
+            UnwirePty(_pty);
             await _pty.DisposeAsync();
             _pty = CurrentPty = null;
         }
@@ -115,6 +115,7 @@ public sealed class AgentSession
             var a = _launchArgs[i] ?? "<null>";
             SpawnDiag.Log($"  argv[{i}] ({a.Length} chars) = {(a.Length > 100 ? string.Concat(a.AsSpan(0, 100), "…") : a)}");
         }
+        _firstPaint = new(TaskCreationOptions.RunContinuationsAsynchronously);
         _pty = await _launcher.SpawnAsync(new PtySpawnOptions(
             Command: _runtime.Command, Args: ArgsForPrompt(launchPrompt),
             WorkingDirectory: _manifest.Worktree, Env: _env, Cols: _initialCols, Rows: _initialRows), ct);
@@ -173,9 +174,11 @@ public sealed class AgentSession
     public async Task<bool> DehydrateAsync(TimeSpan ackTimeout, CancellationToken ct = default)
     {
         if (_pty is null || State != SessionState.Live) return false;
+        ct.ThrowIfCancellationRequested();
         if (_pty is INativeAgentSession native)
         {
             await native.InterruptAsync(resume: false, ct);
+            UnwirePty(_pty);
             await _pty.DisposeAsync();
             _pty = CurrentPty = null;
             State = SessionState.Dehydrated;
@@ -184,11 +187,28 @@ public sealed class AgentSession
         // No checkpoint target (e.g. the overview agent) — cannot dehydrate; keep it live rather than
         // ask it to checkpoint to nowhere and then watch an empty path.
         if (string.IsNullOrWhiteSpace(_manifest.SavedContextPath)) return false;
-        await InjectPromptAsync(_pty,
-            $"Please checkpoint your context to {_manifest.SavedContextPath}, then stand by.", ct);
-        var acked = await _watcher.WaitForChangeAsync(_manifest.SavedContextPath, ackTimeout, ct);
-        if (!acked) return false;                 // never lose context — keep it live
-        _pty.Output -= OnOutput;
+        // Arm before submitting: the agent may write its checkpoint during prompt submission.
+        // Start the acknowledgement timeout afterwards so TUI settle delays don't consume it.
+        using var watchCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var acknowledgement = _watcher.WaitForChangeAsync(
+            _manifest.SavedContextPath, Timeout.InfiniteTimeSpan, watchCancellation.Token);
+        try
+        {
+            await InjectPromptAsync(_pty,
+                $"Please checkpoint your context to {_manifest.SavedContextPath}, then stand by.", ct);
+            try
+            {
+                if (!await acknowledgement.WaitAsync(ackTimeout, ct)) return false;
+            }
+            catch (TimeoutException) { return false; } // no checkpoint acknowledgement — keep it live
+        }
+        finally
+        {
+            await watchCancellation.CancelAsync();
+            try { await acknowledgement; }
+            catch (OperationCanceledException) when (watchCancellation.IsCancellationRequested) { }
+        }
+        UnwirePty(_pty);
         await _pty.DisposeAsync();
         _pty = null;
         CurrentPty = null;
@@ -217,7 +237,7 @@ public sealed class AgentSession
                 }
                 catch { /* already gone / unknown pid — fall through to the graceful dispose below */ }
             }
-            pty.Output -= OnOutput;
+            UnwirePty(pty);
             try { await pty.DisposeAsync(); } catch { /* best-effort teardown */ }
         }
         _pty = null;
@@ -228,16 +248,14 @@ public sealed class AgentSession
     public async Task RehydrateAsync(string restartPrompt, CancellationToken ct = default)
     {
         if (State != SessionState.Dehydrated) return;
-        if (_manifest.Runtime == AgentRuntimeKind.OpenCode) { await SpawnAsync(restartPrompt, ct); return; }
-        _pty = await _launcher.SpawnAsync(new PtySpawnOptions(
-            _runtime.Command, ArgsForPrompt(restartPrompt), _manifest.Worktree, _env, _initialCols, _initialRows), ct);
-        _pty.Output += OnOutput;
-        _pty.Exited += OnBackendExited;
-        if (!_runtime.SupportsInitialPromptArgument)
-            await InjectPromptAsync(_pty, restartPrompt, ct);
-        CurrentPty = _pty;
-        State = SessionState.Live;
-        PtyStarted?.Invoke(_pty);
+        await SpawnAsync(restartPrompt, ct);
+    }
+
+    private void UnwirePty(IPtySession pty)
+    {
+        pty.Output -= OnOutput;
+        pty.Exited -= OnBackendExited;
+        if (pty is INativeAgentSession native) native.RuntimeEvent -= ForwardRuntimeEvent;
     }
 
     private void OnOutput(string chunk)

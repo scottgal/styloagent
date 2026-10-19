@@ -1,0 +1,70 @@
+{
+  "version": "1.13.5",
+  "verified_at_utc": "2026-10-19T09:28:53.568403+00:00",
+  "platform": "macOS arm64",
+  "opencode_version": "2.0.25",
+  "dotnet_sdk": "10.0.201",
+  "lucidview_revision": "c4eb74097943326ebfa4507a6cec905933a5d6d7",
+  "regression": {
+    "command": "dotnet test Styloagent.sln -c Release --verbosity minimal",
+    "passed": 1211,
+    "failed": 0,
+    "skipped": 8,
+    "suites": {
+      "Core": 631,
+      "Git": 26,
+      "App": 393,
+      "UI": 161
+    },
+    "skipped_tests_rerun_in_live_suites": 8
+  },
+  "live_native": {
+    "command": "STYLOAGENT_LIVE_OPENCODE=1 dotnet test tests/Styloagent.App.Tests/Styloagent.App.Tests.csproj -c Release --no-build --no-restore --filter 'FullyQualifiedName~Native_adapter|FullyQualifiedName~Native_ownership|FullyQualifiedName~Agent_session_parks|FullyQualifiedName~Native_backends_write' --verbosity minimal",
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "uses_real_provider": true,
+    "checks": [
+      "Authenticated private backend, actual cockpit MCP identity and instructions",
+      "Idempotent bus admission, consumption receipts and pre-admission crash recovery",
+      "Automatic shell approval, HTTP permission reply after TUI detachment and urgent interruption",
+      "Native compaction, history across park/resume and crash restart",
+      "Two real Git worktrees keep writes isolated",
+      "Ownership plugin rejects a real file mutation"
+    ]
+  },
+  "live_ui": {
+    "command": "STYLOAGENT_LIVE_OPENCODE=1 dotnet test tests/Styloagent.UITests/Styloagent.UITests.csproj -c Release --no-build --no-restore --filter FullyQualifiedName~OpenCodeStartupTests --verbosity minimal",
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "provider_generation_calls": 0,
+    "checks": [
+      "Startup and delayed UI attachment, input, reattachment and restored default model",
+      "Cockpit close waits for backend, terminal, shell and child process exit",
+      "Native scrolling and pane replacement after the raw replay cap is exceeded",
+      "Real PTY startup modes survive replay truncation before the first view"
+    ]
+  },
+  "parent_death": {
+    "command": "python3 scripts/test-opencode-parent-death.py",
+    "test": "backend_exits_after_abrupt_parent_death",
+    "passed": true
+  },
+  "new_regression_checks": [
+    "Null and superseded model errors never override native work",
+    "Current idle errors deduplicate and clear on resumed work or a new user turn",
+    "Real permissions and forms still request input",
+    "Consecutive poll failures are nonblocking and deduplicated; recovery restores state",
+    "Actual keyboard focus survives terminal attachment and reattachment",
+    "Resolved Codex approval frames cannot reappear on ordinary output; later genuine frames still work",
+    "Claude and Claude+DeepSeek resume/restart wait for their new process and ignore retired output",
+    "New and existing checkpoint files written during submission are acknowledged",
+    "Checkpoint timeout, cancellation and submission failure stop observation and leave sessions live"
+  ],
+  "user_fleet_interrupted": false,
+  "limits": [
+    "Live native runtime behavior verified on macOS arm64; Windows/Linux runtime behavior not live-tested",
+    "Arbitrary third-party OpenCode plugins and v2 OAuth import remain outside this validation"
+  ]
+}

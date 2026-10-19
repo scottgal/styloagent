@@ -112,7 +112,7 @@ Hidden agents appear in a compact, collapsed **INACTIVE** section:
 Once agents are live, each row shows:
 
 - A **colour stripe** and the agent's **display name** in its identity colour.
-- A **state glyph + headline**, driven by the agent's Claude Code hook stream:
+- A **state glyph + headline**, driven by runtime hooks or OpenCode's native session state:
   - **● working** (green) — with a live activity detail, e.g. *"editing · RouterModel.cs"*.
   - **○ idle** (grey) — running, nothing in flight.
   - **⚠ needs you** (amber) — blocked on a human; the row is highlighted amber so it's glanceable.
@@ -155,10 +155,20 @@ An agent moves through **Unspawned → Live → Dehydrated → Live**:
   Claude and Codex both use the same durable checkpoint → rehydrate lifecycle. The
   button is disabled once the agent is already Live, so you can't orphan a running process.
 - **Dehydrate** asks the session to checkpoint and suspend. It's only available when the agent is
-  **Live** *and* has a saved-context path to write to. If the checkpoint isn't acknowledged within
+  **Live** and, for Claude/Codex, has a saved-context path to write to. If the checkpoint isn't acknowledged within
   ~30 seconds, the agent stays Live and the button reflects that — no silent loss.
 - **Rehydrate** is only available when the agent is **Dehydrated**. It points the revived agent at its
   own checkpoint file so it reloads its saved context and resumes.
+
+Claude and Claude+DeepSeek wait for each newly started terminal to paint before typing the resume
+prompt. Checkpoint observation begins before sending the request, so a fast checkpoint reply is
+acknowledged. A timeout, cancelled request or failed submission leaves the session Live.
+
+OpenCode stores its history in its native session database. Parking interrupts its execution and
+stops its owned processes; waking restores the same session without requiring a checkpoint file.
+
+Attaching or reattaching a terminal preserves your current keyboard focus. Click the terminal or
+use explicit pane navigation when you want to type into it.
 
 Dehydrating is how you keep a large fleet affordable: park the agents you're not actively watching to
 free their PTYs, and revive them on demand. You rarely have to do it by hand — **sending a bus message
@@ -169,8 +179,13 @@ to a parked agent auto-rehydrates it first**, so the message always lands on a l
 When an agent asks for permission, use the cockpit approval control rather than typing into its terminal.
 Styloagent sends the confirmation native to that runtime—Claude receives its numbered confirmation;
 Codex receives Enter on its selected approval action—then refreshes the pane's attention state so the
-agent can continue its turn. A successful approval should clear the waiting-for-permission indication;
-if it does not, inspect the terminal before approving again.
+agent can continue its turn. OpenCode receives an HTTP reply for its pending native permission ID.
+Resolved Codex approval frames are discarded so subsequent command output cannot raise them again.
+OpenCode automatically approves eligible requests while its `--auto` terminal is attached; explicit
+denials still apply, and forms can still need an answer in the terminal.
+
+A successful approval clears the waiting-for-permission indication. Null or superseded OpenCode
+model errors and automatic connection recovery do not require another approval.
 
 ---
 
